@@ -7,6 +7,9 @@ const __dirname = path.dirname(__filename)
 
 const app = express()
 
+// Middleware to parse JSON bodies
+app.use(express.json())
+
 // Home route - HTML
 app.get('/', (req, res) => {
   res.type('html').send(`
@@ -47,6 +50,16 @@ app.get('/api-data', (req, res) => {
 // Health check
 app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+// Webhook endpoint for Dink's Runelite plugin
+app.post('/webhook', (req, res) => {
+  console.log('Received Dink webhook:')
+  console.log('Headers:', JSON.stringify(req.headers, null, 2))
+  console.log('Body:', JSON.stringify(req.body, null, 2))
+
+  // Return success response
+  res.status(200).json({ status: 'ok', message: 'Webhook received' })
 })
 
 export default app
