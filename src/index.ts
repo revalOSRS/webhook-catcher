@@ -145,6 +145,7 @@ app.post('/webhook', async (req, res) => {
 
 const typeHandlers = {
   GRAND_EXCHANGE: createGrandExchangeEmbed,
+  DEATH: createDeathEmbed,
 }
 
 // Function to create Discord webhook payload from Dink data
@@ -225,6 +226,63 @@ async function createGrandExchangeEmbed(fields, imageBuffer, imageFilename) {
           name: playerName,
           url: `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`
         }
+      }
+    ]
+  }
+
+  return addImageToPayload(payload, imageBuffer, imageFilename)
+}
+
+async function createDeathEmbed(fields, imageBuffer, imageFilename) {
+  const {
+    playerName,
+    accountType,
+    dinkAccountHash,
+    clanName,
+    seasonalWorld,
+    world,
+    regionId,
+    extra: {
+      valueLost,
+      isPvp,
+      killerName,
+      killerNpcId,
+      keptItems,
+      lostItems,
+      location: {
+        locationRegionId,
+        locationPlane,
+        locationInstanced
+      }
+    },
+    discordUser: {
+      id: discordUserId,
+      name: discordUserName,
+      avatar: discordUserAvatarHash,
+    },
+    embeds
+  } = fields.payload_json as any
+
+
+  const payload = {
+    embeds: [
+      {
+        "title": "Player Death",
+        "description": `☠️ **${playerName}** suri. 🕯️`,
+        "author": {
+          "name": playerName,
+          "url": `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`
+        },
+        "color": 15990936,
+        "thumbnail": {
+          "url": "https://oldschool.runescape.wiki/images/Items_kept_on_death.png"
+        },
+        "fields": [],
+        "footer": {
+          "text": "Pane friikad kotti",
+          "icon_url": "https://github.com/pajlads/DinkPlugin/raw/master/icon.png"
+        },
+        "timestamp": new Date().toISOString()
       }
     ]
   }
