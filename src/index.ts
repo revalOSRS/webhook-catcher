@@ -2,6 +2,8 @@ import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import Busboy from 'busboy'
+import axios from 'axios'
+import FormData from 'form-data'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -52,7 +54,7 @@ app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   const ct = req.headers['content-type'] || ''
 
   // If multipart/form-data (Dink with image), parse with Busboy
@@ -71,6 +73,8 @@ app.post('/webhook', (req, res) => {
 
     const fields = {}
     const files = []
+    let imageBuffer = null
+    let imageFilename = null
 
     bb.on('field', (name, val) => {
       // capture fields like type, playerName, dinkAccountHash, etc.
@@ -79,12 +83,21 @@ app.post('/webhook', (req, res) => {
 
     bb.on('file', (name, file, info) => {
       const { filename, mimeType } = info
-      let size = 0
+      const chunks = []
+
       file.on('data', (chunk) => {
-        size += chunk.length
+        chunks.push(chunk)
       })
+
       file.on('end', () => {
-        files.push({ field: name, filename, mimeType, size })
+        const buffer = Buffer.concat(chunks)
+        files.push({ field: name, filename, mimeType, size: buffer.length })
+
+        // Store image data for Discord upload
+        if (mimeType.startsWith('image/')) {
+          imageBuffer = buffer
+          imageFilename = filename
+        }
       })
     })
 
@@ -93,10 +106,20 @@ app.post('/webhook', (req, res) => {
       res.status(400).json({ status: 'error', message: 'Invalid multipart payload' })
     })
 
-    bb.on('finish', () => {
+    bb.on('finish', async () => {
       console.log('Fields:', JSON.stringify(fields, null, 2))
       console.log('Files:', JSON.stringify(files, null, 2))
-      res.status(200).json({ status: 'ok', message: 'Webhook received', fields, files })
+
+      try {
+        // Transform Dink data to Discord webhook format
+        const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
+        await sendToDiscord(discordPayload)
+        console.log('Successfully sent to Discord')
+      } catch (error) {
+        console.error('Error sending to Discord:', error)
+      }
+
+      res.status(200).json({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
     })
 
     req.pipe(bb)
@@ -107,7 +130,114 @@ app.post('/webhook', (req, res) => {
   console.log('Received Dink webhook (non-multipart)')
   console.log('Headers:', JSON.stringify(req.headers, null, 2))
   console.log('Body:', JSON.stringify(req.body, null, 2))
-  res.status(200).json({ status: 'ok', message: 'Webhook received' })
+
+  try {
+    // Transform JSON data to Discord webhook format
+    const discordPayload = await createDiscordPayload(req.body, null, null)
+    await sendToDiscord(discordPayload)
+    console.log('Successfully sent to Discord')
+  } catch (error) {
+    console.error('Error sending to Discord:', error)
+  }
+
+  res.status(200).json({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
 })
+
+// Function to create Discord webhook payload from Dink data
+async function createDiscordPayload(fields, imageBuffer, imageFilename) {
+  const playerName = fields.playerName || fields.player_name || 'Unknown Player'
+  const itemName = fields.itemName || fields.item_name || 'Unknown Item'
+  const quantity = parseInt(fields.quantity) || 1
+  const price = parseInt(fields.price) || 0
+  const status = fields.status || 'Completed'
+  const type = fields.type || 'grand_exchange'
+
+  // Format price with commas
+  const formattedPrice = price.toLocaleString()
+
+  // Create description
+  let description = ''
+  if (type === 'grand_exchange') {
+    const action = fields.action || 'bought'
+    description = `${playerName} ${action} ${quantity} x [${itemName}](https://oldschool.runescape.wiki/w/Special:Search?search=${encodeURIComponent(itemName)}) on the GE`
+  }
+
+  const payload = {
+    embeds: [
+      {
+        type: 'rich',
+        title: 'Grand Exchange',
+        timestamp: new Date().toISOString(),
+        thumbnail: {
+          url: 'https://oldschool.runescape.wiki/images/Grand_Exchange_icon.png'
+        },
+        footer: {
+          text: 'Powered by Tark Vanamees',
+          icon_url: 'https://github.com/pajlads/DinkPlugin/raw/master/icon.png'
+        },
+        fields: [
+          {
+            name: 'Status',
+            value: `\`\`\`\n${status}\n\`\`\``,
+            inline: true
+          },
+          {
+            name: 'Market Unit Price',
+            value: `\`\`\`ldif\n${formattedPrice} gp\n\`\`\``,
+            inline: true
+          }
+        ],
+        description: description,
+        color: 15990936, // Same color as in the example
+        author: {
+          name: playerName,
+          url: `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`
+        }
+      }
+    ]
+  }
+
+  // Add image if available
+  if (imageBuffer && imageFilename) {
+    // For Discord webhooks, we need to upload the image as an attachment
+    // and reference it in the embed
+    const formData = new FormData()
+    formData.append('payload_json', JSON.stringify({
+      ...payload,
+      embeds: [{
+        ...payload.embeds[0],
+        image: {
+          url: 'attachment://' + imageFilename
+        }
+      }]
+    }))
+    formData.append('file', imageBuffer, imageFilename)
+
+    return formData
+  }
+
+  return payload
+}
+
+// Function to send payload to Discord webhook
+async function sendToDiscord(payload) {
+  const discordWebhookUrl = 'https://discord.com/api/webhooks/1426849646675886152/A9R_7-FCacRkeCdtLLzHL4d8qCuRQFf_q26vBuBj-f2JF128usremCGbYTR7heav7Mhn'
+
+  if (payload instanceof FormData) {
+    // Multipart form data with image
+    await axios.post(discordWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  } else {
+    // JSON payload
+    await axios.post(discordWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+  }
+}
 
 export default app
