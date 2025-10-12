@@ -148,20 +148,28 @@ const typeHandlers = {
 async function createDiscordPayload(fields, imageBuffer, imageFilename) {
   console.log('Testing what we get here', JSON.stringify(fields, null, 2))
 
-  const { type = 'UNKNOWN' } = fields.payload_json
+  let payloadData = fields.payload_json
+  if (typeof payloadData === 'string') {
+    try {
+      payloadData = JSON.parse(payloadData)
+    } catch (e) {
+      console.error('Failed to parse payload_json:', e)
+      payloadData = {}
+    }
+  }
 
-  console.log('Testing next', fields.payload_json, fields.payload_json.type, type)
+  const { type = 'UNKNOWN' } = payloadData
+
+  console.log('Testing next', payloadData, payloadData.type, type)
 
   // Get the appropriate handler, default to a generic handler if type not found
   const handler = typeHandlers[type] || createGenericEmbed
 
-  return await handler(fields, imageBuffer, imageFilename)
+  return await handler(payloadData, imageBuffer, imageFilename)
 }
 
 // Grand Exchange specific embed creator
 async function createGrandExchangeEmbed(fields, imageBuffer, imageFilename) {
-
-  console.log(fields.payload_json)
   const {
     playerName,
     accountType,
