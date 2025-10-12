@@ -146,8 +146,6 @@ const typeHandlers = {
 
 // Function to create Discord webhook payload from Dink data
 async function createDiscordPayload(fields, imageBuffer, imageFilename) {
-  console.log('Testing what we get here', JSON.stringify(fields, null, 2))
-
   let payloadData = fields.payload_json
   if (typeof payloadData === 'string') {
     try {
@@ -160,9 +158,6 @@ async function createDiscordPayload(fields, imageBuffer, imageFilename) {
 
   const { type = 'UNKNOWN' } = payloadData
 
-  console.log('Testing next', payloadData, payloadData.type, type)
-
-  // Get the appropriate handler, default to a generic handler if type not found
   const handler = typeHandlers[type] || createGenericEmbed
 
   return await handler(payloadData, imageBuffer, imageFilename)
@@ -197,7 +192,7 @@ async function createGrandExchangeEmbed(fields, imageBuffer, imageFilename) {
       avatar: discordUserAvatarHash,
     },
     embeds
-  } = fields.payload_json as any
+  } = fields
 
   const formattedPrice = (parseInt(priceEach) || 0).toLocaleString()
 
@@ -269,8 +264,7 @@ async function createDeathEmbed(fields, imageBuffer, imageFilename) {
       avatar: discordUserAvatarHash,
     },
     embeds
-  } = fields.payload_json as any
-
+  } = fields
 
   const payload = {
     embeds: [
