@@ -59,9 +59,6 @@ app.post('/webhook', async (req, res) => {
 
   // If multipart/form-data (Dink with image), parse with Busboy
   if (ct.includes('multipart/form-data')) {
-    console.log('Received Dink webhook (multipart)')
-    console.log('Headers:', JSON.stringify(req.headers, null, 2))
-
     const bb = Busboy({
       headers: req.headers,
       limits: {
@@ -128,7 +125,6 @@ app.post('/webhook', async (req, res) => {
 
   // Fallback: JSON or other content-type
   console.log('Received Dink webhook (non-multipart)')
-  console.log('Headers:', JSON.stringify(req.headers, null, 2))
   console.log('Body:', JSON.stringify(req.body, null, 2))
 
   try {
@@ -152,7 +148,9 @@ const typeHandlers = {
 async function createDiscordPayload(fields, imageBuffer, imageFilename) {
   console.log('Testing what we get here', JSON.stringify(fields, null, 2))
 
-  const { type = 'UNKNOWN' } = fields.payload_json as any
+  const { type = 'UNKNOWN' } = fields.payload_json
+
+  console.log('Testing next', fields.payload_json, fields.payload_json.type, type)
 
   // Get the appropriate handler, default to a generic handler if type not found
   const handler = typeHandlers[type] || createGenericEmbed
