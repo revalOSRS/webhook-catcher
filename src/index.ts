@@ -150,6 +150,8 @@ const typeHandlers = {
 
 // Function to create Discord webhook payload from Dink data
 async function createDiscordPayload(fields, imageBuffer, imageFilename) {
+  console.log('Testing what we get here', JSON.stringify(fields, null, 2))
+
   const { type = 'UNKNOWN' } = fields.payload_json as any
 
   // Get the appropriate handler, default to a generic handler if type not found
