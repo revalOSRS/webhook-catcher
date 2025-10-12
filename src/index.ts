@@ -143,24 +143,56 @@ app.post('/webhook', async (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
 })
 
+const typeHandlers = {
+  GRAND_EXCHANGE: createGrandExchangeEmbed,
+}
+
 // Function to create Discord webhook payload from Dink data
 async function createDiscordPayload(fields, imageBuffer, imageFilename) {
-  const playerName = fields.playerName || fields.player_name || 'Unknown Player'
-  const itemName = fields.itemName || fields.item_name || 'Unknown Item'
-  const quantity = parseInt(fields.quantity) || 1
-  const price = parseInt(fields.price) || 0
-  const status = fields.status || 'Completed'
-  const type = fields.type || 'grand_exchange'
+  const { type = 'UNKNOWN' } = fields.payload_json as any
 
-  // Format price with commas
-  const formattedPrice = price.toLocaleString()
+  // Get the appropriate handler, default to a generic handler if type not found
+  const handler = typeHandlers[type] || createGenericEmbed
 
-  // Create description
-  let description = ''
-  if (type === 'grand_exchange') {
-    const action = fields.action || 'bought'
-    description = `${playerName} ${action} ${quantity} x [${itemName}](https://oldschool.runescape.wiki/w/Special:Search?search=${encodeURIComponent(itemName)}) on the GE`
-  }
+  return await handler(fields, imageBuffer, imageFilename)
+}
+
+// Grand Exchange specific embed creator
+async function createGrandExchangeEmbed(fields, imageBuffer, imageFilename) {
+
+  console.log(fields.payload_json)
+  const {
+    playerName,
+    accountType,
+    dinkAccountHash,
+    clanName,
+    seasonalWorld,
+    world,
+    regionId,
+    extra: {
+      slot,
+      status,
+      item: {
+        id,
+        quantity,
+        priceEach,
+        name
+      },
+      marketPrice,
+      targetPrice,
+      targetQuantity,
+    },
+    discordUser: {
+      id: discordUserId,
+      name: discordUserName,
+      avatar: discordUserAvatarHash,
+    },
+    embeds
+  } = fields.payload_json as any
+
+  const formattedPrice = (parseInt(priceEach) || 0).toLocaleString()
+
+  const description = `${playerName} ${status} ${quantity} x [${name}](https://oldschool.runescape.wiki/w/Special:Search?search=${encodeURIComponent(name)}) on the GE`
 
   const payload = {
     embeds: [
@@ -172,7 +204,7 @@ async function createDiscordPayload(fields, imageBuffer, imageFilename) {
           url: 'https://oldschool.runescape.wiki/images/Grand_Exchange_icon.png'
         },
         footer: {
-          text: 'Powered by Tark Vanamees',
+          text: 'Pane friikad kotti',
           icon_url: 'https://github.com/pajlads/DinkPlugin/raw/master/icon.png'
         },
         fields: [
@@ -197,7 +229,54 @@ async function createDiscordPayload(fields, imageBuffer, imageFilename) {
     ]
   }
 
-  // Add image if available
+  return addImageToPayload(payload, imageBuffer, imageFilename)
+}
+
+// Generic embed creator for unknown or unhandled types
+async function createGenericEmbed(fields, imageBuffer, imageFilename) {
+  const playerName = fields.playerName || fields.player_name || 'Unknown Player'
+  const type = fields.type || fields.payload_json?.type || 'UNKNOWN'
+
+  // Create a basic description from all available fields
+  let description = `**Type:** ${type}\n`
+  if (playerName !== 'Unknown Player') {
+    description += `**Player:** ${playerName}\n`
+  }
+
+  // Add other relevant fields
+  const relevantFields = ['itemName', 'item_name', 'quantity', 'price', 'status', 'action', 'message', 'level', 'xp']
+  for (const field of relevantFields) {
+    if (fields[field]) {
+      const displayName = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+      description += `**${displayName}:** ${fields[field]}\n`
+    }
+  }
+
+  const payload = {
+    embeds: [
+      {
+        type: 'rich',
+        title: `Dink Notification - ${type}`,
+        timestamp: new Date().toISOString(),
+        footer: {
+          text: 'Pane friikad kotti',
+          icon_url: 'https://github.com/pajlads/DinkPlugin/raw/master/icon.png'
+        },
+        description: description,
+        color: 16776960, // Yellow color for generic notifications
+        author: playerName !== 'Unknown Player' ? {
+          name: playerName,
+          url: `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`
+        } : undefined
+      }
+    ]
+  }
+
+  return addImageToPayload(payload, imageBuffer, imageFilename)
+}
+
+// Helper function to add image to payload if available
+function addImageToPayload(payload, imageBuffer, imageFilename) {
   if (imageBuffer && imageFilename) {
     // For Discord webhooks, we need to upload the image as an attachment
     // and reference it in the embed
@@ -218,6 +297,107 @@ async function createDiscordPayload(fields, imageBuffer, imageFilename) {
 
   return payload
 }
+
+// Example: Level Up notification handler
+// Uncomment and modify as needed
+/*
+async function createLevelUpEmbed(fields, imageBuffer, imageFilename) {
+  const playerName = fields.playerName || fields.player_name || 'Unknown Player'
+  const skill = fields.skill || 'Unknown Skill'
+  const level = parseInt(fields.level) || 0
+  const xp = parseInt(fields.xp) || 0
+
+  const description = `${playerName} reached level ${level} in ${skill}!`
+
+  const payload = {
+    embeds: [{
+      type: 'rich',
+      title: '🎉 Level Up!',
+      timestamp: new Date().toISOString(),
+      footer: {
+        text: 'Pane friikad kotti',
+        icon_url: 'https://github.com/pajlads/DinkPlugin/raw/master/icon.png'
+      },
+      fields: [
+        {
+          name: 'Skill',
+          value: `\`\`\`\n${skill}\n\`\`\``,
+          inline: true
+        },
+        {
+          name: 'Level',
+          value: `\`\`\`\n${level}\n\`\`\``,
+          inline: true
+        },
+        {
+          name: 'XP',
+          value: `\`\`\`\n${xp.toLocaleString()}\n\`\`\``,
+          inline: true
+        }
+      ],
+      description: description,
+      color: 5763719, // Green color for level ups
+      author: {
+        name: playerName,
+        url: `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`
+      }
+    }]
+  }
+
+  return addImageToPayload(payload, imageBuffer, imageFilename)
+}
+
+// Example: Loot Drop notification handler
+async function createLootDropEmbed(fields, imageBuffer, imageFilename) {
+  const playerName = fields.playerName || fields.player_name || 'Unknown Player'
+  const itemName = fields.itemName || fields.item_name || 'Unknown Item'
+  const quantity = parseInt(fields.quantity) || 1
+  const value = parseInt(fields.value) || 0
+  const source = fields.source || 'Unknown'
+
+  const description = `${playerName} received ${quantity}x [${itemName}](https://oldschool.runescape.wiki/w/Special:Search?search=${encodeURIComponent(itemName)}) from ${source}`
+
+  const payload = {
+    embeds: [{
+      type: 'rich',
+      title: '💰 Loot Drop',
+      timestamp: new Date().toISOString(),
+      thumbnail: {
+        url: 'https://oldschool.runescape.wiki/images/Coins_10000.png' // Coin icon
+      },
+      footer: {
+        text: 'Pane friikad kotti',
+        icon_url: 'https://github.com/pajlads/DinkPlugin/raw/master/icon.png'
+      },
+      fields: [
+        {
+          name: 'Item',
+          value: `\`\`\`\n${itemName}\n\`\`\``,
+          inline: true
+        },
+        {
+          name: 'Quantity',
+          value: `\`\`\`\n${quantity}\n\`\`\``,
+          inline: true
+        },
+        {
+          name: 'Value',
+          value: `\`\`\`ldif\n${value.toLocaleString()} gp\n\`\`\``,
+          inline: true
+        }
+      ],
+      description: description,
+      color: 16776960, // Gold color for loot
+      author: {
+        name: playerName,
+        url: `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`
+      }
+    }]
+  }
+
+  return addImageToPayload(payload, imageBuffer, imageFilename)
+}
+*/
 
 // Function to send payload to Discord webhook
 async function sendToDiscord(payload) {
