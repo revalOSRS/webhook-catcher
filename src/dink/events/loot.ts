@@ -21,7 +21,7 @@ export const createLootEmbed = async (fields: LootEvent, imageBuffer, imageFilen
     embeds
   } = fields
 
-  const minimumDropValue = 100000;
+  const minimumDropValue = 1000000;
 
   // Filter items that meet the minimum value requirement
   const valuableItems = extra.items.filter(item => item.priceEach * item.quantity >= minimumDropValue);
