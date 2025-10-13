@@ -1,10 +1,30 @@
 import axios from 'axios'
 
+export const formatRuneScapeNumber = (num) => {
+  const number = parseInt(num) || 0
+
+  if (number >= 1000000000) {
+    // Billions
+    const billions = number / 1000000000
+    return billions % 1 === 0 ? `${billions}b` : `${billions.toFixed(1)}b`
+  } else if (number >= 1000000) {
+    // Millions
+    const millions = number / 1000000
+    return millions % 1 === 0 ? `${millions}m` : `${millions.toFixed(1)}m`
+  } else if (number >= 1000) {
+    // Thousands
+    const thousands = number / 1000
+    return thousands % 1 === 0 ? `${thousands}k` : `${thousands.toFixed(1)}k`
+  } else {
+    // Regular number
+    return number.toLocaleString()
+  }
+}
+
 export const addImageToPayload = (payload, imageBuffer, imageFilename) => {
   if (imageBuffer && imageFilename) {
     const formData = new FormData()
 
-    // Create a Blob from the Buffer for Vercel/undici compatibility
     const blob = new Blob([imageBuffer])
 
     formData.append('payload_json', JSON.stringify({

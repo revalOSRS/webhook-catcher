@@ -1,10 +1,10 @@
-import { addImageToPayload } from '../util.js'
+import { addImageToPayload, formatRuneScapeNumber } from '../util.js'
 
 const PVM_DEATH_DESCRIPTIONS = [
-  '☠️ **${victimName}** suri. 🕯️',
-  '☠️ **${victimName}**-le sõideti kelku. 🕯️',
-  '☠️ **${victimName}**-st sõideti üle. 🕯️',
-  '☠️ **${victimName}** häbistas Eestlaseid. 🕯️',
+  '☠️ **${victimName}** suri ${killerName} käte läbi. 🕯️',
+  '☠️ **${victimName}**-le sõideti kelku ${killerName} poolt. 🕯️',
+  '☠️ **${victimName}**-st sõideti üle ${killerName} poolt. 🕯️',
+  '☠️ **${victimName}** häbistas Eestlaseid surres ${killerName}-ile. 🕯️',
 ]
 
 export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
@@ -44,7 +44,6 @@ export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
     embeds: [
       {
         "title": description,
-        // "description": description,
         "author": {
           "name": playerName,
           "url": `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`
@@ -55,7 +54,7 @@ export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
         },
         "fields": [],
         "footer": {
-          "text": `${playerName} kaotas ${valueLost} gp`,
+          "text": `${playerName} kaotas ${formatRuneScapeNumber(valueLost)} gp`,
           "icon_url": "https://oldschool.runescape.wiki/images/Coins_detail.png"
         },
         "timestamp": new Date().toISOString()
