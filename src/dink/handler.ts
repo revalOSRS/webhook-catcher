@@ -30,6 +30,8 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
 }
 
 export const handler = async (req, res, ct) => {
+  console.log('Received Dink webhook')
+
   if (ct.includes('multipart/form-data')) {
     const bb = Busboy({
       headers: req.headers,
