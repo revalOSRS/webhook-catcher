@@ -3,6 +3,10 @@ import axios from 'axios'
 export const addImageToPayload = (payload, imageBuffer, imageFilename) => {
   if (imageBuffer && imageFilename) {
     const formData = new FormData()
+
+    // Create a Blob from the Buffer for Vercel/undici compatibility
+    const blob = new Blob([imageBuffer])
+
     formData.append('payload_json', JSON.stringify({
       ...payload,
       embeds: [{
@@ -12,7 +16,7 @@ export const addImageToPayload = (payload, imageBuffer, imageFilename) => {
         }
       }]
     }))
-    formData.append('file', imageBuffer, { filename: imageFilename } as any)
+    formData.append('file', blob, imageFilename)
 
     return formData
   }
