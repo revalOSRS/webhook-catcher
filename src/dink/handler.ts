@@ -45,8 +45,9 @@ const getSendFunction = (eventType) => {
     case 'COLLECTION':
       return sendToMeenedChannelDiscord
     case 'DEATH':
-    default:
       return sendToDeathChannelDiscord
+    default:
+      return null
   }
 }
 
@@ -125,7 +126,7 @@ export const handler = async (req) => {
           await sendFunction(discordPayload)
 
           console.log('Successfully sent to Discord')
-          resolve({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
+          resolve({ status: 'ok', message: 'Webhook received and forwar ded to Discord' })
         } catch (error) {
           console.error('Error sending to Discord:', error)
           reject(error)
