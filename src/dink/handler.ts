@@ -29,11 +29,10 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
   return await handler(payloadData, imageBuffer, imageFilename)
 }
 
-export const handler = async (req, res) => {
+export const handler = async (req) => {
   const ct = req.headers['content-type'] || ''
 
   console.log('0')
-
 
   if (ct.includes('multipart/form-data')) {
     console.log('1')
@@ -48,60 +47,61 @@ export const handler = async (req, res) => {
 
     console.log('2')
 
-
     const fields = {}
     const files = []
     let imageBuffer = null
     let imageFilename = null
 
-    bb.on('field', (name, val) => {
-      // capture fields like type, playerName, dinkAccountHash, etc.
-      fields[name] = val
-    })
-
-    bb.on('file', (name, file, info) => {
-      const { filename, mimeType } = info
-      const chunks = []
-
-      file.on('data', (chunk) => {
-        chunks.push(chunk)
+    // Return a promise that resolves when processing is complete
+    return new Promise((resolve, reject) => {
+      bb.on('field', (name, val) => {
+        // capture fields like type, playerName, dinkAccountHash, etc.
+        fields[name] = val
       })
 
-      file.on('end', () => {
-        const buffer = Buffer.concat(chunks)
-        files.push({ field: name, filename, mimeType, size: buffer.length })
+      bb.on('file', (name, file, info) => {
+        const { filename, mimeType } = info
+        const chunks = []
 
-        // Store image data for Discord upload
-        if (mimeType.startsWith('image/')) {
-          imageBuffer = buffer
-          imageFilename = filename
+        file.on('data', (chunk) => {
+          chunks.push(chunk)
+        })
+
+        file.on('end', () => {
+          const buffer = Buffer.concat(chunks)
+          files.push({ field: name, filename, mimeType, size: buffer.length })
+
+          // Store image data for Discord upload
+          if (mimeType.startsWith('image/')) {
+            imageBuffer = buffer
+            imageFilename = filename
+          }
+        })
+      })
+
+      bb.on('error', (err) => {
+        console.error('Busboy error:', err)
+        reject(new Error('Invalid multipart payload'))
+      })
+
+      bb.on('finish', async () => {
+        console.log('Fields:', JSON.stringify(fields, null, 2))
+        console.log('Files:', JSON.stringify(files, null, 2))
+
+        try {
+          // Transform Dink data to Discord webhook format
+          const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
+          await sendToDiscord(discordPayload)
+          console.log('Successfully sent to Discord')
+          resolve({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
+        } catch (error) {
+          console.error('Error sending to Discord:', error)
+          reject(error)
         }
       })
+
+      req.pipe(bb)
     })
-
-    bb.on('error', (err) => {
-      console.error('Busboy error:', err)
-      res.status(400).json({ status: 'error', message: 'Invalid multipart payload' })
-    })
-
-    bb.on('finish', async () => {
-      console.log('Fields:', JSON.stringify(fields, null, 2))
-      console.log('Files:', JSON.stringify(files, null, 2))
-
-      try {
-        // Transform Dink data to Discord webhook format
-        const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
-        await sendToDiscord(discordPayload)
-        console.log('Successfully sent to Discord')
-      } catch (error) {
-        console.error('Error sending to Discord:', error)
-      }
-
-      res.status(200).json({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
-    })
-
-    req.pipe(bb)
-    return
   }
 
   // Fallback: JSON or other content-type
@@ -114,7 +114,9 @@ export const handler = async (req, res) => {
     const discordPayload = await createDiscordPayload(req.body, null, null)
     await sendToDiscord(discordPayload)
     console.log('Successfully sent to Discord')
+    return { status: 'ok', message: 'Webhook received and forwarded to Discord' }
   } catch (error) {
     console.error('Error sending to Discord:', error)
+    throw error
   }
 }

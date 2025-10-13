@@ -51,15 +51,15 @@ app.get('/health', (req, res) => {
 })
 
 app.post('/webhook', async (req, res) => {
-  if (req.headers['user-agent'].includes('Dink')) {
-    console.log('Received Dink webhook')
-    await dinkHandler(req, res)
-  } else {
-    console.log('Received non-Dink webhook')
-    await dinkHandler(req, res)
-  }
+  try {
+    console.log('Headers:', req.headers)
 
-  res.status(200).json({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
+    const result = await dinkHandler(req)
+    res.status(200).json(result)
+  } catch (error) {
+    console.error('Webhook processing error:', error)
+    res.status(500).json({ status: 'error', message: 'Failed to process webhook' })
+  }
 })
 
 export default app
