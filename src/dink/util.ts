@@ -12,7 +12,7 @@ export const addImageToPayload = (payload, imageBuffer, imageFilename) => {
         }
       }]
     }))
-    formData.append('file', imageBuffer, imageFilename)
+    formData.append('file', imageBuffer, { filename: imageFilename } as any)
 
     return formData
   }

@@ -52,9 +52,16 @@ app.get('/health', (req, res) => {
 
 app.post('/webhook', async (req, res) => {
   try {
-    console.log('Headers:', req.headers)
+    let result;
 
-    const result = await dinkHandler(req)
+    if (req.headers['user-agent'].includes('Dink')) {
+      console.log('Received Dink webhook')
+      result = await dinkHandler(req)
+    } else {
+      console.log('Received non-Dink webhook')
+      result = await dinkHandler(req)
+    }
+
     res.status(200).json(result)
   } catch (error) {
     console.error('Webhook processing error:', error)
