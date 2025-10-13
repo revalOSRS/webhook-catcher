@@ -51,16 +51,12 @@ app.get('/health', (req, res) => {
 })
 
 app.post('/webhook', async (req, res) => {
-  const ct = req.headers['content-type'] || ''
-
-  console.log('Headers:', req.headers)
-
   if (req.headers['user-agent'].includes('Dink')) {
     console.log('Received Dink webhook')
-    await dinkHandler(req, res, ct)
+    await dinkHandler(req, res)
   } else {
     console.log('Received non-Dink webhook')
-    await dinkHandler(req, res, ct)
+    await dinkHandler(req, res)
   }
 
   res.status(200).json({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
