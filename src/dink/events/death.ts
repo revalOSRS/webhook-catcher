@@ -1,9 +1,9 @@
 import { addImageToPayload, formatRuneScapeNumber } from '../util.js'
 
 const PVM_DEATH_DESCRIPTIONS = [
-  '☠️ **${victimName}** suri ${killerName} käte läbi. 🕯️',
-  '☠️ **${victimName}**-le sõideti kelku ${killerName} poolt. 🕯️',
-  '☠️ **${victimName}**-st sõideti üle ${killerName} poolt. 🕯️',
+  '☠️ **${victimName}** suri ${killerName}-i käte läbi. 🕯️',
+  '☠️ **${victimName}**-le sõideti kelku ${killerName}-i poolt. 🕯️',
+  '☠️ ${killerName} sõitis **${victimName}**-st toorelt üle. 🕯️',
   '☠️ **${victimName}** häbistas Eestlaseid surres ${killerName}-ile. 🕯️',
 ]
 
@@ -38,7 +38,9 @@ export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
   } = fields
 
   const randomDescription = PVM_DEATH_DESCRIPTIONS[Math.floor(Math.random() * PVM_DEATH_DESCRIPTIONS.length)]
-  const description = randomDescription.replace('${victimName}', playerName)
+  const description = randomDescription
+    .replace('${victimName}', playerName)
+    .replace('${killerName}', killerName || 'Grim Reaper')
 
   const payload = {
     embeds: [
