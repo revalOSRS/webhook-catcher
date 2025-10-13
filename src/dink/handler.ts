@@ -4,10 +4,14 @@ import { createDeathEmbed } from './events/death.js'
 import { createGenericEmbed } from './events/generic.js'
 import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './util.js'
 import { createGrandExchangeEmbed } from './events/grand-exchange.js'
+import { createCollectLogEmbed } from './events/collect-log.js'
+import { createLootEmbed } from './events/loot.js'
 
 const typeHandlers = {
   GRAND_EXCHANGE: createGrandExchangeEmbed,
   DEATH: createDeathEmbed,
+  LOOT: createLootEmbed,
+  COLLECTION_LOG: createCollectLogEmbed,
   UNKNOWN: createGenericEmbed,
 }
 
@@ -93,7 +97,6 @@ export const handler = async (req) => {
 
       bb.on('finish', async () => {
         console.log('Fields:', JSON.stringify(fields, null, 2))
-        console.log('Files:', JSON.stringify(files, null, 2))
 
         try {
           // Transform Dink data to Discord webhook format
