@@ -59,7 +59,7 @@ app.post('/webhook', async (req, res) => {
       result = await dinkHandler(req)
     } else {
       console.log('Received non-Dink webhook')
-      result = await dinkHandler(req)
+      // result = await dinkHandler(req)
     }
 
     res.status(200).json(result)

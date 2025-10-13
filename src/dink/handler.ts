@@ -28,8 +28,8 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
 
   const { type = 'UNKNOWN' } = payloadData
 
-  if (type !== 'UNKNOWN') {
-    console.log('Event filtered out, not sending to Discord')
+  if (type === 'UNKNOWN') {
+    console.log('Event filtered out because the type is UNKNOWN, not sending to Discord')
     return null;
   }
 
