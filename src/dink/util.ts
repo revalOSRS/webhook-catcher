@@ -44,19 +44,81 @@ export const addImageToPayload = (payload, imageBuffer, imageFilename) => {
   return payload
 }
 
-export const sendToDiscord = async (payload) => {
-  const discordWebhookUrl = 'https://discord.com/api/webhooks/1426849646675886152/A9R_7-FCacRkeCdtLLzHL4d8qCuRQFf_q26vBuBj-f2JF128usremCGbYTR7heav7Mhn'
+
+
+export const sendToDeathChannelDiscord = async (payload) => {
+  const discordDeathWebhookUrl = 'https://discord.com/api/webhooks/1426849646675886152/A9R_7-FCacRkeCdtLLzHL4d8qCuRQFf_q26vBuBj-f2JF128usremCGbYTR7heav7Mhn'
 
   if (payload instanceof FormData) {
     // Multipart form data with image
-    await axios.post(discordWebhookUrl, payload, {
+    await axios.post(discordDeathWebhookUrl, payload, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
   } else {
     // JSON payload
-    await axios.post(discordWebhookUrl, payload, {
+    await axios.post(discordDeathWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+  }
+}
+
+export const sendToMeenedChannelDiscord = async (payload) => {
+  const discordMeenedWebhookUrl = 'https://discord.com/api/webhooks/1427361462539649156/FnC1JJEWQmineXYeFOkwFlUAuI8RLgoVR7Tz475BI3ApD8FrL0GEqE8r4DDmgJEard65'
+
+  if (payload instanceof FormData) {
+    // Multipart form data with image
+    await axios.post(discordMeenedWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  } else {
+    // JSON payload
+    await axios.post(discordMeenedWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+  }
+}
+
+export const sendToLootChannelDiscord = async (payload) => {
+  const discordLootWebhookUrl = 'https://discord.com/api/webhooks/1426849646675886152/A9R_7-FCacRkeCdtLLzHL4d8qCuRQFf_q26vBuBj-f2JF128usremCGbYTR7heav7Mhn'
+
+  if (payload instanceof FormData) {
+    // Multipart form data with image
+    await axios.post(discordLootWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  } else {
+    // JSON payload
+    await axios.post(discordLootWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+  }
+}
+
+export const sendToCollectionLogChannelDiscord = async (payload) => {
+  const discordCollectionLogWebhookUrl = 'https://discord.com/api/webhooks/1427361462539649156/FnC1JJEWQmineXYeFOkwFlUAuI8RLgoVR7Tz475BI3ApD8FrL0GEqE8r4DDmgJEard65'
+
+  if (payload instanceof FormData) {
+    // Multipart form data with image
+    await axios.post(discordCollectionLogWebhookUrl, payload, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  } else {
+    // JSON payload
+    await axios.post(discordCollectionLogWebhookUrl, payload, {
       headers: {
         'Content-Type': 'application/json'
       }

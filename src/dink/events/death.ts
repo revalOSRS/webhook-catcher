@@ -1,10 +1,12 @@
 import { addImageToPayload, formatRuneScapeNumber } from '../util.js'
 
 const PVM_DEATH_DESCRIPTIONS = [
-  '☠️ **${victimName}** suri ${killerName}-i käte läbi. 🕯️',
-  '☠️ **${victimName}**-le sõideti kelku ${killerName}-i poolt. 🕯️',
-  '☠️ ${killerName} sõitis **${victimName}**-st toorelt üle. 🕯️',
-  '☠️ **${victimName}** häbistas Eestlaseid surres ${killerName}-ile. 🕯️',
+  '☠️ **${victimName}** suri ${killerName}\'i käte läbi. 🕯️',
+  '☠️ **${victimName}**\'le sõideti kelku ${killerName}\'i poolt. 🕯️',
+  '☠️ ${killerName} sõitis **${victimName}**\'st toorelt üle. 🕯️',
+  '☠️ **${victimName}** häbistas Eestlaseid surres ${killerName}\'ile. 🕯️',
+  '☠️ ${victimName} libastus ${killerName}\'i otsa. 🕯️',
+  '☠️ ${victimName} peaks mõne õpetliku video läbi vaatama ${killerName}\'i kohta. 🕯️',
 ]
 
 export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {

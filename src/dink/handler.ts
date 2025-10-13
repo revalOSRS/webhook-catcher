@@ -2,7 +2,7 @@ import Busboy from 'busboy'
 
 import { createDeathEmbed } from './events/death.js'
 import { createGenericEmbed } from './events/generic.js'
-import { sendToDiscord } from './util.js'
+import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './util.js'
 import { createGrandExchangeEmbed } from './events/grand-exchange.js'
 
 const typeHandlers = {
@@ -29,13 +29,22 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
   return await handler(payloadData, imageBuffer, imageFilename)
 }
 
+// Helper function to get the appropriate send function based on event type
+const getSendFunction = (eventType) => {
+  switch (eventType) {
+    case 'LOOT':
+    case 'COLLECTION_LOG':
+      return sendToMeenedChannelDiscord
+    case 'DEATH':
+    default:
+      return sendToDeathChannelDiscord
+  }
+}
+
 export const handler = async (req) => {
   const ct = req.headers['content-type'] || ''
 
-  console.log('0')
-
   if (ct.includes('multipart/form-data')) {
-    console.log('1')
     const bb = Busboy({
       headers: req.headers,
       limits: {
@@ -44,8 +53,6 @@ export const handler = async (req) => {
         fields: 200,
       },
     })
-
-    console.log('2')
 
     const fields = {}
     const files = []
@@ -91,7 +98,17 @@ export const handler = async (req) => {
         try {
           // Transform Dink data to Discord webhook format
           const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
-          await sendToDiscord(discordPayload)
+
+          // Route to appropriate Discord channel based on event type
+          let payloadData = (fields as any).payload_json
+          if (typeof payloadData === 'string') {
+            payloadData = JSON.parse(payloadData)
+          }
+          const eventType = payloadData?.type || 'UNKNOWN'
+
+          const sendFunction = getSendFunction(eventType)
+          await sendFunction(discordPayload)
+
           console.log('Successfully sent to Discord')
           resolve({ status: 'ok', message: 'Webhook received and forwarded to Discord' })
         } catch (error) {
@@ -104,15 +121,18 @@ export const handler = async (req) => {
     })
   }
 
-  // Fallback: JSON or other content-type
-  console.log('3')
   console.log('Received Dink webhook (non-multipart)')
   console.log('Body:', JSON.stringify(req.body, null, 2))
 
   try {
     // Transform JSON data to Discord webhook format
     const discordPayload = await createDiscordPayload(req.body, null, null)
-    await sendToDiscord(discordPayload)
+
+    // Route to appropriate Discord channel based on event type
+    const eventType = req.body?.type || 'UNKNOWN'
+    const sendFunction = getSendFunction(eventType)
+    await sendFunction(discordPayload)
+
     console.log('Successfully sent to Discord')
     return { status: 'ok', message: 'Webhook received and forwarded to Discord' }
   } catch (error) {
