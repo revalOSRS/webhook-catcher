@@ -28,6 +28,11 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
 
   const { type = 'UNKNOWN' } = payloadData
 
+  if (type !== 'UNKNOWN') {
+    console.log('Event filtered out, not sending to Discord')
+    return null;
+  }
+
   const handler = typeHandlers[type] || createGenericEmbed
 
   return await handler(payloadData, imageBuffer, imageFilename)
