@@ -11,7 +11,7 @@ const typeHandlers = {
   GRAND_EXCHANGE: createGrandExchangeEmbed,
   DEATH: createDeathEmbed,
   LOOT: createLootEmbed,
-  COLLECTION_LOG: createCollectLogEmbed,
+  COLLECTION: createCollectLogEmbed,
   UNKNOWN: createGenericEmbed,
 }
 
@@ -37,7 +37,7 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
 const getSendFunction = (eventType) => {
   switch (eventType) {
     case 'LOOT':
-    case 'COLLECTION_LOG':
+    case 'COLLECTION':
       return sendToMeenedChannelDiscord
     case 'DEATH':
     default:
@@ -102,6 +102,13 @@ export const handler = async (req) => {
           // Transform Dink data to Discord webhook format
           const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
 
+          // If no payload (e.g., filtered out low-value loot), skip sending
+          if (!discordPayload) {
+            console.log('Event filtered out, not sending to Discord')
+            resolve({ status: 'ok', message: 'Webhook received but filtered out' })
+            return
+          }
+
           // Route to appropriate Discord channel based on event type
           let payloadData = (fields as any).payload_json
           if (typeof payloadData === 'string') {
@@ -130,6 +137,12 @@ export const handler = async (req) => {
   try {
     // Transform JSON data to Discord webhook format
     const discordPayload = await createDiscordPayload(req.body, null, null)
+
+    // If no payload (e.g., filtered out low-value loot), skip sending
+    if (!discordPayload) {
+      console.log('Event filtered out, not sending to Discord')
+      return { status: 'ok', message: 'Webhook received but filtered out' }
+    }
 
     // Route to appropriate Discord channel based on event type
     const eventType = req.body?.type || 'UNKNOWN'
