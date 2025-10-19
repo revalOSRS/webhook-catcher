@@ -152,6 +152,37 @@ export async function verifyMemberCode(memberId: number, memberCode: number): Pr
 }
 
 /**
+ * Login with member code - returns member info if code is valid
+ */
+export async function loginWithCode(memberCode: number): Promise<{
+  id: number
+  discord_id: string
+  discord_tag: string | null
+  member_code: number
+  is_active: boolean
+} | null> {
+  const member = await queryOne<Member>(
+    `SELECT * FROM members WHERE member_code = $1`,
+    [memberCode]
+  )
+
+  if (!member) {
+    return null
+  }
+
+  // Update last_seen on login
+  await updateLastSeen(member.discord_id)
+
+  return {
+    id: member.id,
+    discord_id: member.discord_id,
+    discord_tag: member.discord_tag,
+    member_code: member.member_code,
+    is_active: member.is_active,
+  }
+}
+
+/**
  * Get complete member profile with all related data
  */
 export async function getMemberProfile(memberId: number, memberCode: number): Promise<MemberProfile | null> {
