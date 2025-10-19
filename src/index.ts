@@ -88,6 +88,34 @@ app.post('/api/auth/discord', async (req, res) => {
       })
     }
 
+    // Validate environment variables
+    const clientId = process.env.DISCORD_CLIENT_ID
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET
+    const redirectUri = process.env.DISCORD_REDIRECT_URI
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      console.error('Missing Discord OAuth configuration:', {
+        hasClientId: !!clientId,
+        hasClientSecret: !!clientSecret,
+        hasRedirectUri: !!redirectUri
+      })
+      return res.status(500).json({ 
+        status: 'error', 
+        message: 'Server configuration error: Discord OAuth is not properly configured',
+        details: {
+          missingClientId: !clientId,
+          missingClientSecret: !clientSecret,
+          missingRedirectUri: !redirectUri
+        }
+      })
+    }
+
+    console.log('Discord OAuth attempt:', {
+      clientId: clientId.substring(0, 8) + '...',
+      redirectUri: redirectUri,
+      codeLength: code.length
+    })
+
     // Exchange code for access token
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
@@ -95,20 +123,37 @@ app.post('/api/auth/discord', async (req, res) => {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
-        client_id: process.env.DISCORD_CLIENT_ID || '',
-        client_secret: process.env.DISCORD_CLIENT_SECRET || '',
+        client_id: clientId,
+        client_secret: clientSecret,
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: process.env.DISCORD_REDIRECT_URI || ''
+        redirect_uri: redirectUri
       })
     })
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json()
-      console.error('Discord token exchange failed:', errorData)
+      console.error('Discord token exchange failed:', {
+        status: tokenResponse.status,
+        error: errorData,
+        clientIdUsed: clientId.substring(0, 8) + '...',
+        redirectUriUsed: redirectUri
+      })
+      
+      let errorMessage = 'Failed to authenticate with Discord'
+      if (errorData.error === 'invalid_client') {
+        errorMessage = 'Invalid Discord client credentials. Please check DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET environment variables.'
+      } else if (errorData.error === 'invalid_grant') {
+        errorMessage = 'Invalid or expired authorization code. Please try logging in again.'
+      } else if (errorData.error === 'redirect_uri_mismatch') {
+        errorMessage = 'Redirect URI mismatch. Please check DISCORD_REDIRECT_URI matches your Discord app settings.'
+      }
+
       return res.status(401).json({ 
         status: 'error', 
-        message: 'Failed to authenticate with Discord' 
+        message: errorMessage,
+        error_code: errorData.error,
+        error_description: errorData.error_description
       })
     }
 
