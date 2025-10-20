@@ -170,9 +170,6 @@ export async function loginWithCode(memberCode: number): Promise<{
     return null
   }
 
-  // Update last_seen on login
-  await updateLastSeen(member.discord_id)
-
   return {
     id: member.id,
     discord_id: member.discord_id,
@@ -254,6 +251,7 @@ export async function updateLastSeen(discordId: string): Promise<void> {
 
 /**
  * Create or update a member
+ * For updates, only provided fields will be updated
  */
 export async function upsertMember(data: {
   discord_id: string
@@ -263,34 +261,87 @@ export async function upsertMember(data: {
   in_discord?: boolean
   notes?: string
 }): Promise<Member> {
-  const result = await queryOne<Member>(
-    `INSERT INTO members (discord_id, discord_tag, member_code, is_active, in_discord, notes)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (discord_id) 
-     DO UPDATE SET
-       discord_tag = COALESCE($2, members.discord_tag),
-       member_code = COALESCE($3, members.member_code),
-       is_active = COALESCE($4, members.is_active),
-       in_discord = COALESCE($5, members.in_discord),
-       notes = COALESCE($6, members.notes),
-       updated_at = CURRENT_TIMESTAMP,
-       last_seen = CURRENT_TIMESTAMP
-     RETURNING *`,
-    [
-      data.discord_id,
-      data.discord_tag || null,
-      data.member_code || null,
-      data.is_active !== undefined ? data.is_active : true,
-      data.in_discord !== undefined ? data.in_discord : true,
-      data.notes || null,
-    ]
-  )
+  // Check if member exists
+  const existingMember = await getMemberByDiscordId(data.discord_id)
 
-  if (!result) {
-    throw new Error('Failed to upsert member')
+  if (existingMember) {
+    // Member exists - update only provided fields
+    const updates: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
+
+    if (data.discord_tag !== undefined) {
+      updates.push(`discord_tag = $${paramIndex++}`)
+      values.push(data.discord_tag)
+    }
+    if (data.member_code !== undefined) {
+      updates.push(`member_code = $${paramIndex++}`)
+      values.push(data.member_code)
+    }
+    if (data.is_active !== undefined) {
+      updates.push(`is_active = $${paramIndex++}`)
+      values.push(data.is_active)
+    }
+    if (data.in_discord !== undefined) {
+      updates.push(`in_discord = $${paramIndex++}`)
+      values.push(data.in_discord)
+    }
+    if (data.notes !== undefined) {
+      updates.push(`notes = $${paramIndex++}`)
+      values.push(data.notes)
+    }
+
+    // Only update updated_at if we actually have fields to update
+    if (updates.length > 0) {
+      updates.push('updated_at = CURRENT_TIMESTAMP')
+    }
+
+    // If no fields to update, just return existing member
+    if (updates.length === 0) {
+      return existingMember
+    }
+
+    values.push(data.discord_id)
+
+    const result = await queryOne<Member>(
+      `UPDATE members 
+       SET ${updates.join(', ')}
+       WHERE discord_id = $${paramIndex}
+       RETURNING *`,
+      values
+    )
+
+    if (!result) {
+      throw new Error('Failed to update member')
+    }
+
+    return result
+  } else {
+    // Member doesn't exist - insert new member (all required fields must be provided)
+    if (!data.member_code) {
+      throw new Error('member_code is required when creating a new member')
+    }
+
+    const result = await queryOne<Member>(
+      `INSERT INTO members (discord_id, discord_tag, member_code, is_active, in_discord, notes)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [
+        data.discord_id,
+        data.discord_tag || null,
+        data.member_code,
+        data.is_active !== undefined ? data.is_active : true,
+        data.in_discord !== undefined ? data.in_discord : true,
+        data.notes || null,
+      ]
+    )
+
+    if (!result) {
+      throw new Error('Failed to insert member')
+    }
+
+    return result
   }
-
-  return result
 }
 
 /**

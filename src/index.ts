@@ -193,23 +193,14 @@ app.post('/api/auth/discord', async (req, res) => {
       })
     }
 
-    // Update discord_tag if changed and update last_seen
+    // Update discord_tag if it has changed
     if (discordTag && member.discord_tag !== discordTag) {
       member = await upsertMember({
         discord_id: discordId,
         discord_tag: discordTag
       })
-    } else {
-      // Just update last_seen
-      await upsertMember({
-        discord_id: discordId
-      })
-      member = await getMemberByDiscordId(discordId)
     }
-
-    if (!member) {
-      throw new Error('Failed to update member data')
-    }
+    // Note: last_seen is managed by Discord bot sync, not updated here
 
     // Return member info
     return res.status(200).json({
