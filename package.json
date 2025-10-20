@@ -9,6 +9,7 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
     "@types/express": "^5.0.0",
+    "@wise-old-man/utils": "^4.0.5",
     "axios": "^1.12.2",
     "busboy": "^1.6.0",
     "cors": "^2.8.5",

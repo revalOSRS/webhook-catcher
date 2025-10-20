@@ -4,7 +4,8 @@ import { fileURLToPath } from 'url'
 import cors from 'cors'
 
 import { handler as dinkHandler } from './dink/handler.js'
-import { getMemberProfile, getAllActiveMembers, loginWithCode, getMemberByDiscordId, upsertMember } from './db/services/member.js'
+import { getMemberProfile, getAllActiveMembers, loginWithCode, getMemberByDiscordId, upsertMember, getOsrsAccountsByDiscordId, getRecentDonations, getDonationStats } from './db/services/member.js'
+import * as WOM from './services/wiseoldman.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -25,31 +26,6 @@ app.use(cors({
 }))
 
 app.use(express.json())
-
-// app.get('/', (req, res) => {
-//   res.type('html').send(`
-//     <!doctype html>
-//     <html>
-//       <head>
-//         <meta charset="utf-8"/>
-//         <title>Express on Vercel</title>
-//         <link rel="stylesheet" href="/style.css" />
-//       </head>
-//       <body>
-//         <nav>
-//           <a href="/">Home</a>
-//           <a href="/about">About</a>
-//           <a href="/api-data">API Data</a>
-//           <a href="/healthz">Health</a>
-//         </nav>
-//         <h1>Welcome to Express on Vercel 🚀</h1>
-//         <p>This is a minimal example without a database or forms.</p>
-//         <img src="/logo.png" alt="Logo" width="120" />
-//       </body>
-//     </html>
-//   `)
-// })
-
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
@@ -109,12 +85,6 @@ app.post('/api/auth/discord', async (req, res) => {
         }
       })
     }
-
-    console.log('Discord OAuth attempt:', {
-      clientId: clientId.substring(0, 8) + '...',
-      redirectUri: redirectUri,
-      codeLength: code.length
-    })
 
     // Exchange code for access token
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
@@ -324,6 +294,261 @@ app.get('/api/member/:id', async (req, res) => {
     res.status(500).json({ 
       status: 'error', 
       message: 'Failed to fetch member profile' 
+    })
+  }
+})
+
+// Get comprehensive player profile with WOM data
+app.get('/api/player/:discordId', async (req, res) => {
+  try {
+    const { discordId } = req.params
+    const memberCode = req.query.code || req.headers['x-member-code']
+
+    if (!discordId) {
+      return res.status(400).json({ 
+        status: 'error', 
+        message: 'Discord ID is required' 
+      })
+    }
+
+    // Get member info
+    const member = await getMemberByDiscordId(discordId)
+    if (!member) {
+      return res.status(404).json({ 
+        status: 'error', 
+        message: 'Member not found' 
+      })
+    }
+
+    // Verify member code if provided
+    if (memberCode && member.member_code !== parseInt(memberCode as string)) {
+      return res.status(403).json({ 
+        status: 'error', 
+        message: 'Invalid member code' 
+      })
+    }
+
+    // Get OSRS accounts
+    const osrsAccounts = await getOsrsAccountsByDiscordId(discordId)
+
+    // Get donation stats
+    const donationStats = await getDonationStats(discordId)
+    const recentDonations = await getRecentDonations(discordId, 10)
+
+    // Get WOM data for primary account (if exists)
+    const primaryAccount = osrsAccounts.find(acc => acc.is_primary) || osrsAccounts[0]
+    let womData = null
+
+    if (primaryAccount && primaryAccount.osrs_nickname) {
+      try {
+        womData = await WOM.getComprehensivePlayerData(primaryAccount.osrs_nickname)
+      } catch (error) {
+        console.error('Failed to fetch WOM data:', error)
+        // Continue without WOM data
+      }
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        member: {
+          id: member.id,
+          discord_id: member.discord_id,
+          discord_tag: member.discord_tag,
+          member_code: member.member_code,
+          is_active: member.is_active,
+          created_at: member.created_at,
+          last_seen: member.last_seen
+        },
+        osrs_accounts: osrsAccounts,
+        donations: {
+          total_approved: donationStats.total_approved,
+          total_pending: donationStats.total_pending,
+          recent: recentDonations
+        },
+        wom: womData
+      }
+    })
+  } catch (error) {
+    console.error('Error fetching player profile:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch player profile' 
+    })
+  }
+})
+
+// WiseOldMan Endpoints
+
+// Get WOM player data by OSRS username
+app.get('/api/wom/player/:username', async (req, res) => {
+  try {
+    const { username } = req.params
+    const player = await WOM.searchPlayer(username)
+
+    if (!player) {
+      return res.status(404).json({ 
+        status: 'error', 
+        message: 'Player not found on WiseOldMan' 
+      })
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: player
+    })
+  } catch (error) {
+    console.error('Error fetching WOM player:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch WOM player data' 
+    })
+  }
+})
+
+// Update WOM player (trigger hiscores refresh)
+app.post('/api/wom/player/:username/update', async (req, res) => {
+  try {
+    const { username } = req.params
+    const updatedPlayer = await WOM.updatePlayer(username)
+
+    res.status(200).json({
+      status: 'success',
+      data: updatedPlayer,
+      message: 'Player updated successfully'
+    })
+  } catch (error) {
+    console.error('Error updating WOM player:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to update WOM player' 
+    })
+  }
+})
+
+// Get player gains
+app.get('/api/wom/player/:username/gains', async (req, res) => {
+  try {
+    const { username } = req.params
+    const period = (req.query.period as 'day' | 'week' | 'month' | 'year') || 'week'
+
+    const gains = await WOM.getPlayerGains(username, period)
+
+    res.status(200).json({
+      status: 'success',
+      data: gains
+    })
+  } catch (error) {
+    console.error('Error fetching WOM gains:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch player gains' 
+    })
+  }
+})
+
+// Get player achievements
+app.get('/api/wom/player/:username/achievements', async (req, res) => {
+  try {
+    const { username } = req.params
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 20
+
+    const achievements = await WOM.getPlayerAchievements(username, limit)
+
+    res.status(200).json({
+      status: 'success',
+      data: achievements,
+      count: achievements.length
+    })
+  } catch (error) {
+    console.error('Error fetching WOM achievements:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch player achievements' 
+    })
+  }
+})
+
+// Get player records
+app.get('/api/wom/player/:username/records', async (req, res) => {
+  try {
+    const { username } = req.params
+    const period = (req.query.period as string) || 'week'
+    const metric = req.query.metric as string | undefined
+
+    const records = await WOM.getPlayerRecords(username, period, metric)
+
+    res.status(200).json({
+      status: 'success',
+      data: records,
+      count: records.length
+    })
+  } catch (error) {
+    console.error('Error fetching WOM records:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch player records' 
+    })
+  }
+})
+
+// Get player snapshots
+app.get('/api/wom/player/:username/snapshots', async (req, res) => {
+  try {
+    const { username } = req.params
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10
+
+    const snapshots = await WOM.getPlayerSnapshots(username, limit)
+
+    res.status(200).json({
+      status: 'success',
+      data: snapshots,
+      count: snapshots.length
+    })
+  } catch (error) {
+    console.error('Error fetching WOM snapshots:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch player snapshots' 
+    })
+  }
+})
+
+// Get player groups/clans
+app.get('/api/wom/player/:username/groups', async (req, res) => {
+  try {
+    const { username } = req.params
+    const groups = await WOM.getPlayerGroups(username)
+
+    res.status(200).json({
+      status: 'success',
+      data: groups,
+      count: groups.length
+    })
+  } catch (error) {
+    console.error('Error fetching WOM groups:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch player groups' 
+    })
+  }
+})
+
+// Get comprehensive WOM data
+app.get('/api/wom/player/:username/comprehensive', async (req, res) => {
+  try {
+    const { username } = req.params
+    const data = await WOM.getComprehensivePlayerData(username)
+
+    res.status(200).json({
+      status: 'success',
+      data: data
+    })
+  } catch (error) {
+    console.error('Error fetching comprehensive WOM data:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch comprehensive WOM data' 
     })
   }
 })
