@@ -4,6 +4,7 @@ import type {
   MemberMovement,
   OsrsAccount,
   Donation,
+  TokenMovement,
   CofferMovement,
   MemberProfile,
 } from '../types.js'
@@ -82,6 +83,19 @@ export async function getRecentDonations(discordId: string, limit: number = 10):
      LEFT JOIN donation_categories dc ON d.category_id = dc.id
      WHERE d.player_discord_id = $1 
      ORDER BY d.submitted_at DESC 
+     LIMIT $2`,
+    [discordId, limit]
+  )
+}
+
+/**
+ * Get token movements for a member
+ */
+export async function getTokenMovements(discordId: string, limit: number = 20): Promise<TokenMovement[]> {
+  return query<TokenMovement>(
+    `SELECT * FROM token_movements 
+     WHERE discord_id = $1 
+     ORDER BY created_at DESC 
      LIMIT $2`,
     [discordId, limit]
   )

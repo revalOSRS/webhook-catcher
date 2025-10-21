@@ -120,6 +120,7 @@ GET /api/player/603849391970975744?code=1001
       "discord_tag": "Username",
       "discord_avatar": "https://cdn.discordapp.com/avatars/603849391970975744/a_1234567890abcdef.png",
       "member_code": 1001,
+      "token_balance": 1500,
       "is_active": true,
       "created_at": "2024-01-01T00:00:00.000Z",
       "last_seen": "2024-10-20T00:00:00.000Z"
@@ -142,15 +143,26 @@ GET /api/player/603849391970975744?code=1001
       "total_pending": 0,
       "recent": [ /* donation objects */ ]
     },
-    "wom": {
-      "player": { /* WOM player data */ },
-      "gains": { /* weekly gains */ },
-      "achievements": [ /* recent achievements */ ],
-      "records": [ /* personal records */ ],
-      "groups": [ /* clan memberships */ ]
-    }
+    "token_movements": [
+      {
+        "id": 1,
+        "member_id": 123,
+        "discord_id": "603849391970975744",
+        "type": "earn",
+        "amount": 100,
+        "balance_before": 1400,
+        "balance_after": 1500,
+        "event_id": null,
+        "description": "Event participation",
+        "note": null,
+        "created_at": "2024-10-20T00:00:00.000Z",
+        "created_by": "system"
+      }
+    ]
   }
 }
+
+**Note:** WOM data is not included in this endpoint for performance. Use dedicated WOM endpoints below for player statistics.
 ```
 
 ---
@@ -395,13 +407,19 @@ console.log(primaryAccount.osrs_nickname)
 // Access donation stats
 console.log(`Total donated: ${data.donations.total_approved} gp`)
 
-// Access WOM data
-console.log(`EHP: ${data.wom.player.ehp}`)
-console.log(`Recent achievements:`, data.wom.achievements)
+// Access token balance
+console.log(`Token balance: ${data.member.token_balance}`)
+
+// Access token movements
+console.log(`Recent token movements:`, data.token_movements)
 ```
 
-### Get Additional WOM Data
+### Get WOM Data Separately
 ```javascript
+// Get WOM player data (use OSRS username, not Discord ID)
+const womResponse = await fetch(`/api/wom/player/${primaryAccount.osrs_nickname}/comprehensive`)
+const womData = await womResponse.json()
+
 // Get specific period gains
 const gainsResponse = await fetch(`/api/wom/player/${username}/gains?period=month`)
 const monthlyGains = await gainsResponse.json()

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import cors from 'cors'
 
 import { handler as dinkHandler } from './dink/handler.js'
-import { getMemberProfile, getAllActiveMembers, loginWithCode, getMemberByDiscordId, upsertMember, getOsrsAccountsByDiscordId, getRecentDonations, getDonationStats } from './db/services/member.js'
+import { getMemberProfile, getAllActiveMembers, loginWithCode, getMemberByDiscordId, upsertMember, getOsrsAccountsByDiscordId, getRecentDonations, getDonationStats, getTokenMovements } from './db/services/member.js'
 import * as WOM from './services/wiseoldman.js'
 import { getDiscordAvatar, getDefaultDiscordAvatar } from './services/discord.js'
 
@@ -337,25 +337,13 @@ app.get('/api/player/:discordId', async (req, res) => {
     // Get OSRS accounts
     const osrsAccounts = await getOsrsAccountsByDiscordId(discordId)
 
-    // Get donation stats
-    const donationStats = await getDonationStats(discordId)
-    const recentDonations = await getRecentDonations(discordId, 10)
-
-    // Get WOM data for primary account (if exists)
-    const primaryAccount = osrsAccounts.find(acc => acc.is_primary) || osrsAccounts[0]
-    let womData = null
-
-    if (primaryAccount && primaryAccount.osrs_nickname) {
-      try {
-        womData = await WOM.getComprehensivePlayerData(primaryAccount.osrs_nickname)
-      } catch (error) {
-        console.error('Failed to fetch WOM data:', error)
-        // Continue without WOM data
-      }
-    }
-
-    // Fetch Discord avatar on-demand (not stored in database)
-    const discordAvatar = await getDiscordAvatar(member.discord_id)
+    // Get donation stats and token movements
+    const [donationStats, recentDonations, tokenMovements, discordAvatar] = await Promise.all([
+      getDonationStats(discordId),
+      getRecentDonations(discordId, 10),
+      getTokenMovements(discordId, 20),
+      getDiscordAvatar(member.discord_id)
+    ])
 
     res.status(200).json({
       status: 'success',
@@ -366,6 +354,7 @@ app.get('/api/player/:discordId', async (req, res) => {
           discord_tag: member.discord_tag,
           discord_avatar: discordAvatar,  // Fetched on-demand
           member_code: member.member_code,
+          token_balance: member.token_balance,
           is_active: member.is_active,
           created_at: member.created_at,
           last_seen: member.last_seen
@@ -376,7 +365,7 @@ app.get('/api/player/:discordId', async (req, res) => {
           total_pending: donationStats.total_pending,
           recent: recentDonations
         },
-        wom: womData
+        token_movements: tokenMovements
       }
     })
   } catch (error) {
