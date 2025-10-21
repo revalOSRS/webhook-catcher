@@ -18,17 +18,23 @@ Get this from your Neon Database dashboard.
 DISCORD_CLIENT_ID=your_discord_client_id
 DISCORD_CLIENT_SECRET=your_discord_client_secret
 DISCORD_REDIRECT_URI=https://reval-games.vercel.app/auth/callback
+DISCORD_BOT_TOKEN=your_discord_bot_token
 ```
 
 #### How to get Discord OAuth credentials:
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create a new application or select an existing one
-3. Go to "OAuth2" section
-4. Copy the **Client ID** and **Client Secret**
-5. Add your redirect URI in the "Redirects" section
-   - For production: `https://reval-games.vercel.app/auth/callback`
-   - For local dev: `http://localhost:5173/auth/callback`
+3. **OAuth2 Settings:**
+   - Go to "OAuth2" section
+   - Copy the **Client ID** and **Client Secret**
+   - Add your redirect URI in the "Redirects" section
+     - For production: `https://reval-games.vercel.app/auth/callback`
+     - For local dev: `http://localhost:5173/auth/callback`
+4. **Bot Token:**
+   - Go to "Bot" section
+   - Copy the **Bot Token** (used for fetching user avatars on-demand)
+   - Make sure the bot has necessary intents enabled if needed
 
 ### Discord Webhooks (Optional - for Dink integration)
 

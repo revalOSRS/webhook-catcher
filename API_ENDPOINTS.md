@@ -24,11 +24,14 @@ Discord OAuth authentication endpoint.
     "id": 123,
     "discord_id": "603849391970975744",
     "discord_tag": "Username",
+    "discord_avatar": "https://cdn.discordapp.com/avatars/603849391970975744/a_1234567890abcdef.png",
     "member_code": 1001,
     "is_active": true
   }
 }
 ```
+
+**Note:** `discord_avatar` is fetched on-demand from Discord API, not stored in database.
 
 ### POST `/api/login`
 Login with member code.
@@ -115,6 +118,7 @@ GET /api/player/603849391970975744?code=1001
       "id": 123,
       "discord_id": "603849391970975744",
       "discord_tag": "Username",
+      "discord_avatar": "https://cdn.discordapp.com/avatars/603849391970975744/a_1234567890abcdef.png",
       "member_code": 1001,
       "is_active": true,
       "created_at": "2024-01-01T00:00:00.000Z",

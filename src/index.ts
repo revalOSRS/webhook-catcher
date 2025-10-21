@@ -6,6 +6,7 @@ import cors from 'cors'
 import { handler as dinkHandler } from './dink/handler.js'
 import { getMemberProfile, getAllActiveMembers, loginWithCode, getMemberByDiscordId, upsertMember, getOsrsAccountsByDiscordId, getRecentDonations, getDonationStats } from './db/services/member.js'
 import * as WOM from './services/wiseoldman.js'
+import { getDiscordAvatar, getDefaultDiscordAvatar } from './services/discord.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -172,6 +173,9 @@ app.post('/api/auth/discord', async (req, res) => {
     }
     // Note: last_seen is managed by Discord bot sync, not updated here
 
+    // Fetch Discord avatar on-demand (not stored in database)
+    const discordAvatar = await getDiscordAvatar(member.discord_id)
+
     // Return member info
     return res.status(200).json({
       status: 'success',
@@ -179,6 +183,7 @@ app.post('/api/auth/discord', async (req, res) => {
         id: member.id,
         discord_id: member.discord_id,
         discord_tag: member.discord_tag,
+        discord_avatar: discordAvatar,  // Fetched on-demand
         member_code: member.member_code,
         is_active: member.is_active
       },
@@ -349,6 +354,9 @@ app.get('/api/player/:discordId', async (req, res) => {
       }
     }
 
+    // Fetch Discord avatar on-demand (not stored in database)
+    const discordAvatar = await getDiscordAvatar(member.discord_id)
+
     res.status(200).json({
       status: 'success',
       data: {
@@ -356,6 +364,7 @@ app.get('/api/player/:discordId', async (req, res) => {
           id: member.id,
           discord_id: member.discord_id,
           discord_tag: member.discord_tag,
+          discord_avatar: discordAvatar,  // Fetched on-demand
           member_code: member.member_code,
           is_active: member.is_active,
           created_at: member.created_at,
