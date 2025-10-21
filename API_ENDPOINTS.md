@@ -60,6 +60,53 @@ Login with member code.
 
 ---
 
+## Admin Endpoints
+
+### GET `/api/admin/members`
+Get all members from the database (admin only).
+
+**Authentication:**
+Requires `ADMIN_API_KEY` in either:
+- Header: `X-Admin-Key: your_admin_key`
+- Query parameter: `?admin_key=your_admin_key`
+
+**Example:**
+```
+GET /api/admin/members
+Headers: X-Admin-Key: your_admin_key
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 123,
+      "discord_id": "603849391970975744",
+      "discord_tag": "Username",
+      "member_code": 1001,
+      "token_balance": 1500,
+      "is_active": true,
+      "in_discord": true,
+      "notes": null,
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2024-10-20T00:00:00.000Z",
+      "last_seen": "2024-10-20T00:00:00.000Z",
+      "osrs_accounts_count": "2",
+      "total_donations": "50000000"
+    }
+  ],
+  "count": 150
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized (invalid or missing admin key)
+- `500` - Server error
+
+---
+
 ## Member Profile Endpoints
 
 ### GET `/api/member/:id`

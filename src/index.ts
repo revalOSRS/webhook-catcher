@@ -7,6 +7,7 @@ import { handler as dinkHandler } from './dink/handler.js'
 import { getMemberProfile, getAllActiveMembers, loginWithCode, getMemberByDiscordId, upsertMember, getOsrsAccountsByDiscordId, getRecentDonations, getDonationStats, getTokenMovements } from './db/services/member.js'
 import * as WOM from './services/wiseoldman.js'
 import { getDiscordAvatar, getDefaultDiscordAvatar } from './services/discord.js'
+import { query } from './db/connection.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -242,22 +243,45 @@ app.post('/api/login', async (req, res) => {
   }
 })
 
-// app.get('/api/members', async (req, res) => {
-//   try {
-//     const members = await getAllActiveMembers()
-//     res.status(200).json({
-//       status: 'success',
-//       data: members,
-//       count: members.length
-//     })
-//   } catch (error) {
-//     console.error('Error fetching members:', error)
-//     res.status(500).json({ 
-//       status: 'error', 
-//       message: 'Failed to fetch members' 
-//     })
-//   }
-// })
+// Admin endpoint to fetch all members
+app.get('/api/admin/members', async (req, res) => {
+  try {
+    // Check admin authentication
+    const adminKey = req.headers['x-admin-key'] || req.query.admin_key
+    
+    if (!adminKey || adminKey !== process.env.ADMIN_API_KEY) {
+      return res.status(401).json({ 
+        status: 'error', 
+        message: 'Unauthorized: Invalid or missing admin key' 
+      })
+    }
+
+    // Get all members (active and inactive)
+    const allMembers = await query(
+      `SELECT 
+        m.*,
+        COUNT(DISTINCT oa.id) as osrs_accounts_count,
+        COALESCE(SUM(CASE WHEN d.status = 'approved' THEN d.amount ELSE 0 END), 0) as total_donations
+       FROM members m
+       LEFT JOIN osrs_accounts oa ON m.discord_id = oa.discord_id
+       LEFT JOIN donations d ON m.discord_id = d.player_discord_id
+       GROUP BY m.id
+       ORDER BY m.created_at DESC`
+    )
+
+    res.status(200).json({
+      status: 'success',
+      data: allMembers,
+      count: allMembers.length
+    })
+  } catch (error) {
+    console.error('Error fetching all members:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch members' 
+    })
+  }
+})
 
 app.get('/api/member/:id', async (req, res) => {
   try {

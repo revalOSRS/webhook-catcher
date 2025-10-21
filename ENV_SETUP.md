@@ -36,6 +36,14 @@ DISCORD_BOT_TOKEN=your_discord_bot_token
    - Copy the **Bot Token** (used for fetching user avatars on-demand)
    - Make sure the bot has necessary intents enabled if needed
 
+### Admin API Key
+
+```env
+ADMIN_API_KEY=your_secure_random_key_here
+```
+
+Generate a secure random key for admin endpoints. Keep this secret!
+
 ### Discord Webhooks (Optional - for Dink integration)
 
 ```env
