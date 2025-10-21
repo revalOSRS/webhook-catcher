@@ -303,6 +303,7 @@ app.get('/api/player/:discordId', async (req, res) => {
   try {
     const { discordId } = req.params
     const memberCode = req.query.code || req.headers['x-member-code']
+    
 
     if (!discordId) {
       return res.status(400).json({ 
