@@ -25,6 +25,8 @@ export async function getDiscordAvatar(discordId: string): Promise<string | null
     }
 
     const user = await response.json()
+
+    console.log('Discord user:', user)
     
     if (!user.avatar) {
       // User has no custom avatar, return default avatar URL
