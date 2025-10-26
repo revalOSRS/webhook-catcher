@@ -12,6 +12,7 @@ const typeHandlers = {
   DEATH: createDeathEmbed,
   LOOT: createLootEmbed,
   COLLECTION: createCollectLogEmbed,
+  CHAT: createGenericEmbed,
   UNKNOWN: createGenericEmbed,
 }
 
@@ -39,6 +40,21 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
     return null;
   }
 
+  // Filter out COMBAT_ACHIEVEMENT events
+  if (type === 'COMBAT_ACHIEVEMENT') {
+    console.log('Event filtered out because the type is COMBAT_ACHIEVEMENT, not sending to Discord')
+    return null;
+  }
+
+  // Only send CHAT events if the message is "::triggerdink"
+  if (type === 'CHAT') {
+    const message = payloadData?.extra?.message
+    if (message !== '::triggerdink') {
+      console.log(`Chat event filtered out because message "${message}" is not "::triggerdink"`)
+      return null;
+    }
+  }
+
   const handler = typeHandlers[type] || createGenericEmbed
 
   return await handler(payloadData, imageBuffer, imageFilename)
@@ -49,6 +65,7 @@ const getSendFunction = (eventType) => {
   switch (eventType) {
     case 'LOOT':
     case 'COLLECTION':
+    case 'CHAT':
       return sendToMeenedChannelDiscord
     case 'DEATH':
       return sendToDeathChannelDiscord
