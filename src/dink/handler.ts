@@ -93,6 +93,12 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
     return null;
   }
 
+  // Filter out KILL_COUNT events
+  if (type === 'KILL_COUNT') {
+    console.log('Event filtered out because the type is KILL_COUNT, not sending to Discord')
+    return null;
+  }
+
   // Only send CHAT events if the message is "::triggerdink"
   if (type === 'CHAT') {
     const message = payloadData?.extra?.message
