@@ -21,6 +21,9 @@ export const createCollectLogEmbed = async (fields: CollectionEvent, imageBuffer
     embeds
   } = fields
 
+  // Get the item icon from the thumbnail URL in the original embeds
+  const itemIconUrl = embeds?.[0]?.thumbnail?.url || `https://static.runelite.net/cache/item/icon/${extra.itemId}.png`
+
   const payload = {
     embeds: [
       {
@@ -31,12 +34,12 @@ export const createCollectLogEmbed = async (fields: CollectionEvent, imageBuffer
         },
         "color": 0,
         "thumbnail": {
-          "url": "https://oldschool.runescape.wiki/images/Coins_detail.png"
+          "url": itemIconUrl
         },
         "fields": [],
         "footer": {
           "text": `Kokku on Collection Log ${extra.completedEntries} / ${extra.totalEntries}`,
-          "icon_url": "https://oldschool.runescape.wiki/images/Coins_detail.png"
+          "icon_url": "https://oldschool.runescape.wiki/images/Collection_log_detail.png"
         },
         "timestamp": new Date().toISOString()
       }

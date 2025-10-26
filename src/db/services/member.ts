@@ -402,3 +402,23 @@ export async function linkOsrsAccount(data: {
   return result
 }
 
+/**
+ * Verify dink hash and check if member is active and in Discord
+ * Returns true if the dink hash exists and the member is active and in Discord
+ */
+export async function verifyDinkHash(dinkHash: string): Promise<boolean> {
+  const result = await queryOne<{ is_valid: boolean }>(
+    `SELECT 
+      CASE 
+        WHEN m.is_active = true AND m.in_discord = true THEN true 
+        ELSE false 
+      END as is_valid
+     FROM osrs_accounts oa
+     JOIN members m ON oa.discord_id = m.discord_id
+     WHERE oa.dink_hash = $1`,
+    [dinkHash]
+  )
+
+  return result?.is_valid ?? false
+}
+

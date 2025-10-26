@@ -6,6 +6,35 @@ import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './util.js
 import { createGrandExchangeEmbed } from './events/grand-exchange.js'
 import { createCollectLogEmbed } from './events/collect-log.js'
 import { createLootEmbed } from './events/loot.js'
+import { verifyDinkHash } from '../db/services/member.js'
+
+// Cache for dink hash verification (12 hours)
+const dinkHashCache = new Map<string, { isValid: boolean; expiresAt: number }>()
+const CACHE_DURATION = 12 * 60 * 60 * 1000 // 12 hours in milliseconds
+
+/**
+ * Verify dink hash with caching
+ */
+const verifyDinkHashCached = async (dinkHash: string): Promise<boolean> => {
+  const now = Date.now()
+  const cached = dinkHashCache.get(dinkHash)
+
+  if (cached && cached.expiresAt > now) {
+    console.log(`Using cached verification for dink hash ${dinkHash.substring(0, 8)}...`)
+    return cached.isValid
+  }
+
+  console.log(`Verifying dink hash ${dinkHash.substring(0, 8)}... from database`)
+  const isValid = await verifyDinkHash(dinkHash)
+
+  // Cache the result
+  dinkHashCache.set(dinkHash, {
+    isValid,
+    expiresAt: now + CACHE_DURATION
+  })
+
+  return isValid
+}
 
 const typeHandlers = {
   GRAND_EXCHANGE: createGrandExchangeEmbed,
@@ -27,7 +56,19 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
     }
   }
 
-  const { type = 'UNKNOWN', world } = payloadData
+  const { type = 'UNKNOWN', world, dinkAccountHash } = payloadData
+
+  // Verify dink hash
+  if (dinkAccountHash) {
+    const isValid = await verifyDinkHashCached(dinkAccountHash)
+    if (!isValid) {
+      console.log(`Event filtered out because dink hash ${dinkAccountHash.substring(0, 8)}... is not valid or member is not active/in discord`)
+      return null
+    }
+  } else {
+    console.log('Event filtered out because no dink hash provided')
+    return null
+  }
 
   // Filter out events from worlds greater than 625 (special/tournament worlds)
   if (world && world > 625) {
@@ -43,6 +84,12 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
   // Filter out COMBAT_ACHIEVEMENT events
   if (type === 'COMBAT_ACHIEVEMENT') {
     console.log('Event filtered out because the type is COMBAT_ACHIEVEMENT, not sending to Discord')
+    return null;
+  }
+
+  // Filter out LEVEL events
+  if (type === 'LEVEL') {
+    console.log('Event filtered out because the type is LEVEL, not sending to Discord')
     return null;
   }
 
