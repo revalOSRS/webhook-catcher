@@ -8,9 +8,9 @@ import { createCollectLogEmbed } from './events/collect-log.js'
 import { createLootEmbed } from './events/loot.js'
 import { verifyDinkHash } from '../db/services/member.js'
 
-// Cache for dink hash verification (12 hours)
+// Cache for dink hash verification (10 minutes)
 const dinkHashCache = new Map<string, { isValid: boolean; expiresAt: number }>()
-const CACHE_DURATION = 12 * 60 * 60 * 1000 // 12 hours in milliseconds
+const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes in milliseconds
 
 /**
  * Verify dink hash with caching
