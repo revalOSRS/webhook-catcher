@@ -71,7 +71,7 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
   }
 
   // Filter out events from worlds greater than 625 (special/tournament worlds)
-  if (world && world > 625) {
+  if (world && world >= 627) {
     console.log(`Event filtered out because world ${world} is greater than 625, not sending to Discord`)
     return null;
   }
