@@ -1,4 +1,4 @@
-import { addImageToPayload } from '../util.js'
+import { addImageToPayload, formatRuneScapeNumber } from '../util.js'
 import { CollectionEvent } from './event.js'
 
 export const createCollectLogEmbed = async (fields: CollectionEvent, imageBuffer, imageFilename) => {
@@ -39,10 +39,12 @@ export const createCollectLogEmbed = async (fields: CollectionEvent, imageBuffer
   // Get the item icon from the thumbnail URL in the original embeds
   const itemIconUrl = embeds?.[0]?.thumbnail?.url || `https://static.runelite.net/cache/item/icon/${extra.itemId}.png`
 
+  const formattedPrice = formatRuneScapeNumber(itemPrice)
+  
   const payload = {
     embeds: [
       {
-        "title": `${playerName} sai Collection Logis endale ${extra.itemName} (${extra.price} kuldmünti)`,
+        "title": `${playerName} sai Collection Logis endale ${extra.itemName} (${formattedPrice} kuldmünti)`,
         "author": {
           "name": playerName,
           "url": `https://secure.runescape.com/m=hiscore_oldschool/hiscorepersonal?user1=${encodeURIComponent(playerName)}`

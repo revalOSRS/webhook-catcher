@@ -99,6 +99,18 @@ const createDiscordPayload = async (fields, imageBuffer, imageFilename) => {
     return null;
   }
 
+  // Filter out CLUE events
+  if (type === 'CLUE') {
+    console.log('Event filtered out because the type is CLUE, not sending to Discord')
+    return null;
+  }
+
+  // Filter out SLAYER events
+  if (type === 'SLAYER') {
+    console.log('Event filtered out because the type is SLAYER, not sending to Discord')
+    return null;
+  }
+
   // Only send CHAT events if the message is "::triggerdink"
   if (type === 'CHAT') {
     const message = payloadData?.extra?.message
@@ -181,22 +193,25 @@ export const handler = async (req) => {
         console.log('Fields:', JSON.stringify(fields, null, 2))
 
         try {
-          // Transform Dink data to Discord webhook format
-          const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
-
-          // If no payload (e.g., filtered out low-value loot), skip sending
-          if (!discordPayload) {
-            console.log('Event filtered out, not sending to Discord')
-            resolve({ status: 'ok', message: 'Webhook received but filtered out' })
-            return
-          }
-
-          // Route to appropriate Discord channel based on event type
+          // Parse payload data to extract event info
           let payloadData = (fields as any).payload_json
           if (typeof payloadData === 'string') {
             payloadData = JSON.parse(payloadData)
           }
           const eventType = payloadData?.type || 'UNKNOWN'
+          const playerName = payloadData?.playerName || 'Unknown Player'
+
+          // Transform Dink data to Discord webhook format
+          const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
+
+          // If no payload (e.g., filtered out low-value loot), skip sending
+          if (!discordPayload) {
+            console.log(`Event filtered out: ${eventType} for ${playerName}, not sending to Discord`)
+            resolve({ status: 'ok', message: 'Webhook received but filtered out' })
+            return
+          }
+
+          // Route to appropriate Discord channel based on event type
 
           const sendFunction = getSendFunction(eventType)
           await sendFunction(discordPayload)
@@ -217,17 +232,20 @@ export const handler = async (req) => {
   console.log('Body:', JSON.stringify(req.body, null, 2))
 
   try {
+    // Extract event info
+    const eventType = req.body?.type || 'UNKNOWN'
+    const playerName = req.body?.playerName || 'Unknown Player'
+
     // Transform JSON data to Discord webhook format
     const discordPayload = await createDiscordPayload(req.body, null, null)
 
     // If no payload (e.g., filtered out low-value loot), skip sending
     if (!discordPayload) {
-      console.log('Event filtered out, not sending to Discord')
+      console.log(`Event filtered out: ${eventType} for ${playerName}, not sending to Discord`)
       return { status: 'ok', message: 'Webhook received but filtered out' }
     }
 
     // Route to appropriate Discord channel based on event type
-    const eventType = req.body?.type || 'UNKNOWN'
     const sendFunction = getSendFunction(eventType)
     await sendFunction(discordPayload)
 
