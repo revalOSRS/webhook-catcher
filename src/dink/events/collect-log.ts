@@ -13,13 +13,14 @@ export const createCollectLogEmbed = async (fields: CollectionEvent, imageBuffer
     world,
     regionId,
     extra,
-    discordUser: {
-      id: discordUserId,
-      name: discordUserName,
-      avatar: discordUserAvatarHash,
-    },
+    discordUser,
     embeds
   } = fields
+
+  // Handle optional discordUser field
+  const discordUserId = discordUser?.id
+  const discordUserName = discordUser?.name
+  const discordUserAvatarHash = discordUser?.avatar
 
   const itemPrice = extra.price || 0
   const MIN_PRICE_THRESHOLD = 500000 // 500k

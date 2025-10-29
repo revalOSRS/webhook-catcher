@@ -22,13 +22,14 @@ export const createGrandExchangeEmbed = async (fields, imageBuffer, imageFilenam
       targetPrice,
       targetQuantity,
     },
-    discordUser: {
-      id: discordUserId,
-      name: discordUserName,
-      avatar: discordUserAvatarHash,
-    },
+    discordUser,
     embeds
   } = fields
+
+  // Handle optional discordUser field
+  const discordUserId = discordUser?.id
+  const discordUserName = discordUser?.name
+  const discordUserAvatarHash = discordUser?.avatar
 
   const formattedPrice = (parseInt(priceEach) || 0).toLocaleString()
 

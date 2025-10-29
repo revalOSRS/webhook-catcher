@@ -31,13 +31,14 @@ export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
         locationInstanced
       }
     },
-    discordUser: {
-      id: discordUserId,
-      name: discordUserName,
-      avatar: discordUserAvatarHash,
-    },
+    discordUser,
     embeds
   } = fields
+
+  // Handle optional discordUser field
+  const discordUserId = discordUser?.id
+  const discordUserName = discordUser?.name
+  const discordUserAvatarHash = discordUser?.avatar
 
   const randomDescription = PVM_DEATH_DESCRIPTIONS[Math.floor(Math.random() * PVM_DEATH_DESCRIPTIONS.length)]
   const description = randomDescription
