@@ -12,6 +12,128 @@ import { verifyDinkHash } from '../db/services/member.js'
 const dinkHashCache = new Map<string, { isValid: boolean; expiresAt: number }>()
 const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes in milliseconds
 
+// ===== In-Memory Activity Cache =====
+const activityEvents: ActivityEvent[] = []
+const MAX_EVENTS = 20
+
+export interface ActivityEvent {
+  id: string
+  event_type: string
+  icon: string
+  text: string
+  player_name?: string
+  created_at: string
+}
+
+/**
+ * Map Dink events to display format
+ */
+function formatDinkEvent(payloadData: any): ActivityEvent | null {
+  const eventMap: Record<string, { icon: string; textTemplate: (e: any) => string }> = {
+    'COLLECTION': {
+      icon: '📖',
+      textTemplate: (e) => `${e.playerName} added ${e.extra?.itemName || 'an item'} to collection log!`
+    },
+    'LEVEL': {
+      icon: '⬆️',
+      textTemplate: (e) => {
+        const skills = e.extra?.levelledSkills || {}
+        const skillName = Object.keys(skills)[0]
+        const level = skills[skillName]
+        return `${e.playerName} reached level ${level} ${skillName}!`
+      }
+    },
+    'LOOT': {
+      icon: '💰',
+      textTemplate: (e) => {
+        const items = e.extra?.items || []
+        const itemName = items[0]?.name || 'rare loot'
+        return `${e.playerName} received ${itemName}!`
+      }
+    },
+    'QUEST': {
+      icon: '✅',
+      textTemplate: (e) => `${e.playerName} completed ${e.extra?.questName || 'a quest'}!`
+    },
+    'ACHIEVEMENT_DIARY': {
+      icon: '📜',
+      textTemplate: (e) => `${e.playerName} completed ${e.extra?.area || 'an'} ${e.extra?.tier || ''} diary!`
+    },
+    'COMBAT_ACHIEVEMENT': {
+      icon: '🏆',
+      textTemplate: (e) => `${e.playerName} completed ${e.extra?.task || 'a combat achievement'}!`
+    },
+    'DEATH': {
+      icon: '💀',
+      textTemplate: (e) => `${e.playerName} died${e.extra?.killerName ? ` to ${e.extra.killerName}` : ''}!`
+    },
+    'PET': {
+      icon: '🐾',
+      textTemplate: (e) => `${e.playerName} received pet: ${e.extra?.petName || 'a pet'}!`
+    },
+    'SPEEDRUN': {
+      icon: '⏱️',
+      textTemplate: (e) => `${e.playerName} completed ${e.extra?.quest || 'a'} speedrun!`
+    },
+    'GRAND_EXCHANGE': {
+      icon: '🏪',
+      textTemplate: (e) => `${e.playerName} ${e.extra?.status || 'traded'} ${e.extra?.item?.name || 'an item'} on GE!`
+    },
+    'CLUE': {
+      icon: '🗺️',
+      textTemplate: (e) => `${e.playerName} completed a ${e.extra?.clueType || ''} clue scroll!`
+    },
+    'SLAYER': {
+      icon: '⚔️',
+      textTemplate: (e) => `${e.playerName} completed slayer task: ${e.extra?.monster || 'monsters'}!`
+    },
+    'KILL_COUNT': {
+      icon: '🎯',
+      textTemplate: (e) => `${e.playerName} defeated ${e.extra?.boss || 'a boss'} (KC: ${e.extra?.count || '?'})!`
+    },
+    'CHAT': {
+      icon: '💬',
+      textTemplate: (e) => `${e.playerName}: ${e.extra?.message || '...'}`
+    }
+  }
+
+  const mapping = eventMap[payloadData.type] || {
+    icon: '🎮',
+    textTemplate: (e) => `${e.playerName || 'Someone'} achieved something!`
+  }
+
+  try {
+    return {
+      id: `${Date.now()}-${Math.random()}`,
+      event_type: payloadData.type,
+      icon: mapping.icon,
+      text: mapping.textTemplate(payloadData),
+      player_name: payloadData.playerName,
+      created_at: new Date().toISOString(),
+    }
+  } catch (error) {
+    console.error('Error formatting dink event:', error)
+    return null
+  }
+}
+
+/**
+ * Add event to cache
+ */
+function addActivityEvent(event: ActivityEvent) {
+  activityEvents.unshift(event) // Add to beginning (newest first)
+  if (activityEvents.length > MAX_EVENTS) {
+    activityEvents.pop() // Remove oldest
+  }
+}
+
+/**
+ * Get recent activity events from cache
+ */
+export function getRecentActivityEvents(limit: number = 7): ActivityEvent[] {
+  return activityEvents.slice(0, Math.min(limit, activityEvents.length))
+}
+
 /**
  * Verify dink hash with caching
  */
@@ -201,6 +323,16 @@ export const handler = async (req) => {
           const eventType = payloadData?.type || 'UNKNOWN'
           const playerName = payloadData?.playerName || 'Unknown Player'
 
+          // Add event to activity cache first (before Discord filtering)
+          // Skip CHAT events from activity cache
+          if (eventType !== 'CHAT') {
+            const activityEvent = formatDinkEvent(payloadData)
+            if (activityEvent) {
+              addActivityEvent(activityEvent)
+              console.log(`Added ${eventType} event to activity cache for ${playerName}`)
+            }
+          }
+
           // Transform Dink data to Discord webhook format
           const discordPayload = await createDiscordPayload(fields, imageBuffer, imageFilename)
 
@@ -235,6 +367,16 @@ export const handler = async (req) => {
     // Extract event info
     const eventType = req.body?.type || 'UNKNOWN'
     const playerName = req.body?.playerName || 'Unknown Player'
+
+    // Add event to activity cache first (before Discord filtering)
+    // Skip CHAT events from activity cache
+    if (eventType !== 'CHAT') {
+      const activityEvent = formatDinkEvent(req.body)
+      if (activityEvent) {
+        addActivityEvent(activityEvent)
+        console.log(`Added ${eventType} event to activity cache for ${playerName}`)
+      }
+    }
 
     // Transform JSON data to Discord webhook format
     const discordPayload = await createDiscordPayload(req.body, null, null)
