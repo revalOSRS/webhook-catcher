@@ -222,6 +222,12 @@ let groupStatisticsCache: {
   lastRefresh: Date
 } | null = null
 
+// Cache for failed member fetches (persists across requests until midnight)
+let failedMembersCache: {
+  members: Array<{ player: { id: number; username: string } }>
+  lastRefresh: Date
+} | null = null
+
 /**
  * Check if cache should be refreshed (after 1 AM today)
  */
@@ -247,13 +253,80 @@ function shouldRefreshCache(): boolean {
 }
 
 /**
+ * Background task to retry failed members without blocking the response
+ */
+async function retryFailedMembersBackground(groupId: number) {
+  if (!failedMembersCache || failedMembersCache.members.length === 0) {
+    return
+  }
+  
+  const membersToRetry = [...failedMembersCache.members]
+  const successfulRetries = []
+  const stillFailing = []
+  
+  console.log(`[Background] Retrying ${membersToRetry.length} failed member(s)...`)
+  
+  const retryResults = await Promise.allSettled(
+    membersToRetry.map(member => client.players.getPlayerDetailsById(member.player.id))
+  )
+  
+  retryResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      successfulRetries.push(membersToRetry[index])
+      console.log(`[Background] ✅ Successfully refetched ${membersToRetry[index].player.username}`)
+    } else {
+      stillFailing.push(membersToRetry[index])
+    }
+  })
+  
+  if (successfulRetries.length > 0) {
+    console.log(`[Background] Successfully refetched ${successfulRetries.length} member(s)`)
+    
+    // Update the cache to remove successful ones
+    if (stillFailing.length > 0) {
+      failedMembersCache = {
+        members: stillFailing,
+        lastRefresh: new Date()
+      }
+      console.log(`[Background] ${stillFailing.length} member(s) still failing`)
+    } else {
+      failedMembersCache = null
+      console.log('[Background] All previously failed members now fetched successfully!')
+      
+      // Trigger a cache refresh to include the newly fetched members
+      console.log('[Background] Invalidating statistics cache to trigger refresh with new members...')
+      groupStatisticsCache = null
+    }
+  }
+}
+
+/**
  * Get comprehensive clan statistics for a group (with daily caching)
  */
 export async function getGroupStatistics(groupId: number) {
   try {
+    // Check if we need to clear caches (after 1 AM)
+    const shouldRefresh = shouldRefreshCache()
+    
+    if (shouldRefresh) {
+      console.log('Cache expired - clearing all caches')
+      groupStatisticsCache = null
+      failedMembersCache = null
+    }
+    
     // Check if we have valid cached data
-    if (groupStatisticsCache && !shouldRefreshCache()) {
+    if (groupStatisticsCache && !shouldRefresh) {
       console.log('Returning cached clan statistics')
+      
+      // Try to refetch previously failed members in the background
+      if (failedMembersCache && failedMembersCache.members.length > 0) {
+        console.log(`Attempting to refetch ${failedMembersCache.members.length} previously failed member(s) in background...`)
+        // Don't await - do it in background
+        retryFailedMembersBackground(groupId).catch(err => 
+          console.error('Background retry failed:', err)
+        )
+      }
+      
       return groupStatisticsCache.data
     }
 
@@ -265,11 +338,30 @@ export async function getGroupStatistics(groupId: number) {
     
     console.log(`Found ${members.length} members in group ${groupDetails.name}`)
     
+    // First, try to refetch any previously failed members
+    let playerDetails = []
+    const newFailedMembers = []
+    
+    if (failedMembersCache && failedMembersCache.members.length > 0) {
+      console.log(`Retrying ${failedMembersCache.members.length} previously failed member(s) first...`)
+      const retryResults = await Promise.allSettled(
+        failedMembersCache.members.map(member => client.players.getPlayerDetailsById(member.player.id))
+      )
+      
+      retryResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          playerDetails.push((result as any).value)
+          console.log(`✅ Successfully refetched ${failedMembersCache!.members[index].player.username}`)
+        } else {
+          newFailedMembers.push(failedMembersCache!.members[index])
+          console.error(`Still failing: ${failedMembersCache!.members[index].player.username}`)
+        }
+      })
+    }
+    
     // Fetch all player details in parallel (in batches to avoid overwhelming the API)
     const BATCH_SIZE = 20
     const MAX_RETRIES = 2
-    const playerDetails = []
-    const failedMembers = []
     
     for (let i = 0; i < members.length; i += BATCH_SIZE) {
       const batch = members.slice(i, i + BATCH_SIZE)
@@ -291,22 +383,22 @@ export async function getGroupStatistics(groupId: number) {
         if (result.status === 'rejected') {
           const member = batch[index]
           console.error(`Failed to fetch player ${member.player.username} (ID: ${member.player.id}):`, result.reason)
-          failedMembers.push(member)
+          newFailedMembers.push(member)
         }
       })
     }
     
-    // Retry failed members
-    if (failedMembers.length > 0) {
-      console.log(`Retrying ${failedMembers.length} failed member(s)...`)
+    // Retry newly failed members immediately
+    if (newFailedMembers.length > 0) {
+      console.log(`Retrying ${newFailedMembers.length} newly failed member(s)...`)
       
       for (let retry = 0; retry < MAX_RETRIES; retry++) {
-        if (failedMembers.length === 0) break
+        if (newFailedMembers.length === 0) break
         
-        console.log(`Retry attempt ${retry + 1}/${MAX_RETRIES} for ${failedMembers.length} member(s)`)
+        console.log(`Retry attempt ${retry + 1}/${MAX_RETRIES} for ${newFailedMembers.length} member(s)`)
         
         const retryResults = await Promise.allSettled(
-          failedMembers.map(member => client.players.getPlayerDetailsById(member.player.id))
+          newFailedMembers.map(member => client.players.getPlayerDetailsById(member.player.id))
         )
         
         // Process successful retries
@@ -317,17 +409,17 @@ export async function getGroupStatistics(groupId: number) {
           if (result.status === 'fulfilled') {
             successfulRetries.push((result as any).value)
           } else {
-            stillFailing.push(failedMembers[index])
+            stillFailing.push(newFailedMembers[index])
             if (retry === MAX_RETRIES - 1) {
-              const member = failedMembers[index]
+              const member = newFailedMembers[index]
               console.error(`❌ FINAL FAILURE: Could not fetch player ${member.player.username} (ID: ${member.player.id}) after ${MAX_RETRIES} retries`)
             }
           }
         })
         
         playerDetails.push(...successfulRetries)
-        failedMembers.length = 0
-        failedMembers.push(...stillFailing)
+        newFailedMembers.length = 0
+        newFailedMembers.push(...stillFailing)
         
         // Wait a bit before next retry
         if (stillFailing.length > 0 && retry < MAX_RETRIES - 1) {
@@ -338,11 +430,22 @@ export async function getGroupStatistics(groupId: number) {
     
     console.log(`Successfully fetched ${playerDetails.length}/${members.length} player details`)
     
-    if (failedMembers.length > 0) {
-      console.warn(`⚠️ WARNING: ${failedMembers.length} member(s) could not be fetched after retries:`)
-      failedMembers.forEach(member => {
+    // Update failed members cache
+    if (newFailedMembers.length > 0) {
+      console.warn(`⚠️ WARNING: ${newFailedMembers.length} member(s) could not be fetched after retries:`)
+      newFailedMembers.forEach(member => {
         console.warn(`  - ${member.player.username} (ID: ${member.player.id})`)
       })
+      
+      failedMembersCache = {
+        members: newFailedMembers,
+        lastRefresh: new Date()
+      }
+      console.log(`Cached ${newFailedMembers.length} failed member(s) for future retry`)
+    } else {
+      // Clear failed members cache if all succeeded
+      failedMembersCache = null
+      console.log('All members fetched successfully - cleared failed members cache')
     }
     
     // Calculate statistics
