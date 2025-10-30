@@ -465,6 +465,7 @@ export async function getGroupStatistics(groupId: number) {
     for (const player of playerDetails) {
       // Calculate total level (sum of all skill levels)
       const skills = player.latestSnapshot?.data?.skills || {}
+      console.log('Skills:', Object.keys(skills));
       let playerTotalLevel = 0
       for (const skill in skills) {
         playerTotalLevel += skills[skill]?.level || 0
