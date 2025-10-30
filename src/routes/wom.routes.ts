@@ -199,6 +199,29 @@ router.get('/clan/activity', async (req, res) => {
   }
 })
 
+// Get group/clan members (for Reval clan - group ID 14350)
+router.get('/clan/members', async (req, res) => {
+  try {
+    const REVAL_GROUP_ID = 14350
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined
+    const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined
+
+    const members = await WOM.getGroupMembers(REVAL_GROUP_ID, limit, offset)
+
+    res.status(200).json({
+      status: 'success',
+      data: members,
+      count: members.length
+    })
+  } catch (error) {
+    console.error('Error fetching WOM clan members:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch clan members' 
+    })
+  }
+})
+
 export default router
 
 

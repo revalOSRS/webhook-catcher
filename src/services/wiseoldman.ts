@@ -91,6 +91,15 @@ export interface WOMGroupActivity {
   player: WOMPlayer
 }
 
+export interface WOMGroupMembership {
+  playerId: number
+  groupId: number
+  role: string | null
+  createdAt: string
+  updatedAt: string
+  player: WOMPlayer
+}
+
 /**
  * Search for a player by username
  */
@@ -291,6 +300,42 @@ export async function getGroupActivity(
     return await response.json()
   } catch (error) {
     console.error('Error fetching WOM group activity:', error)
+    throw error
+  }
+}
+
+/**
+ * Get group members by group ID
+ */
+export async function getGroupMembers(
+  groupId: number,
+  limit?: number,
+  offset?: number
+): Promise<WOMGroupMembership[]> {
+  try {
+    let url = `${WOM_API_BASE}/groups/${groupId}/members`
+    const params = new URLSearchParams()
+    
+    if (limit !== undefined) {
+      params.append('limit', limit.toString())
+    }
+    if (offset !== undefined) {
+      params.append('offset', offset.toString())
+    }
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`
+    }
+    
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      throw new Error(`WOM API error: ${response.status}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching WOM group members:', error)
     throw error
   }
 }
