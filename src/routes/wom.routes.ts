@@ -176,6 +176,29 @@ router.get('/player/:username/comprehensive', async (req, res) => {
   }
 })
 
+// Get group/clan activity (for Reval clan - group ID 14350)
+router.get('/clan/activity', async (req, res) => {
+  try {
+    const REVAL_GROUP_ID = 14350
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined
+    const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined
+
+    const activity = await WOM.getGroupActivity(REVAL_GROUP_ID, limit, offset)
+
+    res.status(200).json({
+      status: 'success',
+      data: activity,
+      count: activity.length
+    })
+  } catch (error) {
+    console.error('Error fetching WOM group activity:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch group activity' 
+    })
+  }
+})
+
 export default router
 
 

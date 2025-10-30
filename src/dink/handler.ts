@@ -12,6 +12,32 @@ import { verifyDinkHash } from '../db/services/member.js'
 const dinkHashCache = new Map<string, { isValid: boolean; expiresAt: number }>()
 const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes in milliseconds
 
+/**
+ * Get a random death description with proper Estonian grammar
+ */
+export function getDeathDescription(playerName: string, killerName: string): string {
+  // Estonian vowels
+  const vowels = ['a', 'e', 'i', 'o', 'u', 'õ', 'ä', 'ö', 'ü', 'A', 'E', 'I', 'O', 'U', 'Õ', 'Ä', 'Ö', 'Ü']
+  
+  // Check if killerName ends with a consonant
+  const lastChar = killerName.slice(-1)
+  const endsWithConsonant = !vowels.includes(lastChar)
+  
+  // Add 'i genitive ending only if it ends with a consonant
+  const killerGenitive = endsWithConsonant ? `${killerName}'i` : killerName
+  
+  const deathDescriptions = [
+    `${playerName} suri ${killerGenitive} käte läbi`,
+    `${playerName}'le sõideti kelku ${killerGenitive} poolt`,
+    `${killerName} sõitis ${playerName}'st toorelt üle`,
+    `${playerName} häbistas Eestlaseid surres ${killerName}'ile`,
+    `${playerName} libastus ${killerGenitive} otsa`,
+    `${playerName} peaks mõne õpetliku video läbi vaatama ${killerGenitive} kohta`,
+  ]
+  
+  return deathDescriptions[Math.floor(Math.random() * deathDescriptions.length)]
+}
+
 // ===== In-Memory Activity Cache =====
 const activityEvents: ActivityEvent[] = []
 const MAX_EVENTS = 20
@@ -32,7 +58,7 @@ function formatDinkEvent(payloadData: any): ActivityEvent | null {
   const eventMap: Record<string, { icon: string; textTemplate: (e: any) => string }> = {
     'COLLECTION': {
       icon: '📖',
-      textTemplate: (e) => `${e.playerName} added ${e.extra?.itemName || 'an item'} to collection log!`
+      textTemplate: (e) => `${e.playerName} sai Collection Logis endale ${e.extra?.itemName || 'eseme'}!`
     },
     'LEVEL': {
       icon: '⬆️',
@@ -40,56 +66,55 @@ function formatDinkEvent(payloadData: any): ActivityEvent | null {
         const skills = e.extra?.levelledSkills || {}
         const skillName = Object.keys(skills)[0]
         const level = skills[skillName]
-        return `${e.playerName} reached level ${level} ${skillName}!`
+        return `${e.playerName} jõudis tasemele ${level} (${skillName})!`
       }
     },
     'LOOT': {
       icon: '💰',
       textTemplate: (e) => {
         const items = e.extra?.items || []
-        const itemName = items[0]?.name || 'rare loot'
-        return `${e.playerName} received ${itemName}!`
+        const itemName = items[0]?.name || 'haruldast looti'
+        return `${e.playerName} sai endale ${itemName}!`
       }
     },
     'QUEST': {
       icon: '✅',
-      textTemplate: (e) => `${e.playerName} completed ${e.extra?.questName || 'a quest'}!`
+      textTemplate: (e) => `${e.playerName} lõpetas questi: ${e.extra?.questName || 'quest'}!`
     },
     'ACHIEVEMENT_DIARY': {
       icon: '📜',
-      textTemplate: (e) => `${e.playerName} completed ${e.extra?.area || 'an'} ${e.extra?.tier || ''} diary!`
+      textTemplate: (e) => `${e.playerName} lõpetas ${e.extra?.area || ''} ${e.extra?.tier || ''} diary!`
     },
     'COMBAT_ACHIEVEMENT': {
       icon: '🏆',
-      textTemplate: (e) => `${e.playerName} completed ${e.extra?.task || 'a combat achievement'}!`
+      textTemplate: (e) => `${e.playerName} lõpetas combat achievementi: ${e.extra?.task || 'achievement'}!`
     },
     'DEATH': {
       icon: '💀',
-      textTemplate: (e) => `${e.playerName} died${e.extra?.killerName ? ` to ${e.extra.killerName}` : ''}!`
+      textTemplate: (e) => {
+        const killerName = e.extra?.killerName || 'Grim Reaper'
+        return getDeathDescription(e.playerName, killerName)
+      }
     },
     'PET': {
       icon: '🐾',
-      textTemplate: (e) => `${e.playerName} received pet: ${e.extra?.petName || 'a pet'}!`
+      textTemplate: (e) => `${e.playerName} sai peti: ${e.extra?.petName || 'pet'}!`
     },
     'SPEEDRUN': {
       icon: '⏱️',
-      textTemplate: (e) => `${e.playerName} completed ${e.extra?.quest || 'a'} speedrun!`
-    },
-    'GRAND_EXCHANGE': {
-      icon: '🏪',
-      textTemplate: (e) => `${e.playerName} ${e.extra?.status || 'traded'} ${e.extra?.item?.name || 'an item'} on GE!`
+      textTemplate: (e) => `${e.playerName} lõpetas ${e.extra?.quest || ''} speedruni!`
     },
     'CLUE': {
       icon: '🗺️',
-      textTemplate: (e) => `${e.playerName} completed a ${e.extra?.clueType || ''} clue scroll!`
+      textTemplate: (e) => `${e.playerName} lõpetas ${e.extra?.clueType || ''} clue scrolli!`
     },
     'SLAYER': {
       icon: '⚔️',
-      textTemplate: (e) => `${e.playerName} completed slayer task: ${e.extra?.monster || 'monsters'}!`
+      textTemplate: (e) => `${e.playerName} lõpetas slayer taski: ${e.extra?.monster || 'monsters'}!`
     },
     'KILL_COUNT': {
       icon: '🎯',
-      textTemplate: (e) => `${e.playerName} defeated ${e.extra?.boss || 'a boss'} (KC: ${e.extra?.count || '?'})!`
+      textTemplate: (e) => `${e.playerName} võitis ${e.extra?.boss || 'bossi'} (KC: ${e.extra?.count || '?'})!`
     },
     'CHAT': {
       icon: '💬',
@@ -99,7 +124,7 @@ function formatDinkEvent(payloadData: any): ActivityEvent | null {
 
   const mapping = eventMap[payloadData.type] || {
     icon: '🎮',
-    textTemplate: (e) => `${e.playerName || 'Someone'} achieved something!`
+    textTemplate: (e) => `${e.playerName || 'Keegi'} saavutas midagi!`
   }
 
   try {

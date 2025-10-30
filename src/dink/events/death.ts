@@ -1,13 +1,5 @@
 import { addImageToPayload, formatRuneScapeNumber } from '../util.js'
-
-const PVM_DEATH_DESCRIPTIONS = [
-  '☠️ **${victimName}** suri ${killerName}\'i käte läbi. 🕯️',
-  '☠️ **${victimName}**\'le sõideti kelku ${killerName}\'i poolt. 🕯️',
-  '☠️ ${killerName} sõitis **${victimName}**\'st toorelt üle. 🕯️',
-  '☠️ **${victimName}** häbistas Eestlaseid surres ${killerName}\'ile. 🕯️',
-  '☠️ ${victimName} libastus ${killerName}\'i otsa. 🕯️',
-  '☠️ ${victimName} peaks mõne õpetliku video läbi vaatama ${killerName}\'i kohta. 🕯️',
-]
+import { getDeathDescription } from '../handler.js'
 
 export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
   const {
@@ -40,10 +32,8 @@ export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
   const discordUserName = discordUser?.name
   const discordUserAvatarHash = discordUser?.avatar
 
-  const randomDescription = PVM_DEATH_DESCRIPTIONS[Math.floor(Math.random() * PVM_DEATH_DESCRIPTIONS.length)]
-  const description = randomDescription
-    .replace('${victimName}', playerName)
-    .replace('${killerName}', killerName || 'Grim Reaper')
+  // Use the shared death description function with proper Estonian grammar
+  const description = `☠️ **${getDeathDescription(playerName, killerName || 'Grim Reaper')}** 🕯️`
 
   const payload = {
     embeds: [
