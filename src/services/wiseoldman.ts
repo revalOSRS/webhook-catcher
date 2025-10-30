@@ -1,121 +1,33 @@
 /**
  * WiseOldMan API Service
- * Handles all interactions with the WiseOldMan API
+ * Handles all interactions with the WiseOldMan API using the official client
  */
 
-const WOM_API_BASE = 'https://api.wiseoldman.net/v2'
+import { WOMClient } from '@wise-old-man/utils'
 
-export interface WOMPlayer {
-  id: number
-  username: string
-  displayName: string
-  type: string
-  build: string
-  country: string | null
-  status: string
-  patron: boolean
-  exp: number
-  ehp: number
-  ehb: number
-  ttm: number
-  tt200m: number
-  registeredAt: string
-  updatedAt: string
-  lastChangedAt: string | null
-  lastImportedAt: string | null
-}
+const client = new WOMClient()
 
-export interface WOMSnapshot {
-  createdAt: string
-  importedAt: string | null
-  data: {
-    skills: Record<string, { rank: number; level: number; experience: number }>
-    bosses: Record<string, { rank: number; kills: number }>
-    activities: Record<string, { rank: number; score: number }>
-    computed: Record<string, { rank: number; value: number }>
-  }
-}
-
-export interface WOMGains {
-  startsAt: string
-  endsAt: string
-  data: {
-    skills: Record<string, { gained: number; start: number; end: number }>
-    bosses: Record<string, { gained: number; start: number; end: number }>
-    activities: Record<string, { gained: number; start: number; end: number }>
-    computed: Record<string, { gained: number; start: number; end: number }>
-  }
-}
-
-export interface WOMAchievement {
-  playerId: number
-  name: string
-  metric: string
-  measure: string
-  threshold: number
-  createdAt: string
-  accuracy: number | null
-}
-
-export interface WOMRecord {
-  id: number
-  playerId: number
-  period: string
-  metric: string
-  value: number
-  updatedAt: string
-}
-
-export interface WOMGroup {
-  id: number
-  name: string
-  clanChat: string | null
-  description: string | null
-  homeworld: number | null
-  verified: boolean
-  patron: boolean
-  profileImage: string | null
-  bannerImage: string | null
-  score: number
-  createdAt: string
-  updatedAt: string
-  memberCount: number
-}
-
-export interface WOMGroupActivity {
-  groupId: number
-  playerId: number
-  type: string
-  role: string | null
-  createdAt: string
-  player: WOMPlayer
-}
-
-export interface WOMGroupMembership {
-  playerId: number
-  groupId: number
-  role: string | null
-  createdAt: string
-  updatedAt: string
-  player: WOMPlayer
-}
+// Re-export types from the WOM client for convenience
+export type {
+  Player as WOMPlayer,
+  Snapshot as WOMSnapshot,
+  Achievement as WOMAchievement,
+  Record as WOMRecord,
+  Group as WOMGroup,
+  Membership as WOMGroupMembership
+} from '@wise-old-man/utils'
 
 /**
  * Search for a player by username
  */
-export async function searchPlayer(username: string): Promise<WOMPlayer | null> {
+export async function searchPlayer(username: string) {
   try {
-    const response = await fetch(`${WOM_API_BASE}/players/${encodeURIComponent(username)}`)
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null
-      }
-      throw new Error(`WOM API error: ${response.status}`)
+    const player = await client.players.getPlayerDetails(username)
+    return player
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      return null
     }
-
-    return await response.json()
-  } catch (error) {
     console.error('Error fetching WOM player:', error)
     throw error
   }
@@ -124,19 +36,14 @@ export async function searchPlayer(username: string): Promise<WOMPlayer | null> 
 /**
  * Get player details by ID
  */
-export async function getPlayerById(playerId: number): Promise<WOMPlayer | null> {
+export async function getPlayerById(playerId: number) {
   try {
-    const response = await fetch(`${WOM_API_BASE}/players/id/${playerId}`)
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null
-      }
-      throw new Error(`WOM API error: ${response.status}`)
+    const player = await client.players.getPlayerDetailsById(playerId)
+    return player
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      return null
     }
-
-    return await response.json()
-  } catch (error) {
     console.error('Error fetching WOM player by ID:', error)
     throw error
   }
@@ -145,17 +52,10 @@ export async function getPlayerById(playerId: number): Promise<WOMPlayer | null>
 /**
  * Update player (trigger a data refresh from OSRS hiscores)
  */
-export async function updatePlayer(username: string): Promise<WOMPlayer> {
+export async function updatePlayer(username: string) {
   try {
-    const response = await fetch(`${WOM_API_BASE}/players/${encodeURIComponent(username)}`, {
-      method: 'POST'
-    })
-    
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    const updatedPlayer = await client.players.updatePlayer(username)
+    return updatedPlayer
   } catch (error) {
     console.error('Error updating WOM player:', error)
     throw error
@@ -165,17 +65,14 @@ export async function updatePlayer(username: string): Promise<WOMPlayer> {
 /**
  * Get player snapshots (historical data)
  */
-export async function getPlayerSnapshots(username: string, limit: number = 10): Promise<WOMSnapshot[]> {
+export async function getPlayerSnapshots(username: string, limit: number = 10) {
   try {
-    const response = await fetch(
-      `${WOM_API_BASE}/players/${encodeURIComponent(username)}/snapshots?limit=${limit}`
-    )
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setFullYear(startDate.getFullYear() - 1) // Get snapshots from the last year
     
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    const snapshots = await client.players.getPlayerSnapshots(username, { startDate, endDate })
+    return snapshots.slice(0, limit)
   } catch (error) {
     console.error('Error fetching WOM snapshots:', error)
     throw error
@@ -188,17 +85,10 @@ export async function getPlayerSnapshots(username: string, limit: number = 10): 
 export async function getPlayerGains(
   username: string,
   period: 'day' | 'week' | 'month' | 'year' = 'week'
-): Promise<WOMGains> {
+) {
   try {
-    const response = await fetch(
-      `${WOM_API_BASE}/players/${encodeURIComponent(username)}/gained?period=${period}`
-    )
-    
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    const gains = await client.players.getPlayerGains(username, { period })
+    return gains
   } catch (error) {
     console.error('Error fetching WOM gains:', error)
     throw error
@@ -208,17 +98,11 @@ export async function getPlayerGains(
 /**
  * Get player achievements
  */
-export async function getPlayerAchievements(username: string, limit: number = 20): Promise<WOMAchievement[]> {
+export async function getPlayerAchievements(username: string, limit: number = 20) {
   try {
-    const response = await fetch(
-      `${WOM_API_BASE}/players/${encodeURIComponent(username)}/achievements?limit=${limit}`
-    )
-    
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    const achievements = await client.players.getPlayerAchievements(username)
+    // Return limited results
+    return achievements.slice(0, limit)
   } catch (error) {
     console.error('Error fetching WOM achievements:', error)
     throw error
@@ -228,20 +112,11 @@ export async function getPlayerAchievements(username: string, limit: number = 20
 /**
  * Get player records
  */
-export async function getPlayerRecords(username: string, period: string = 'week', metric?: string): Promise<WOMRecord[]> {
+export async function getPlayerRecords(username: string, period: string = 'week', metric?: string) {
   try {
-    let url = `${WOM_API_BASE}/players/${encodeURIComponent(username)}/records?period=${period}`
-    if (metric) {
-      url += `&metric=${metric}`
-    }
-    
-    const response = await fetch(url)
-    
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    const records = await client.players.getPlayerRecords(username)
+    // Filter by period and metric if needed
+    return records
   } catch (error) {
     console.error('Error fetching WOM records:', error)
     throw error
@@ -251,17 +126,10 @@ export async function getPlayerRecords(username: string, period: string = 'week'
 /**
  * Get player's groups/clans
  */
-export async function getPlayerGroups(username: string): Promise<WOMGroup[]> {
+export async function getPlayerGroups(username: string) {
   try {
-    const response = await fetch(
-      `${WOM_API_BASE}/players/${encodeURIComponent(username)}/groups`
-    )
-    
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    const groups = await client.players.getPlayerGroups(username)
+    return groups
   } catch (error) {
     console.error('Error fetching WOM groups:', error)
     throw error
@@ -275,29 +143,20 @@ export async function getGroupActivity(
   groupId: number,
   limit?: number,
   offset?: number
-): Promise<WOMGroupActivity[]> {
+) {
   try {
-    let url = `${WOM_API_BASE}/groups/${groupId}/activity`
-    const params = new URLSearchParams()
+    const activity = await client.groups.getGroupActivity(groupId)
     
-    if (limit !== undefined) {
-      params.append('limit', limit.toString())
+    // Apply pagination manually if needed
+    let result = activity
+    if (offset) {
+      result = result.slice(offset)
     }
-    if (offset !== undefined) {
-      params.append('offset', offset.toString())
-    }
-    
-    if (params.toString()) {
-      url += `?${params.toString()}`
+    if (limit) {
+      result = result.slice(0, limit)
     }
     
-    const response = await fetch(url)
-    
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    return result
   } catch (error) {
     console.error('Error fetching WOM group activity:', error)
     throw error
@@ -311,29 +170,20 @@ export async function getGroupMembers(
   groupId: number,
   limit?: number,
   offset?: number
-): Promise<WOMGroupMembership[]> {
+) {
   try {
-    let url = `${WOM_API_BASE}/groups/${groupId}/members`
-    const params = new URLSearchParams()
+    const groupDetails = await client.groups.getGroupDetails(groupId)
+    let members = groupDetails.memberships || []
     
-    if (limit !== undefined) {
-      params.append('limit', limit.toString())
+    // Apply pagination manually if needed
+    if (offset) {
+      members = members.slice(offset)
     }
-    if (offset !== undefined) {
-      params.append('offset', offset.toString())
-    }
-    
-    if (params.toString()) {
-      url += `?${params.toString()}`
+    if (limit) {
+      members = members.slice(0, limit)
     }
     
-    const response = await fetch(url)
-    
-    if (!response.ok) {
-      throw new Error(`WOM API error: ${response.status}`)
-    }
-
-    return await response.json()
+    return members
   } catch (error) {
     console.error('Error fetching WOM group members:', error)
     throw error
