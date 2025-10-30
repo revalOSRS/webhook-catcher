@@ -216,17 +216,55 @@ export async function getComprehensivePlayerData(username: string) {
   }
 }
 
+// Cache for group statistics
+let groupStatisticsCache: {
+  data: any
+  lastRefresh: Date
+} | null = null
+
 /**
- * Get comprehensive clan statistics for a group
+ * Check if cache should be refreshed (after 1 AM today)
+ */
+function shouldRefreshCache(): boolean {
+  if (!groupStatisticsCache) {
+    return true
+  }
+
+  const now = new Date()
+  const lastRefresh = groupStatisticsCache.lastRefresh
+  
+  // Get 1 AM today
+  const oneAMToday = new Date(now)
+  oneAMToday.setHours(1, 0, 0, 0)
+  
+  // If current time is before 1 AM, use 1 AM yesterday
+  if (now < oneAMToday) {
+    oneAMToday.setDate(oneAMToday.getDate() - 1)
+  }
+  
+  // Refresh if last refresh was before 1 AM today
+  return lastRefresh < oneAMToday
+}
+
+/**
+ * Get comprehensive clan statistics for a group (with daily caching)
  */
 export async function getGroupStatistics(groupId: number) {
   try {
+    // Check if we have valid cached data
+    if (groupStatisticsCache && !shouldRefreshCache()) {
+      console.log('Returning cached clan statistics')
+      return groupStatisticsCache.data
+    }
+
+    console.log('Fetching fresh clan statistics...')
+    
     // Get group details which includes all members
     const groupDetails = await client.groups.getGroupDetails(groupId)
     const members = groupDetails.memberships || []
     
     // Fetch all player details in parallel (in batches to avoid overwhelming the API)
-    const BATCH_SIZE = 50
+    const BATCH_SIZE = 10
     const playerDetails = []
     
     for (let i = 0; i < members.length; i += BATCH_SIZE) {
@@ -304,7 +342,7 @@ export async function getGroupStatistics(groupId: number) {
     const averageXP = totalMembers > 0 ? Math.round(totalXP / totalMembers) : 0
     const maxedPercentage = totalMembers > 0 ? ((maxedCount / totalMembers) * 100).toFixed(2) : '0.00'
     
-    return {
+    const statistics = {
       groupName: groupDetails.name,
       totalMembers,
       averageLevel,
@@ -321,8 +359,19 @@ export async function getGroupStatistics(groupId: number) {
         tob: totalTob,
         ehp: Math.round(totalEHP),
         ehb: Math.round(totalEHB)
-      }
+      },
+      lastUpdated: new Date().toISOString()
     }
+    
+    // Cache the result
+    groupStatisticsCache = {
+      data: statistics,
+      lastRefresh: new Date()
+    }
+    
+    console.log('Clan statistics cached successfully')
+    
+    return statistics
   } catch (error) {
     console.error('Error fetching group statistics:', error)
     throw error
