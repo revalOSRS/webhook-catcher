@@ -263,21 +263,86 @@ export async function getGroupStatistics(groupId: number) {
     const groupDetails = await client.groups.getGroupDetails(groupId)
     const members = groupDetails.memberships || []
     
+    console.log(`Found ${members.length} members in group ${groupDetails.name}`)
+    
     // Fetch all player details in parallel (in batches to avoid overwhelming the API)
-    const BATCH_SIZE = 10
+    const BATCH_SIZE = 20
+    const MAX_RETRIES = 2
     const playerDetails = []
+    const failedMembers = []
     
     for (let i = 0; i < members.length; i += BATCH_SIZE) {
       const batch = members.slice(i, i + BATCH_SIZE)
+      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(members.length / BATCH_SIZE)} (${batch.length} members)`)
+      
       const batchResults = await Promise.allSettled(
         batch.map(member => client.players.getPlayerDetailsById(member.player.id))
       )
       
+      // Process successful results
       const successfulResults = batchResults
         .filter(result => result.status === 'fulfilled')
         .map(result => (result as any).value)
       
       playerDetails.push(...successfulResults)
+      
+      // Track failed requests for retry
+      batchResults.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const member = batch[index]
+          console.error(`Failed to fetch player ${member.player.username} (ID: ${member.player.id}):`, result.reason)
+          failedMembers.push(member)
+        }
+      })
+    }
+    
+    // Retry failed members
+    if (failedMembers.length > 0) {
+      console.log(`Retrying ${failedMembers.length} failed member(s)...`)
+      
+      for (let retry = 0; retry < MAX_RETRIES; retry++) {
+        if (failedMembers.length === 0) break
+        
+        console.log(`Retry attempt ${retry + 1}/${MAX_RETRIES} for ${failedMembers.length} member(s)`)
+        
+        const retryResults = await Promise.allSettled(
+          failedMembers.map(member => client.players.getPlayerDetailsById(member.player.id))
+        )
+        
+        // Process successful retries
+        const successfulRetries = []
+        const stillFailing = []
+        
+        retryResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            successfulRetries.push((result as any).value)
+          } else {
+            stillFailing.push(failedMembers[index])
+            if (retry === MAX_RETRIES - 1) {
+              const member = failedMembers[index]
+              console.error(`❌ FINAL FAILURE: Could not fetch player ${member.player.username} (ID: ${member.player.id}) after ${MAX_RETRIES} retries`)
+            }
+          }
+        })
+        
+        playerDetails.push(...successfulRetries)
+        failedMembers.length = 0
+        failedMembers.push(...stillFailing)
+        
+        // Wait a bit before next retry
+        if (stillFailing.length > 0 && retry < MAX_RETRIES - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      }
+    }
+    
+    console.log(`Successfully fetched ${playerDetails.length}/${members.length} player details`)
+    
+    if (failedMembers.length > 0) {
+      console.warn(`⚠️ WARNING: ${failedMembers.length} member(s) could not be fetched after retries:`)
+      failedMembers.forEach(member => {
+        console.warn(`  - ${member.player.username} (ID: ${member.player.id})`)
+      })
     }
     
     // Calculate statistics
