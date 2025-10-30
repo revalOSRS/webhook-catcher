@@ -20,7 +20,7 @@ const app = express()
 // CORS configuration
 app.use(cors({
   origin: [
-    'https://reval-games.vercel.app',
+    'https://www.revalosrs.ee',
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:5174'
