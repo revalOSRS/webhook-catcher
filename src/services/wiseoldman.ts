@@ -216,3 +216,116 @@ export async function getComprehensivePlayerData(username: string) {
   }
 }
 
+/**
+ * Get comprehensive clan statistics for a group
+ */
+export async function getGroupStatistics(groupId: number) {
+  try {
+    // Get group details which includes all members
+    const groupDetails = await client.groups.getGroupDetails(groupId)
+    const members = groupDetails.memberships || []
+    
+    // Fetch all player details in parallel (in batches to avoid overwhelming the API)
+    const BATCH_SIZE = 50
+    const playerDetails = []
+    
+    for (let i = 0; i < members.length; i += BATCH_SIZE) {
+      const batch = members.slice(i, i + BATCH_SIZE)
+      const batchResults = await Promise.allSettled(
+        batch.map(member => client.players.getPlayerDetailsById(member.player.id))
+      )
+      
+      const successfulResults = batchResults
+        .filter(result => result.status === 'fulfilled')
+        .map(result => (result as any).value)
+      
+      playerDetails.push(...successfulResults)
+    }
+    
+    // Calculate statistics
+    const totalMembers = playerDetails.length
+    
+    let totalLevel = 0
+    let totalXP = 0
+    let maxedCount = 0
+    let totalClues = 0
+    let totalBossKills = 0
+    let totalCox = 0
+    let totalToa = 0
+    let totalTob = 0
+    let totalEHP = 0
+    let totalEHB = 0
+    
+    for (const player of playerDetails) {
+      // Calculate total level (sum of all skill levels)
+      const skills = player.latestSnapshot?.data?.skills || {}
+      let playerTotalLevel = 0
+      for (const skill in skills) {
+        playerTotalLevel += skills[skill]?.level || 0
+      }
+      totalLevel += playerTotalLevel
+      
+      // Check if maxed (2277 total level)
+      if (playerTotalLevel >= 2277) {
+        maxedCount++
+      }
+      
+      // Total XP
+      totalXP += player.exp || 0
+      
+      // Total clues (sum of all clue types)
+      const activities = player.latestSnapshot?.data?.activities || {}
+      const clueTypes = ['clue_scrolls_all', 'clue_scrolls_beginner', 'clue_scrolls_easy', 
+                         'clue_scrolls_medium', 'clue_scrolls_hard', 'clue_scrolls_elite', 
+                         'clue_scrolls_master']
+      
+      // Use the 'all' clue count if available, otherwise sum individual types
+      if (activities['clue_scrolls_all']) {
+        totalClues += activities['clue_scrolls_all']?.score || 0
+      }
+      
+      // Total boss kills (sum all bosses)
+      const bosses = player.latestSnapshot?.data?.bosses || {}
+      for (const boss in bosses) {
+        totalBossKills += bosses[boss]?.kills || 0
+      }
+      
+      // Specific raid completions (including all variants)
+      totalCox += (bosses['chambers_of_xeric']?.kills || 0) + (bosses['chambers_of_xeric_challenge_mode']?.kills || 0)
+      totalToa += (bosses['tombs_of_amascut']?.kills || 0) + (bosses['tombs_of_amascut_expert']?.kills || 0)
+      totalTob += (bosses['theatre_of_blood']?.kills || 0) + (bosses['theatre_of_blood_hard_mode']?.kills || 0)
+      
+      // EHP and EHB
+      totalEHP += player.ehp || 0
+      totalEHB += player.ehb || 0
+    }
+    
+    const averageLevel = totalMembers > 0 ? Math.round(totalLevel / totalMembers) : 0
+    const averageXP = totalMembers > 0 ? Math.round(totalXP / totalMembers) : 0
+    const maxedPercentage = totalMembers > 0 ? ((maxedCount / totalMembers) * 100).toFixed(2) : '0.00'
+    
+    return {
+      groupName: groupDetails.name,
+      totalMembers,
+      averageLevel,
+      averageXP,
+      maxedPlayers: {
+        count: maxedCount,
+        percentage: parseFloat(maxedPercentage)
+      },
+      totalStats: {
+        clues: totalClues,
+        bossKills: totalBossKills,
+        cox: totalCox,
+        toa: totalToa,
+        tob: totalTob,
+        ehp: Math.round(totalEHP),
+        ehb: Math.round(totalEHB)
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching group statistics:', error)
+    throw error
+  }
+}
+

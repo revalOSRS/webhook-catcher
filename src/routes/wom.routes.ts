@@ -222,6 +222,26 @@ router.get('/clan/members', async (req, res) => {
   }
 })
 
+// Get comprehensive clan statistics (for Reval clan - group ID 14350)
+router.get('/clan/statistics', async (req, res) => {
+  try {
+    const REVAL_GROUP_ID = 14350
+
+    const statistics = await WOM.getGroupStatistics(REVAL_GROUP_ID)
+
+    res.status(200).json({
+      status: 'success',
+      data: statistics
+    })
+  } catch (error) {
+    console.error('Error fetching WOM clan statistics:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch clan statistics' 
+    })
+  }
+})
+
 export default router
 
 
