@@ -108,3 +108,33 @@ export interface MemberProfile {
   }
 }
 
+export interface ClanStatisticsSnapshot {
+  id: number
+  snapshot_date: Date
+  group_id: number
+  group_name: string
+  total_members: number
+  average_level: number
+  average_xp: number
+  maxed_count: number
+  maxed_percentage: number
+  total_clues: number
+  total_boss_kills: number
+  total_cox: number
+  total_toa: number
+  total_tob: number
+  total_ehp: number
+  total_ehb: number
+  failed_members: number
+  created_at: Date
+}
+
+export interface SnapshotFailedMember {
+  id: number
+  snapshot_id: number
+  player_id: number
+  player_username: string
+  error_message: string | null
+  created_at: Date
+}
+

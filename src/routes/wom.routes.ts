@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import * as WOM from '../services/wiseoldman.js'
+import * as db from '../db/connection.js'
 
 const router = Router()
 
@@ -222,12 +223,63 @@ router.get('/clan/members', async (req, res) => {
   }
 })
 
-// Get comprehensive clan statistics (for Reval clan - group ID 14350)
+// Get comprehensive clan statistics (for Reval clan - from daily snapshots)
 router.get('/clan/statistics', async (req, res) => {
   try {
-    const REVAL_GROUP_ID = 14350
-
-    const statistics = await WOM.getGroupStatistics(REVAL_GROUP_ID)
+    // Get the latest snapshot from the database
+    const snapshot = await db.queryOne<any>(`
+      SELECT 
+        snapshot_date,
+        group_name,
+        total_members,
+        average_level,
+        average_xp,
+        maxed_count,
+        maxed_percentage,
+        total_clues,
+        total_boss_kills,
+        total_cox,
+        total_toa,
+        total_tob,
+        total_ehp,
+        total_ehb,
+        failed_members,
+        created_at
+      FROM clan_statistics_snapshots
+      ORDER BY snapshot_date DESC
+      LIMIT 1
+    `)
+    
+    if (!snapshot) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No snapshot data available yet. Daily snapshots are created by the Discord bot at midnight.'
+      })
+    }
+    
+    // Format the response to match the expected structure
+    const statistics = {
+      groupName: snapshot.group_name,
+      totalMembers: snapshot.total_members,
+      averageLevel: snapshot.average_level,
+      averageXP: snapshot.average_xp,
+      maxedPlayers: {
+        count: snapshot.maxed_count,
+        percentage: parseFloat(snapshot.maxed_percentage)
+      },
+      totalStats: {
+        clues: snapshot.total_clues,
+        bossKills: snapshot.total_boss_kills,
+        cox: snapshot.total_cox,
+        toa: snapshot.total_toa,
+        tob: snapshot.total_tob,
+        ehp: snapshot.total_ehp,
+        ehb: snapshot.total_ehb
+      },
+      snapshotDate: snapshot.snapshot_date,
+      lastUpdated: snapshot.created_at,
+      failedMembers: snapshot.failed_members
+    }
 
     res.status(200).json({
       status: 'success',
@@ -238,6 +290,54 @@ router.get('/clan/statistics', async (req, res) => {
     res.status(500).json({ 
       status: 'error', 
       message: 'Failed to fetch clan statistics' 
+    })
+  }
+})
+
+// Get historical clan statistics snapshots
+router.get('/clan/statistics/history', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days as string) || 30
+    
+    // Validate days parameter
+    if (days < 1 || days > 365) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Days parameter must be between 1 and 365'
+      })
+    }
+    
+    const snapshots = await db.query<any>(`
+      SELECT 
+        snapshot_date,
+        total_members,
+        average_level,
+        average_xp,
+        maxed_count,
+        maxed_percentage,
+        total_ehp,
+        total_ehb,
+        total_clues,
+        total_boss_kills,
+        total_cox,
+        total_toa,
+        total_tob,
+        created_at
+      FROM clan_statistics_snapshots
+      ORDER BY snapshot_date DESC
+      LIMIT $1
+    `, [days])
+    
+    res.status(200).json({
+      status: 'success',
+      data: snapshots,
+      count: snapshots.length
+    })
+  } catch (error) {
+    console.error('Error fetching statistics history:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch statistics history' 
     })
   }
 })

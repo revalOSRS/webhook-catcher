@@ -433,6 +433,107 @@ GET /api/wom/player/Lynx_Titan/comprehensive
 }
 ```
 
+### GET `/api/wom/clan/statistics`
+Get the latest clan statistics snapshot (updated daily at midnight by Discord bot).
+
+**Example:**
+```
+GET /api/wom/clan/statistics
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "groupName": "Reval",
+    "totalMembers": 87,
+    "averageLevel": 1847,
+    "averageXP": 145000000,
+    "maxedPlayers": {
+      "count": 12,
+      "percentage": 13.79
+    },
+    "totalStats": {
+      "clues": 5432,
+      "bossKills": 123456,
+      "cox": 4567,
+      "toa": 1234,
+      "tob": 890,
+      "ehp": 12543,
+      "ehb": 3421
+    },
+    "snapshotDate": "2024-10-30",
+    "lastUpdated": "2024-10-30T00:00:15.123Z",
+    "failedMembers": 2
+  }
+}
+```
+
+**Notes:**
+- Data is cached from daily snapshots (refreshes automatically at midnight)
+- Much faster than live WOM API calls
+- Includes all clan-wide statistics
+- `failedMembers` shows how many members couldn't be fetched during the snapshot
+
+### GET `/api/wom/clan/statistics/history`
+Get historical clan statistics snapshots for tracking progress over time.
+
+**Parameters:**
+- `days` (query) - Number of days of history to return (1-365, default: 30)
+
+**Example:**
+```
+GET /api/wom/clan/statistics/history?days=30
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "snapshot_date": "2024-10-30",
+      "total_members": 87,
+      "average_level": 1847,
+      "average_xp": 145000000,
+      "maxed_count": 12,
+      "maxed_percentage": 13.79,
+      "total_ehp": 12543,
+      "total_ehb": 3421,
+      "total_clues": 5432,
+      "total_boss_kills": 123456,
+      "total_cox": 4567,
+      "total_toa": 1234,
+      "total_tob": 890,
+      "created_at": "2024-10-30T00:00:15.123Z"
+    },
+    {
+      "snapshot_date": "2024-10-29",
+      "total_members": 86,
+      "average_level": 1845,
+      "average_xp": 144500000,
+      "maxed_count": 12,
+      "maxed_percentage": 13.95,
+      "total_ehp": 12500,
+      "total_ehb": 3400,
+      "total_clues": 5400,
+      "total_boss_kills": 123000,
+      "total_cox": 4560,
+      "total_toa": 1230,
+      "total_tob": 885,
+      "created_at": "2024-10-29T00:00:12.456Z"
+    }
+  ],
+  "count": 2
+}
+```
+
+**Notes:**
+- Returns snapshots in descending order (newest first)
+- Useful for tracking clan growth and progress
+- Can be used to generate charts and trend analysis
+
 ---
 
 ## Usage Examples for Profile Page
