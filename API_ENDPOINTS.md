@@ -534,6 +534,142 @@ GET /api/wom/clan/statistics/history?days=30
 - Useful for tracking clan growth and progress
 - Can be used to generate charts and trend analysis
 
+### GET `/api/wom/clan/players` 🌐 PUBLIC
+Get detailed player snapshots from the latest clan snapshot. **No authentication required** - perfect for landing pages.
+
+**Example:**
+```
+GET /api/wom/clan/players
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "clanSnapshot": {
+      "id": 42,
+      "snapshotDate": "2024-10-30",
+      "groupName": "Reval"
+    },
+    "players": [
+      {
+        "id": 1,
+        "playerId": 12345,
+        "username": "player_name",
+        "displayName": "Player Name",
+        "type": "regular",
+        "build": "main",
+        "country": "US",
+        "status": "active",
+        "patron": false,
+        "stats": {
+          "totalExp": 450000000,
+          "totalLevel": 2100,
+          "combatLevel": 126,
+          "ehp": 245.5,
+          "ehb": 67.3,
+          "ttm": 1234.5,
+          "tt200m": 9876.4
+        },
+        "skills": [
+          {
+            "skill": "attack",
+            "experience": 13034431,
+            "level": 99,
+            "rank": 12345,
+            "ehp": 12.5
+          },
+          {
+            "skill": "defence",
+            "experience": 13034431,
+            "level": 99,
+            "rank": 23456,
+            "ehp": 11.8
+          }
+          // ... all 23 skills
+        ],
+        "bosses": [
+          {
+            "boss": "zulrah",
+            "kills": 1500,
+            "rank": 5432,
+            "ehb": 15.2
+          },
+          {
+            "boss": "vorkath",
+            "kills": 850,
+            "rank": 8765,
+            "ehb": 8.5
+          }
+          // ... all bosses with kills
+        ],
+        "activities": [
+          {
+            "activity": "clue_scrolls_all",
+            "score": 450,
+            "rank": 12345
+          },
+          {
+            "activity": "bounty_hunter_hunter",
+            "score": 0,
+            "rank": -1
+          }
+          // ... all activities
+        ],
+        "computed": [
+          {
+            "metric": "ehp",
+            "value": 245.5,
+            "rank": 3456
+          },
+          {
+            "metric": "ehb",
+            "value": 67.3,
+            "rank": 6789
+          }
+          // ... computed metrics
+        ],
+        "timestamps": {
+          "registeredAt": "2023-01-15T10:30:00.000Z",
+          "updatedAt": "2024-10-30T05:15:30.000Z",
+          "lastChangedAt": "2024-10-29T18:45:00.000Z"
+        }
+      }
+      // ... more players (sorted by EHP DESC)
+    ],
+    "count": 87
+  }
+}
+```
+
+**Notes:**
+- ✅ **Public endpoint** - No authentication required
+- 🚀 **Highly optimized** - Uses efficient SQL queries with parallel fetching
+- 📊 **Complete data** - All skills, bosses, activities, and computed metrics
+- 🔄 **Auto-updates** - Refreshes daily with clan snapshot
+- 📈 **Sorted by EHP** - Most efficient players first
+- 🎯 **Perfect for landing pages** - Showcase your clan's stats
+
+**Performance:**
+- Single database round-trip for player list
+- Parallel fetching of skills/bosses/activities/computed data
+- Efficient grouping and formatting
+- Typical response time: 100-300ms for 100 players with full data
+
+**Data Structure:**
+- **clanSnapshot**: Info about when this data was captured
+- **players**: Array of player objects with all their data
+- **count**: Total number of players in the snapshot
+
+**Use Cases:**
+- 🏠 Landing page leaderboards
+- 📊 Clan statistics dashboard
+- 🎮 Interactive player cards
+- 📈 Skill distribution charts
+- 🏆 Boss KC rankings
+- 🌍 Country/region breakdowns
+
 ---
 
 ## Usage Examples for Profile Page
@@ -574,6 +710,89 @@ const monthlyGains = await gainsResponse.json()
 
 // Update player data
 await fetch(`/api/wom/player/${username}/update`, { method: 'POST' })
+```
+
+### Landing Page Examples - Clan Players Data
+
+```javascript
+// Fetch all clan players (PUBLIC - no auth required)
+const response = await fetch('/api/wom/clan/players')
+const { data } = await response.json()
+
+console.log(`Clan: ${data.clanSnapshot.groupName}`)
+console.log(`Snapshot from: ${data.clanSnapshot.snapshotDate}`)
+console.log(`Total players: ${data.count}`)
+
+// Example 1: Create a leaderboard
+const topPlayers = data.players.slice(0, 10)
+topPlayers.forEach((player, index) => {
+  console.log(`${index + 1}. ${player.displayName || player.username}`)
+  console.log(`   EHP: ${player.stats.ehp} | EHB: ${player.stats.ehb}`)
+  console.log(`   Total Level: ${player.stats.totalLevel} | Combat: ${player.stats.combatLevel}`)
+})
+
+// Example 2: Get specific skill data
+const player = data.players[0]
+const attackSkill = player.skills.find(s => s.skill === 'attack')
+console.log(`Attack: Level ${attackSkill.level} (${attackSkill.experience.toLocaleString()} XP)`)
+
+// Example 3: Find top boss killers
+const players = data.players.map(p => ({
+  username: p.username,
+  zulrah: p.bosses.find(b => b.boss === 'zulrah')?.kills || 0
+}))
+const topZulrahKillers = players
+  .sort((a, b) => b.zulrah - a.zulrah)
+  .slice(0, 10)
+
+console.log('Top 10 Zulrah Killers:')
+topZulrahKillers.forEach((p, i) => {
+  console.log(`${i + 1}. ${p.username}: ${p.zulrah.toLocaleString()} KC`)
+})
+
+// Example 4: Calculate clan-wide stats
+const clanStats = {
+  totalPlayers: data.count,
+  totalCombatLevel: data.players.reduce((sum, p) => sum + p.stats.combatLevel, 0),
+  totalEHP: data.players.reduce((sum, p) => sum + p.stats.ehp, 0),
+  totalEHB: data.players.reduce((sum, p) => sum + p.stats.ehb, 0),
+  maxedPlayers: data.players.filter(p => p.stats.totalLevel >= 2277).length
+}
+
+console.log('Clan Statistics:')
+console.log(`Average Combat Level: ${(clanStats.totalCombatLevel / clanStats.totalPlayers).toFixed(1)}`)
+console.log(`Total EHP: ${clanStats.totalEHP.toFixed(1)}`)
+console.log(`Total EHB: ${clanStats.totalEHB.toFixed(1)}`)
+console.log(`Maxed Players: ${clanStats.maxedPlayers} (${(clanStats.maxedPlayers / clanStats.totalPlayers * 100).toFixed(1)}%)`)
+
+// Example 5: Filter by country
+const usPlayers = data.players.filter(p => p.country === 'US')
+console.log(`Players from US: ${usPlayers.length}`)
+
+// Example 6: Get all 99s for a player
+const player99s = player.skills.filter(s => s.level === 99)
+console.log(`${player.username} has ${player99s.length} level 99 skills`)
+
+// Example 7: Create skill distribution chart data
+const skillLevels = {}
+data.players.forEach(player => {
+  player.skills.forEach(skill => {
+    if (!skillLevels[skill.skill]) {
+      skillLevels[skill.skill] = { total: 0, maxed: 0 }
+    }
+    skillLevels[skill.skill].total += skill.level
+    if (skill.level === 99) {
+      skillLevels[skill.skill].maxed++
+    }
+  })
+})
+
+// Calculate average and maxed percentage for each skill
+Object.keys(skillLevels).forEach(skill => {
+  const avg = skillLevels[skill].total / data.count
+  const maxedPct = (skillLevels[skill].maxed / data.count) * 100
+  console.log(`${skill}: Avg ${avg.toFixed(1)}, ${skillLevels[skill].maxed} maxed (${maxedPct.toFixed(1)}%)`)
+})
 ```
 
 ---
