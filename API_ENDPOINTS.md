@@ -670,6 +670,111 @@ GET /api/wom/clan/players
 - 🏆 Boss KC rankings
 - 🌍 Country/region breakdowns
 
+### GET `/api/wom/clan/players/:playerId` 🌐 PUBLIC
+Get detailed player snapshot by WiseOldMan player ID from the latest clan snapshot. **No authentication required**.
+
+**Parameters:**
+- `playerId` (path) - WiseOldMan player ID (numeric)
+
+**Example:**
+```
+GET /api/wom/clan/players/12345
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "clanSnapshot": {
+      "id": 42,
+      "snapshotDate": "2024-10-30",
+      "groupName": "Reval"
+    },
+    "player": {
+      "id": 1,
+      "playerId": 12345,
+      "username": "player_name",
+      "displayName": "Player Name",
+      "snapshotDate": "2024-10-30",
+      "type": "regular",
+      "build": "main",
+      "country": "US",
+      "status": "active",
+      "patron": false,
+      "stats": {
+        "totalExp": 450000000,
+        "totalLevel": 2100,
+        "combatLevel": 126,
+        "ehp": 245.5,
+        "ehb": 67.3,
+        "ttm": 1234.5,
+        "tt200m": 9876.4
+      },
+      "skills": [
+        {
+          "skill": "attack",
+          "experience": 13034431,
+          "level": 99,
+          "rank": 12345,
+          "ehp": 12.5
+        }
+        // ... all 23 skills
+      ],
+      "bosses": [
+        {
+          "boss": "zulrah",
+          "kills": 1500,
+          "rank": 5432,
+          "ehb": 15.2
+        }
+        // ... all bosses
+      ],
+      "activities": [
+        {
+          "activity": "clue_scrolls_all",
+          "score": 450,
+          "rank": 12345
+        }
+        // ... all activities
+      ],
+      "computed": [
+        {
+          "metric": "ehp",
+          "value": 245.5,
+          "rank": 3456
+        }
+        // ... computed metrics
+      ],
+      "timestamps": {
+        "registeredAt": "2023-01-15T10:30:00.000Z",
+        "updatedAt": "2024-10-30T05:15:30.000Z",
+        "lastChangedAt": "2024-10-29T18:45:00.000Z"
+      }
+    }
+  }
+}
+```
+
+**Notes:**
+- ✅ **Public endpoint** - No authentication required
+- 📊 **Complete player data** - All skills, bosses, activities, computed metrics
+- 🔄 **Auto-updates** - Refreshes daily with clan snapshot
+- 🎯 **Consistent API** - `/clan/players` for all, `/clan/players/:playerId` for one
+- 🚀 **Fast lookup** - Direct query by WOM player ID
+
+**Error Responses:**
+- `400` - Invalid player ID (non-numeric)
+- `404` - No clan snapshots available yet
+- `404` - Player not found in latest clan snapshot
+
+**Use Cases:**
+- 👤 Individual player profile pages
+- 📊 Personal statistics dashboard
+- 🎮 Player comparison tools
+- 📈 Progress tracking for specific players
+- 🔍 Quick player lookup by WOM ID
+
 ---
 
 ## Usage Examples for Profile Page
@@ -793,6 +898,123 @@ Object.keys(skillLevels).forEach(skill => {
   const maxedPct = (skillLevels[skill].maxed / data.count) * 100
   console.log(`${skill}: Avg ${avg.toFixed(1)}, ${skillLevels[skill].maxed} maxed (${maxedPct.toFixed(1)}%)`)
 })
+```
+
+### Individual Player Profile - By Player ID
+
+```javascript
+// Fetch single player snapshot by WOM player ID (PUBLIC - no auth required)
+const playerId = 12345  // WiseOldMan player ID
+const response = await fetch(`/api/wom/clan/players/${playerId}`)
+const { data } = await response.json()
+
+// Access clan snapshot info
+console.log(`Clan: ${data.clanSnapshot.groupName}`)
+console.log(`Snapshot Date: ${data.clanSnapshot.snapshotDate}`)
+
+// Access player data
+const player = data.player
+console.log(`Username: ${player.username}`)
+console.log(`Display Name: ${player.displayName}`)
+console.log(`Total Level: ${player.stats.totalLevel}`)
+console.log(`Combat Level: ${player.stats.combatLevel}`)
+console.log(`EHP: ${player.stats.ehp}`)
+console.log(`EHB: ${player.stats.ehb}`)
+
+// Example 1: Display all skills
+console.log('\nSkills:')
+player.skills.forEach(skill => {
+  console.log(`${skill.skill}: Level ${skill.level} (${skill.experience.toLocaleString()} XP) - Rank ${skill.rank.toLocaleString()}`)
+})
+
+// Example 2: Get maxed skills count
+const maxedSkills = player.skills.filter(s => s.level === 99)
+console.log(`\nMaxed Skills: ${maxedSkills.length}/23`)
+
+// Example 3: Top 5 bosses by KC
+const topBosses = player.bosses
+  .filter(b => b.kills > 0)
+  .sort((a, b) => b.kills - a.kills)
+  .slice(0, 5)
+
+console.log('\nTop 5 Bosses:')
+topBosses.forEach((boss, i) => {
+  console.log(`${i + 1}. ${boss.boss}: ${boss.kills.toLocaleString()} KC - Rank ${boss.rank.toLocaleString()}`)
+})
+
+// Example 4: Total clue scrolls
+const clueScroll = player.activities.find(a => a.activity === 'clue_scrolls_all')
+if (clueScroll) {
+  console.log(`\nTotal Clue Scrolls: ${clueScroll.score.toLocaleString()}`)
+}
+
+// Example 5: Build a skill progress component
+function SkillProgressCard({ skill }) {
+  const percentTo99 = (skill.experience / 13034431) * 100
+  return {
+    name: skill.skill,
+    level: skill.level,
+    experience: skill.experience,
+    percentTo99: Math.min(percentTo99, 100).toFixed(2),
+    rank: skill.rank,
+    ehp: skill.ehp
+  }
+}
+
+// Example 6: Calculate total boss KC
+const totalBossKC = player.bosses.reduce((sum, boss) => {
+  return sum + (boss.kills > 0 ? boss.kills : 0)
+}, 0)
+console.log(`\nTotal Boss KC: ${totalBossKC.toLocaleString()}`)
+
+// Example 7: Display player card
+const playerCard = {
+  playerId: player.playerId,
+  osrsUsername: player.username,
+  displayName: player.displayName,
+  country: player.country,
+  type: player.type,
+  build: player.build,
+  patron: player.patron,
+  stats: {
+    totalLevel: player.stats.totalLevel,
+    combatLevel: player.stats.combatLevel,
+    totalExp: player.stats.totalExp,
+    ehp: player.stats.ehp,
+    ehb: player.stats.ehb,
+    timeToMax: player.stats.ttm,
+    timeTo200m: player.stats.tt200m
+  },
+  achievements: {
+    maxedSkills: maxedSkills.length,
+    totalBossKC: totalBossKC,
+    clueScrolls: clueScroll?.score || 0
+  },
+  lastUpdated: player.timestamps.updatedAt
+}
+
+console.log('\nPlayer Card:', playerCard)
+
+// Example 8: Get player from leaderboard first, then fetch details
+async function getPlayerDetails(username) {
+  // First, get all players to find the player ID
+  const allPlayersResponse = await fetch('/api/wom/clan/players')
+  const allPlayers = await allPlayersResponse.json()
+  
+  const player = allPlayers.data.players.find(p => 
+    p.username.toLowerCase() === username.toLowerCase()
+  )
+  
+  if (!player) {
+    throw new Error('Player not found in clan')
+  }
+  
+  // Now fetch full details for this player
+  const detailsResponse = await fetch(`/api/wom/clan/players/${player.playerId}`)
+  return detailsResponse.json()
+}
+
+// Usage: getPlayerDetails('player_name').then(data => console.log(data))
 ```
 
 ---

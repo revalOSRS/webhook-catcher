@@ -201,49 +201,4 @@ router.post('/discord', async (req, res) => {
   }
 })
 
-// Login with member code
-router.post('/login', async (req, res) => {
-  try {
-    const { code } = req.body
-
-    if (!code || isNaN(parseInt(code))) {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Valid member code is required' 
-      })
-    }
-
-    const memberCode = parseInt(code)
-    const memberInfo = await loginWithCode(memberCode)
-
-    if (!memberInfo) {
-      return res.status(401).json({ 
-        status: 'error', 
-        message: 'Invalid member code' 
-      })
-    }
-
-    if (!memberInfo.is_active) {
-      return res.status(403).json({ 
-        status: 'error', 
-        message: 'Account is not active' 
-      })
-    }
-
-    res.status(200).json({
-      status: 'success',
-      data: memberInfo,
-      message: 'Login successful'
-    })
-  } catch (error) {
-    console.error('Login error:', error)
-    res.status(500).json({ 
-      status: 'error', 
-      message: 'Failed to process login' 
-    })
-  }
-})
-
 export default router
-
-

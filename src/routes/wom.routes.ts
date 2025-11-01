@@ -342,6 +342,155 @@ router.get('/clan/statistics/history', async (req, res) => {
   }
 })
 
+// Get single player's detailed snapshot by WOM player ID (PUBLIC)
+router.get('/clan/players/:playerId', async (req, res) => {
+  try {
+    const playerId = parseInt(req.params.playerId)
+    
+    if (isNaN(playerId)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid player ID'
+      })
+    }
+    
+    // Get the latest clan snapshot
+    const latestClanSnapshot = await db.queryOne<any>(`
+      SELECT id, snapshot_date, group_name
+      FROM clan_statistics_snapshots
+      ORDER BY snapshot_date DESC
+      LIMIT 1
+    `)
+    
+    if (!latestClanSnapshot) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No clan snapshots available yet'
+      })
+    }
+    
+    // Get player snapshot for this player from latest clan snapshot
+    const playerSnapshot = await db.queryOne<any>(`
+      SELECT 
+        id, player_id, username, display_name, snapshot_date,
+        player_type, player_build, country, status, patron,
+        total_exp, total_level, combat_level,
+        ehp, ehb, ttm, tt200m,
+        registered_at, updated_at, last_changed_at
+      FROM player_snapshots
+      WHERE player_id = $1 AND clan_snapshot_id = $2
+    `, [playerId, latestClanSnapshot.id])
+    
+    if (!playerSnapshot) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No snapshot found for this player in the latest clan snapshot'
+      })
+    }
+    
+    // Fetch all related data in parallel
+    const [skills, bosses, activities, computed] = await Promise.all([
+      db.query<any>(`
+        SELECT skill, experience, level, rank, ehp
+        FROM player_skills_snapshots
+        WHERE player_snapshot_id = $1
+        ORDER BY skill
+      `, [playerSnapshot.id]),
+      
+      db.query<any>(`
+        SELECT boss, kills, rank, ehb
+        FROM player_bosses_snapshots
+        WHERE player_snapshot_id = $1
+        ORDER BY boss
+      `, [playerSnapshot.id]),
+      
+      db.query<any>(`
+        SELECT activity, score, rank
+        FROM player_activities_snapshots
+        WHERE player_snapshot_id = $1
+        ORDER BY activity
+      `, [playerSnapshot.id]),
+      
+      db.query<any>(`
+        SELECT metric, value, rank
+        FROM player_computed_snapshots
+        WHERE player_snapshot_id = $1
+        ORDER BY metric
+      `, [playerSnapshot.id])
+    ])
+    
+    // Format the response
+    const playerData = {
+      clanSnapshot: {
+        id: latestClanSnapshot.id,
+        snapshotDate: latestClanSnapshot.snapshot_date,
+        groupName: latestClanSnapshot.group_name
+      },
+      player: {
+        id: playerSnapshot.id,
+        playerId: playerSnapshot.player_id,
+        username: playerSnapshot.username,
+        displayName: playerSnapshot.display_name,
+        snapshotDate: playerSnapshot.snapshot_date,
+        type: playerSnapshot.player_type,
+        build: playerSnapshot.player_build,
+        country: playerSnapshot.country,
+        status: playerSnapshot.status,
+        patron: playerSnapshot.patron,
+        stats: {
+          totalExp: parseInt(playerSnapshot.total_exp),
+          totalLevel: playerSnapshot.total_level,
+          combatLevel: playerSnapshot.combat_level,
+          ehp: parseFloat(playerSnapshot.ehp),
+          ehb: parseFloat(playerSnapshot.ehb),
+          ttm: parseFloat(playerSnapshot.ttm),
+          tt200m: parseFloat(playerSnapshot.tt200m)
+        },
+        skills: skills.map(skill => ({
+          skill: skill.skill,
+          experience: parseInt(skill.experience),
+          level: skill.level,
+          rank: skill.rank,
+          ehp: parseFloat(skill.ehp)
+        })),
+        bosses: bosses.map(boss => ({
+          boss: boss.boss,
+          kills: boss.kills,
+          rank: boss.rank,
+          ehb: parseFloat(boss.ehb)
+        })),
+        activities: activities.map(activity => ({
+          activity: activity.activity,
+          score: activity.score,
+          rank: activity.rank
+        })),
+        computed: computed.map(comp => ({
+          metric: comp.metric,
+          value: parseFloat(comp.value),
+          rank: comp.rank
+        })),
+        timestamps: {
+          registeredAt: playerSnapshot.registered_at,
+          updatedAt: playerSnapshot.updated_at,
+          lastChangedAt: playerSnapshot.last_changed_at
+        }
+      }
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      data: playerData
+    })
+    
+  } catch (error) {
+    console.error('Error fetching player snapshot:', error)
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'Failed to fetch player snapshot data' 
+    })
+  }
+})
+
 // Get detailed player snapshots from latest clan snapshot (PUBLIC - for landing page)
 router.get('/clan/players', async (req, res) => {
   try {
