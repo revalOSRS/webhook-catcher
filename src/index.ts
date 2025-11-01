@@ -9,6 +9,7 @@ import { handler as dinkHandler } from './dink/handler.js'
 import authRoutes from './routes/auth.routes.js'
 import membersRoutes from './routes/members.routes.js'
 import womRoutes from './routes/wom.routes.js'
+import clanRoutes from './routes/clan.routes.js'
 import battleshipRoutes from './routes/battleship/index.js'
 import activityRoutes from './routes/activity.routes.js'
 
@@ -59,10 +60,10 @@ app.post('/webhook', async (req, res) => {
 
 // Mount API routes
 app.use('/api/auth', authRoutes)
-app.use('/api/member', membersRoutes) // /api/member/:id endpoint
-app.use('/api/player', membersRoutes) // /api/player/:discordId endpoint
+app.use('/api/members', membersRoutes) // /api/members/:memberId and /api/members/:memberId/snapshot
 app.use('/api/admin/members', membersRoutes) // /api/admin/members/all endpoint
 app.use('/api/wom', womRoutes)
+app.use('/api/clan', clanRoutes)
 app.use('/api/battleship', battleshipRoutes)
 app.use('/api/activity-events', activityRoutes)
 
