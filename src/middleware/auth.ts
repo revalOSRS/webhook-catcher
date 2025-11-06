@@ -45,11 +45,20 @@ export async function requireMemberAuth(req: Request, res: Response, next: NextF
     const memberCode = req.headers['x-member-code'] as string
     const discordId = req.headers['x-discord-id'] as string
     
-    // Require at least one authentication method
-    if (!memberCode && !discordId) {
+    // Require both authentication methods
+    if (!memberCode || !discordId) {
       return res.status(401).json({
         status: 'error',
-        message: 'Authentication required. Provide either X-Member-Code or X-Discord-Id header.'
+        message: 'Authentication required. Provide both X-Member-Code and X-Discord-Id headers.'
+      })
+    }
+    
+    // Validate member code format
+    const code = parseInt(memberCode)
+    if (isNaN(code)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid member code format'
       })
     }
     
@@ -69,29 +78,11 @@ export async function requireMemberAuth(req: Request, res: Response, next: NextF
     
     const member = members[0]
     
-    // Verify authentication
-    let authenticated = false
+    // Verify both authentication methods match
+    const memberCodeMatches = code === member.member_code
+    const discordIdMatches = discordId === member.discord_id
     
-    // Check member code
-    if (memberCode) {
-      const code = parseInt(memberCode)
-      if (isNaN(code)) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Invalid member code format'
-        })
-      }
-      if (code === member.member_code) {
-        authenticated = true
-      }
-    }
-    
-    // Check Discord ID (must match exactly)
-    if (discordId && discordId === member.discord_id) {
-      authenticated = true
-    }
-    
-    if (!authenticated) {
+    if (!memberCodeMatches || !discordIdMatches) {
       return res.status(403).json({
         status: 'error',
         message: 'Authentication failed. Invalid credentials.'

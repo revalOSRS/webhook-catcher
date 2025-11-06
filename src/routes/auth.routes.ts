@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getMemberByDiscordId, upsertMember, loginWithCode } from '../db/services/member.js'
+import { getMemberByDiscordId, upsertMember } from '../db/services/member.js'
 import { getDiscordAvatar } from '../services/discord.js'
 
 const router = Router()
@@ -45,7 +45,7 @@ router.post('/discord', async (req, res) => {
         client_id: clientId,
         client_secret: clientSecret,
         grant_type: 'authorization_code',
-        code: code,
+        code,
         redirect_uri: redirectUri
       })
     })
@@ -93,7 +93,6 @@ router.post('/discord', async (req, res) => {
       `${discordUser.username}${discordUser.discriminator && discordUser.discriminator !== '0' ? '#' + discordUser.discriminator : ''}` : 
       null
 
-    // ========== NEW: Check if user is in required guild ==========
     if (requiredGuildId) {
       const guildsResponse = await fetch('https://discord.com/api/users/@me/guilds', {
         headers: {
@@ -120,7 +119,6 @@ router.post('/discord', async (req, res) => {
         })
       }
 
-      // ========== NEW: Check if user has required role ==========
       if (requiredRoleIds.length > 0) {
         const memberResponse = await fetch(
           `https://discord.com/api/users/@me/guilds/${requiredGuildId}/member`,
@@ -155,7 +153,6 @@ router.post('/discord', async (req, res) => {
         }
       }
     }
-    // ========== END NEW ==========
 
     // Check if member exists
     let member = await getMemberByDiscordId(discordId)

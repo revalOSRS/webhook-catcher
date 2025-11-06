@@ -7,7 +7,7 @@ import type {
   TokenMovement,
   CofferMovement,
   MemberProfile,
-} from '../types.js'
+} from '../types/index.js'
 
 /**
  * Get member by Discord ID
@@ -76,15 +76,18 @@ export async function getDonationStats(discordId: string): Promise<{ total_appro
 /**
  * Get recent donations for a member
  */
-export async function getRecentDonations(discordId: string, limit: number = 10): Promise<Donation[]> {
+export async function getRecentDonations(discordId: string, limit?: number): Promise<Donation[]> {
+  const limitClause = limit ? 'LIMIT $2' : ''
+  const params = limit ? [discordId, limit] : [discordId]
+  
   return query<Donation>(
     `SELECT d.*, dc.name as category_name
      FROM donations d
      LEFT JOIN donation_categories dc ON d.category_id = dc.id
      WHERE d.player_discord_id = $1 
      ORDER BY d.submitted_at DESC 
-     LIMIT $2`,
-    [discordId, limit]
+     ${limitClause}`,
+    params
   )
 }
 
