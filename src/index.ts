@@ -12,6 +12,7 @@ import membersRoutes from './routes/members/index.js'
 import clanRoutes from './routes/clan/index.js'
 import battleshipRoutes from './routes/battleship/index.js'
 import activityRoutes from './routes/activity.routes.js'
+import eventFiltersRoutes from './routes/event-filters.routes.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -52,79 +53,13 @@ app.post('/reval-webhook', express.json({
     console.log('========================================')
     console.log('Received RuneLite plugin data')
     console.log('========================================')
-    
-    // Log basic info
-    console.log('Player Name:', req.body.playerName)
-    console.log('Account Hash:', req.body.accountHash)
-    console.log('Timestamp:', req.body.timestamp)
-    console.log('Data size:', JSON.stringify(req.body).length, 'bytes')
-    console.log('Content-Encoding:', req.headers['content-encoding'] || 'none')
-    
-    // Log top-level keys
-    console.log('\nTop-level keys:', Object.keys(req.body))
-    
-    // Log nested structure details
-    console.log('\n--- Quests ---')
-    if (req.body.quests) {
-      console.log('Completed:', req.body.quests.completed)
-      console.log('In Progress:', req.body.quests.inProgress)
-      console.log('Not Started:', req.body.quests.notStarted)
-      console.log('Quest Points:', req.body.quests.questPoints)
-      console.log('Quest States Keys:', req.body.quests.questStates ? Object.keys(req.body.quests.questStates).length : 0)
-    }
-    
-    console.log('\n--- Collection Log ---')
-    if (req.body.collectionLog) {
-      console.log('Keys:', Object.keys(req.body.collectionLog))
-      console.log('Unique Items Obtained:', req.body.collectionLog.uniqueItemsObtained)
-      if (req.body.collectionLog.tabs) {
-        console.log('Tab Count:', Object.keys(req.body.collectionLog.tabs).length)
-        console.log('Tab Names:', Object.keys(req.body.collectionLog.tabs))
-      }
-      if (req.body.collectionLog.sampleKillCounts) {
-        console.log('Sample Kill Counts:', req.body.collectionLog.sampleKillCounts)
-      }
-    }
-    
-    console.log('\n--- Combat Achievements ---')
-    if (req.body.combatAchievements) {
-      console.log('Keys:', Object.keys(req.body.combatAchievements))
-      console.log('Current Tier:', req.body.combatAchievements.currentTier)
-      if (req.body.combatAchievements.tierProgress) {
-        console.log('Tier Progress:', req.body.combatAchievements.tierProgress)
-      }
-      if (req.body.combatAchievements.tasks) {
-        console.log('Total Tasks:', req.body.combatAchievements.tasks.length || 'N/A')
-      }
-      if (req.body.combatAchievements.tasksByMonster) {
-        console.log('Monsters with tasks:', Object.keys(req.body.combatAchievements.tasksByMonster).length)
-      }
-    }
-    
-    console.log('\n--- Achievement Diaries ---')
-    if (req.body.achievementDiaries) {
-      console.log('Keys:', Object.keys(req.body.achievementDiaries))
-      console.log('Total Diaries:', req.body.achievementDiaries.totalDiaries)
-      console.log('Total Completed:', req.body.achievementDiaries.totalCompleted)
-      if (req.body.achievementDiaries.progress) {
-        console.log('Regions:', Object.keys(req.body.achievementDiaries.progress))
-      }
-    }
-    
-    console.log('\n========================================')
-    console.log('Full payload structure:')
-    console.log(JSON.stringify(req.body, null, 2).substring(0, 2000) + '...(truncated)')
+    console.log(JSON.stringify(req.body, null, 2))
     console.log('========================================\n')
     
     res.status(200).json({ 
       status: 'success', 
       message: 'RuneLite plugin data received',
-      timestamp: new Date().toISOString(),
-      debug: {
-        playerName: req.body.playerName,
-        dataSize: JSON.stringify(req.body).length,
-        topLevelKeys: Object.keys(req.body)
-      }
+      timestamp: new Date().toISOString()
     })
   } catch (error) {
     console.error('RuneLite webhook processing error:', error)
@@ -165,6 +100,9 @@ app.use('/api/members', membersRoutes)
 app.use('/api/clan', clanRoutes)
 app.use('/api/battleship', battleshipRoutes)
 app.use('/api/activity-events', activityRoutes)
+
+// Public RuneLite plugin endpoint (no /api prefix for backward compatibility)
+app.use('/event-filters', eventFiltersRoutes)
 
 // 404 handler
 app.use((req, res) => {

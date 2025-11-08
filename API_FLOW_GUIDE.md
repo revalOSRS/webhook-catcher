@@ -268,29 +268,67 @@ for (const osrsAccount of memberProfile.osrs_accounts) {
 {
   "status": "success",
   "data": {
-    "id": 1,
-    "snapshot_date": "2024-01-01",
-    "group_id": 123,
-    "group_name": "Clan Name",
-    "total_members": 50,
-    "average_level": 2100,
-    "average_xp": 500000000,
-    "maxed_count": 25,
-    "maxed_percentage": 50.00,
-    "total_clues": 5000,
-    "total_boss_kills": 100000,
-    "total_cox": 5000,
-    "total_toa": 3000,
-    "total_tob": 4000,
-    "total_ehp": 50000,
-    "total_ehb": 25000,
-    "failed_members": 0,
-    "created_at": "2024-01-01T00:00:00Z"
+    "groupName": "Clan Name",
+    "totalMembers": 50,
+    "averageLevel": 2100,
+    "averageXP": 500000000,
+    "maxedPlayers": {
+      "count": 25,
+      "percentage": 50.00
+    },
+    "totalStats": {
+      "clues": 5000,
+      "bossKills": 100000,
+      "cox": 5000,
+      "toa": 3000,
+      "tob": 4000,
+      "ehp": 50000,
+      "ehb": 25000
+    },
+    "snapshotDate": "2024-01-01",
+    "lastUpdated": "2024-01-01T00:00:00Z",
+    "failedMembers": 0
   }
 }
 ```
 
 **Use Case:** Display clan statistics on the landing page before users log in.
+
+---
+
+### Get Recent Clan Activity
+
+**Endpoint:** `GET /api/activity-events?limit=7`
+
+**Description:** Retrieves recent clan activity events (drops, collection log, deaths, etc.) from the Dink webhook cache.
+
+**Authentication:** Not required
+
+**Query Parameters:**
+- `limit` (optional) - Number of events to return (default: 7)
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "type": "loot",
+      "playerName": "PlayerName",
+      "message": "Received loot from Zulrah",
+      "timestamp": "2024-01-01T12:00:00Z",
+      "value": 1000000,
+      "items": [...]
+    }
+    // ... more events
+  ],
+  "count": 7
+}
+```
+
+**Use Case:** Display recent clan member activities on the landing page.
+
+**Important:** This endpoint was previously `/api/wom/clan/activity` - update your frontend to use the new endpoint.
 
 ---
 
@@ -371,6 +409,7 @@ const accountSnapshots = await Promise.all(
 
 The following WiseOldMan (WOM) proxy endpoints have been **removed** and should no longer be used:
 
+**Player Endpoints:**
 - `GET /api/wom/player/:username` - Get player by username
 - `GET /api/wom/player/id/:id` - Get player by ID
 - `GET /api/wom/player/search` - Search for player
@@ -382,9 +421,22 @@ The following WiseOldMan (WOM) proxy endpoints have been **removed** and should 
 - `GET /api/wom/player/:id/competitions` - Get player competitions
 - `GET /api/wom/player/:id/groups` - Get player groups
 - `POST /api/wom/player/:username/update` - Update player
-- All group-related WOM endpoints
+
+**Clan/Group Endpoints:**
+- `GET /api/wom/clan/activity` - ❌ **Replace with:** `GET /api/activity-events?limit=7`
+- All other group-related WOM endpoints
 
 **Reason:** All player data is now retrieved through our own snapshot system, which provides more comprehensive and consistent data.
+
+### 🔄 Endpoint Replacements
+
+| Old Endpoint (Removed) | New Endpoint | Notes |
+|------------------------|--------------|-------|
+| `GET /api/wom/clan/activity?limit=7` | `GET /api/activity-events?limit=7` | Recent clan member activities |
+| `GET /api/wom/player/:username` | `GET /api/members/:memberId/osrs-accounts/:osrsAccountId` | Use after authentication |
+| WOM clan statistics | `GET /api/clan/statistics/current` | Current clan stats |
+
+**Action Required:** Update all frontend calls from `/api/wom/clan/activity` to `/api/activity-events`
 
 ### ✅ New Snapshot System
 
@@ -434,10 +486,13 @@ Common error responses:
 
 **Landing Page:**
 - `GET /api/clan/statistics/current` - Get latest clan statistics (public)
+- `GET /api/activity-events?limit=7` - Get recent clan activity (public)
 
 **Removed:**
 - All `/api/wom/*` endpoints - No longer needed
+- **Important:** Change `/api/wom/clan/activity` to `/api/activity-events`
 
 **Authentication:**
 - Headers: `X-Discord-Id` and `X-Member-Code` required for all member endpoints
+
 
