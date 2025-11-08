@@ -50,14 +50,7 @@ app.post('/reval-webhook', express.json({
     }
   }
 }), async (req, res) => {
-  try {
-    console.log('========================================')
-    console.log('Received RuneLite plugin data')
-    console.log('========================================')
-    console.log(JSON.stringify(req.body, null, 2))
-    console.log('========================================\n')
-    
-    // Validate event structure
+  try {    
     const validation = validateRuneLiteEvent(req.body)
     if (!validation.valid) {
       console.error(`[RuneLite Webhook] Validation error: ${validation.error}`)
