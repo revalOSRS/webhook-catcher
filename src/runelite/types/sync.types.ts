@@ -106,32 +106,29 @@ export interface CombatAchievementsData {
 // ===== Collection Log =====
 
 export interface CollectionLogItem {
-  id: number
-  name: string
   quantity: number
-  obtained: boolean
-  obtainedTimestamp?: number
-}
-
-export interface CollectionLogTab {
   name: string
-  entries: CollectionLogEntry[]
+  id: number
+  obtained: boolean
 }
 
 export interface CollectionLogEntry {
-  name: string
+  total: number
+  kc: number
+  obtained: number
   items: CollectionLogItem[]
-  killCount?: number
-  obtainedCount: number
-  totalItems: number
+}
+
+export interface CollectionLogCategory {
+  [entryName: string]: CollectionLogEntry
 }
 
 export interface CollectionLogData {
-  tabs: CollectionLogTab[]
-  summary: {
-    uniqueObtained: number
-    uniqueTotal: number
-    completionPercentage: number
+  obtainedItems: number
+  note: string
+  totalItems: number
+  categories: {
+    [categoryName: string]: CollectionLogCategory
   }
 }
 

@@ -37,7 +37,7 @@ export async function handleSyncEvent(payload: SyncEventPayload): Promise<SyncSu
   
   console.log(`  Easy: ${tierCounts.easy}/${totalAreas}`)
   console.log(`  Medium: ${tierCounts.medium}/${totalAreas}`)
-  console.log(`  Hard: ${tierCounts.hard}/${totalAreas}`)
+  console.log(`  Hard: ${tierCounts.hard}/${totalAreas}`) 
   console.log(`  Elite: ${tierCounts.elite}/${totalAreas}`)
   console.log(`  Total: ${achievementDiaries.totalCompleted}/${achievementDiaries.totalDiaries}`)
   console.log('----------------------------------------')
@@ -59,8 +59,16 @@ export async function handleSyncEvent(payload: SyncEventPayload): Promise<SyncSu
   console.log(`  Tasks Loaded: ${combatAchievements.totalTasksLoaded}`)
   console.log('----------------------------------------')
   console.log('Collection Log:')
-  console.log(`  Items: ${collectionLog.summary.uniqueObtained}/${collectionLog.summary.uniqueTotal}`)
-  console.log(`  Completion: ${collectionLog.summary.completionPercentage.toFixed(2)}%`)
+  console.log(`  Items: ${collectionLog.obtainedItems}/${collectionLog.totalItems}`)
+  
+  // Calculate completion percentage
+  const completionPercentage = collectionLog.totalItems > 0 
+    ? (collectionLog.obtainedItems / collectionLog.totalItems) * 100 
+    : 0
+  
+  console.log(`  Completion: ${completionPercentage.toFixed(2)}%`)
+  console.log(`  Categories: ${Object.keys(collectionLog.categories).length}`)
+  console.log(`  Note: ${collectionLog.note}`)
   console.log('========================================\n')
 
   // TODO: Store data in database
@@ -81,7 +89,7 @@ export async function handleSyncEvent(payload: SyncEventPayload): Promise<SyncSu
     questPoints: quests.questPoints,
     diariesCompleted: achievementDiaries.totalCompleted,
     combatAchievementsCompleted: caCompleted,
-    collectionLogItems: collectionLog.summary.uniqueObtained,
+    collectionLogItems: collectionLog.obtainedItems,
     syncedAt: new Date(eventTimestamp)
   }
 }
