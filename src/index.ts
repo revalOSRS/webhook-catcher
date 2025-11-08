@@ -5,6 +5,7 @@ import cors from 'cors'
 import compression from 'compression'
 
 import { handler as dinkHandler } from './dink/handler.js'
+import { handleRuneLiteEvent, validateRuneLiteEvent } from './runelite/handler.js'
 
 // Import route modules
 import authRoutes from './routes/auth.routes.js'
@@ -56,9 +57,25 @@ app.post('/reval-webhook', express.json({
     console.log(JSON.stringify(req.body, null, 2))
     console.log('========================================\n')
     
+    // Validate event structure
+    const validation = validateRuneLiteEvent(req.body)
+    if (!validation.valid) {
+      console.error(`[RuneLite Webhook] Validation error: ${validation.error}`)
+      return res.status(400).json({ 
+        status: 'error', 
+        message: validation.error,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    // Process event through handler
+    const result = await handleRuneLiteEvent(req.body)
+    
     res.status(200).json({ 
       status: 'success', 
-      message: 'RuneLite plugin data received',
+      message: 'RuneLite plugin data received and processed',
+      eventType: req.body.eventType,
+      result,
       timestamp: new Date().toISOString()
     })
   } catch (error) {
