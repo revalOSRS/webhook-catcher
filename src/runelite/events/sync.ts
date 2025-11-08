@@ -21,25 +21,42 @@ export async function handleSyncEvent(payload: SyncEventPayload): Promise<SyncSu
   console.log(`Combat Level: ${player.combatLevel || 'Unknown'}`)
   console.log(`Total Level: ${player.totalLevel || 'Unknown'}`)
   console.log('----------------------------------------')
-  console.log(`Quest Points: ${quests.questPoints}/${quests.totalQuests * 2}`)
-  console.log(`Quests Completed: ${quests.completedQuests}/${quests.totalQuests}`)
+  console.log(`Quest Points: ${quests.questPoints}/${quests.questPoints}`)
   console.log('----------------------------------------')
   console.log('Achievement Diaries:')
-  console.log(`  Easy: ${achievementDiaries.summary.easy.completed}/${achievementDiaries.summary.easy.total}`)
-  console.log(`  Medium: ${achievementDiaries.summary.medium.completed}/${achievementDiaries.summary.medium.total}`)
-  console.log(`  Hard: ${achievementDiaries.summary.hard.completed}/${achievementDiaries.summary.hard.total}`)
-  console.log(`  Elite: ${achievementDiaries.summary.elite.completed}/${achievementDiaries.summary.elite.total}`)
-  console.log(`  Total: ${achievementDiaries.summary.totalCompleted}/${achievementDiaries.summary.totalDiaries}`)
+  
+  // Calculate tier completion counts
+  const diaryAreas = Object.values(achievementDiaries.progress)
+  const tierCounts = {
+    easy: diaryAreas.filter(d => d.easy).length,
+    medium: diaryAreas.filter(d => d.medium).length,
+    hard: diaryAreas.filter(d => d.hard).length,
+    elite: diaryAreas.filter(d => d.elite).length
+  }
+  const totalAreas = diaryAreas.length
+  
+  console.log(`  Easy: ${tierCounts.easy}/${totalAreas}`)
+  console.log(`  Medium: ${tierCounts.medium}/${totalAreas}`)
+  console.log(`  Hard: ${tierCounts.hard}/${totalAreas}`)
+  console.log(`  Elite: ${tierCounts.elite}/${totalAreas}`)
+  console.log(`  Total: ${achievementDiaries.totalCompleted}/${achievementDiaries.totalDiaries}`)
   console.log('----------------------------------------')
   console.log('Combat Achievements:')
-  console.log(`  Easy: ${combatAchievements.summary.easy.completed}/${combatAchievements.summary.easy.total}`)
-  console.log(`  Medium: ${combatAchievements.summary.medium.completed}/${combatAchievements.summary.medium.total}`)
-  console.log(`  Hard: ${combatAchievements.summary.hard.completed}/${combatAchievements.summary.hard.total}`)
-  console.log(`  Elite: ${combatAchievements.summary.elite.completed}/${combatAchievements.summary.elite.total}`)
-  console.log(`  Master: ${combatAchievements.summary.master.completed}/${combatAchievements.summary.master.total}`)
-  console.log(`  Grandmaster: ${combatAchievements.summary.grandmaster.completed}/${combatAchievements.summary.grandmaster.total}`)
-  console.log(`  Total: ${combatAchievements.summary.totalCompleted}/${combatAchievements.summary.totalTasks}`)
-  console.log(`  Points: ${combatAchievements.points}`)
+  console.log(`  Current Tier: ${combatAchievements.currentTier}`)
+  console.log(`  Easy: ${combatAchievements.tierProgress.easy.completed}/${combatAchievements.tierProgress.easy.total}`)
+  console.log(`  Medium: ${combatAchievements.tierProgress.medium.completed}/${combatAchievements.tierProgress.medium.total}`)
+  console.log(`  Hard: ${combatAchievements.tierProgress.hard.completed}/${combatAchievements.tierProgress.hard.total}`)
+  console.log(`  Elite: ${combatAchievements.tierProgress.elite.completed}/${combatAchievements.tierProgress.elite.total}`)
+  console.log(`  Master: ${combatAchievements.tierProgress.master.completed}/${combatAchievements.tierProgress.master.total}`)
+  console.log(`  Grandmaster: ${combatAchievements.tierProgress.grandmaster.completed}/${combatAchievements.tierProgress.grandmaster.total}`)
+  
+  // Calculate total completed and total tasks
+  const totalCompleted = Object.values(combatAchievements.tierProgress).reduce((sum, tier) => sum + tier.completed, 0)
+  const totalTasks = Object.values(combatAchievements.tierProgress).reduce((sum, tier) => sum + tier.total, 0)
+  
+  console.log(`  Total: ${totalCompleted}/${totalTasks}`)
+  console.log(`  Points: ${combatAchievements.totalPoints}`)
+  console.log(`  Tasks Loaded: ${combatAchievements.totalTasksLoaded}`)
   console.log('----------------------------------------')
   console.log('Collection Log:')
   console.log(`  Items: ${collectionLog.summary.uniqueObtained}/${collectionLog.summary.uniqueTotal}`)
@@ -55,12 +72,15 @@ export async function handleSyncEvent(payload: SyncEventPayload): Promise<SyncSu
   // 6. Create SYNC event record in osrs_account_events table
   // 7. Update denormalized counters on osrs_accounts table
 
+  // Calculate total CA completed
+  const caCompleted = Object.values(combatAchievements.tierProgress).reduce((sum, tier) => sum + tier.completed, 0)
+  
   return {
     player: player.username,
     accountHash: player.accountHash,
     questPoints: quests.questPoints,
-    diariesCompleted: achievementDiaries.summary.totalCompleted,
-    combatAchievementsCompleted: combatAchievements.summary.totalCompleted,
+    diariesCompleted: achievementDiaries.totalCompleted,
+    combatAchievementsCompleted: caCompleted,
     collectionLogItems: collectionLog.summary.uniqueObtained,
     syncedAt: new Date(eventTimestamp)
   }

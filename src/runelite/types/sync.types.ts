@@ -39,86 +39,68 @@ export interface QuestsData {
 
 // ===== Achievement Diaries =====
 
-export type DiaryTier = 'EASY' | 'MEDIUM' | 'HARD' | 'ELITE'
-export type DiaryName = 
+export type DiaryArea = 
   | 'Ardougne'
   | 'Desert'
   | 'Falador'
   | 'Fremennik'
   | 'Kandarin'
   | 'Karamja'
-  | 'Kourend & Kebos'
-  | 'Lumbridge & Draynor'
+  | 'Kourend'
+  | 'Lumbridge'
   | 'Morytania'
   | 'Varrock'
-  | 'Western Provinces'
+  | 'Western'
   | 'Wilderness'
 
-export interface DiaryTask {
-  name: string
-  completed: boolean
-  completedTimestamp?: number
-}
-
-export interface DiaryTierData {
-  tier: DiaryTier
-  tasks: DiaryTask[]
-  totalTasks: number
-  completedTasks: number
-  isComplete: boolean
-  completedTimestamp?: number
-}
-
-export interface DiaryData {
-  area: DiaryName
-  tiers: DiaryTierData[]
+export interface DiaryProgress {
+  easy: boolean
+  medium: boolean
+  hard: boolean
+  elite: boolean
 }
 
 export interface AchievementDiariesData {
-  diaries: DiaryData[]
-  summary: {
-    easy: { completed: number; total: number }
-    medium: { completed: number; total: number }
-    hard: { completed: number; total: number }
-    elite: { completed: number; total: number }
-    totalCompleted: number
-    totalDiaries: number
-  }
+  totalDiaries: number
+  totalCompleted: number
+  progress: Record<string, DiaryProgress>
 }
 
 // ===== Combat Achievements =====
 
-export type CombatAchievementTier = 'EASY' | 'MEDIUM' | 'HARD' | 'ELITE' | 'MASTER' | 'GRANDMASTER'
+export type CombatAchievementTier = 'Easy' | 'Medium' | 'Hard' | 'Elite' | 'Master' | 'Grandmaster'
+export type CombatAchievementType = 'Kill Count' | 'Mechanical' | 'Restriction' | 'Perfection' | 'Speed' | 'Stamina'
 
 export interface CombatAchievementTask {
+  id: number
   name: string
+  description: string
   tier: CombatAchievementTier
-  monster?: string
+  type: CombatAchievementType
+  boss: string
+  points: number
   completed: boolean
-  completedTimestamp?: number
 }
 
-export interface CombatAchievementsByTier {
-  tier: CombatAchievementTier
-  tasks: CombatAchievementTask[]
-  totalTasks: number
-  completedTasks: number
+export interface TierProgress {
+  total: number
+  completed: number
 }
 
 export interface CombatAchievementsData {
-  tasks: CombatAchievementTask[]
-  byTier: CombatAchievementsByTier[]
-  summary: {
-    easy: { completed: number; total: number }
-    medium: { completed: number; total: number }
-    hard: { completed: number; total: number }
-    elite: { completed: number; total: number }
-    master: { completed: number; total: number }
-    grandmaster: { completed: number; total: number }
-    totalCompleted: number
-    totalTasks: number
+  currentTier: string
+  totalPoints: number
+  tierProgress: {
+    easy: TierProgress
+    medium: TierProgress
+    hard: TierProgress
+    elite: TierProgress
+    master: TierProgress
+    grandmaster: TierProgress
   }
-  points: number
+  allTasks: CombatAchievementTask[]
+  dataSource: string
+  totalTasksLoaded: number
 }
 
 // ===== Collection Log =====
