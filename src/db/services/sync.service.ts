@@ -86,9 +86,10 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
     // 5.5. Store quest data (stored on osrs_accounts table directly)
     console.log('Step 5.5: Store quest data...')
     await storeQuests(client, account.id, payload.quests)
+    console.log('QUESTS DATA: ', payload.quests)
     console.log('✅ Step 5.5 complete')
-    console.log(`   Quests completed: ${payload.quests.completedQuests}`)
-    console.log(`   Quest points: ${payload.quests.questPoints}\n`)
+    console.log(`   Quests completed: ${payload.quests?.completedQuests || 0}`)
+    console.log(`   Quest points: ${payload.quests?.questPoints || 0}\n`)
     
     // 6. Store achievement diary completions
     console.log('Step 6: Store achievement diary completions...')
@@ -471,6 +472,12 @@ function calculatePointsDelta(current: PointsBreakdown, previous: PointsBreakdow
  * Strategy: UPDATE the array field directly
  */
 async function storeQuests(client: any, accountId: number, quests: any) {
+  // Safety check: ensure quests array exists
+  if (!quests || !quests.quests || !Array.isArray(quests.quests)) {
+    console.warn('⚠️  No quest data available to store')
+    return
+  }
+  
   // Extract completed quest names from the quests array
   const completedQuestNames = quests.quests
     .filter((quest: any) => quest.status === 'COMPLETED')
@@ -483,7 +490,7 @@ async function storeQuests(client: any, accountId: number, quests: any) {
       quest_points = $2,
       quests_last_updated = NOW()
     WHERE id = $3
-  `, [completedQuestNames, quests.questPoints, accountId])
+  `, [completedQuestNames, quests.questPoints || 0, accountId])
 }
 
 /**
