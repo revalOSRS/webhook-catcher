@@ -86,9 +86,8 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
     // 5.5. Store quest data (stored on osrs_accounts table directly)
     console.log('Step 5.5: Store quest data...')
     await storeQuests(client, account.id, payload.quests)
-    console.log('QUESTS DATA: ', payload.quests)
     console.log('✅ Step 5.5 complete')
-    console.log(`   Quests completed: ${payload.quests?.completedQuests || 0}`)
+    console.log(`   Quests completed: ${payload.quests?.completed || 0}`)
     console.log(`   Quest points: ${payload.quests?.questPoints || 0}\n`)
     
     // 6. Store achievement diary completions
@@ -472,16 +471,17 @@ function calculatePointsDelta(current: PointsBreakdown, previous: PointsBreakdow
  * Strategy: UPDATE the array field directly
  */
 async function storeQuests(client: any, accountId: number, quests: any) {
-  // Safety check: ensure quests array exists
-  if (!quests || !quests.quests || !Array.isArray(quests.quests)) {
+  // Safety check: ensure quest data exists
+  if (!quests || !quests.questStates) {
     console.warn('⚠️  No quest data available to store')
     return
   }
   
-  // Extract completed quest names from the quests array
-  const completedQuestNames = quests.quests
-    .filter((quest: any) => quest.status === 'COMPLETED')
-    .map((quest: any) => quest.name)
+  // Extract completed quest names from questStates object
+  // questStates is an object: { "Quest Name": "FINISHED" | "IN_PROGRESS" | "NOT_STARTED" }
+  const completedQuestNames = Object.entries(quests.questStates)
+    .filter(([questName, status]) => status === 'FINISHED')
+    .map(([questName, status]) => questName)
   
   await client.query(`
     UPDATE osrs_accounts
@@ -856,6 +856,11 @@ async function updateDenormalizedCounters(client: any, accountId: number, payloa
   )
   const totalPoints = pointsResult.rows[0]?.total_points || 0
   
+  // Extract completed quest names from questStates
+  const completedQuestNames = Object.entries(payload.quests.questStates)
+    .filter(([questName, status]) => status === 'FINISHED')
+    .map(([questName, status]) => questName)
+  
   await client.query(`
     UPDATE osrs_accounts
     SET
@@ -875,7 +880,7 @@ async function updateDenormalizedCounters(client: any, accountId: number, payloa
     WHERE id = $13
   `, [
     payload.quests.questPoints,
-    payload.quests.completedQuests,
+    completedQuestNames,  // Use the extracted array
     diaryCompletions.filter(d => d.easy).length,
     diaryCompletions.filter(d => d.medium).length,
     diaryCompletions.filter(d => d.hard).length,

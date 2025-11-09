@@ -22,17 +22,24 @@ export interface PlayerInfo {
 
 // ===== Quests =====
 
-export interface QuestData {
-  name: string
-  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED'
-  completedTimestamp?: number // Unix timestamp when completed (if known)
-}
+/**
+ * Quest status from RuneLite
+ * FINISHED = quest completed
+ * IN_PROGRESS = quest started but not finished
+ * NOT_STARTED = quest not started
+ */
+export type QuestStatus = 'FINISHED' | 'IN_PROGRESS' | 'NOT_STARTED'
 
+/**
+ * Quests data from RuneLite plugin
+ * Structure: { questStates: { "Quest Name": "FINISHED" | ... }, ... }
+ */
 export interface QuestsData {
-  quests: QuestData[]
-  questPoints: number
-  totalQuests: number
-  completedQuests: number
+  questStates: Record<string, QuestStatus>  // Object with quest names as keys
+  questPoints: number                        // Total quest points earned
+  completed: number                          // Number of completed quests
+  inProgress: number                         // Number of quests in progress
+  notStarted: number                         // Number of quests not started
 }
 
 // ===== Achievement Diaries =====
