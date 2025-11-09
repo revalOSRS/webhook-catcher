@@ -87,8 +87,18 @@ router.get('/:memberId/osrs-accounts/:osrsAccountId', requireMemberAuth, async (
       })
     }
 
-    // Fetch all related snapshot data in parallel
-    const [skills, bosses, activities, computed] = await Promise.all([
+    // Fetch all related snapshot data and achievement data in parallel
+    const [
+      skills,
+      computed,
+      collectionLogItems,
+      collectionLogDrops,
+      combatAchievements,
+      diaryCompletions,
+      killCounts,
+      questsData
+    ] = await Promise.all([
+      // WOM Skills Snapshot
       db.query<any>(`
         SELECT skill, experience, level, rank, ehp
         FROM player_skills_snapshots
@@ -96,27 +106,154 @@ router.get('/:memberId/osrs-accounts/:osrsAccountId', requireMemberAuth, async (
         ORDER BY skill
       `, [playerSnapshot.id]),
       
-      db.query<any>(`
-        SELECT boss, kills, rank, ehb
-        FROM player_bosses_snapshots
-        WHERE player_snapshot_id = $1
-        ORDER BY boss
-      `, [playerSnapshot.id]),
-      
-      db.query<any>(`
-        SELECT activity, score, rank
-        FROM player_activities_snapshots
-        WHERE player_snapshot_id = $1
-        ORDER BY activity
-      `, [playerSnapshot.id]),
-      
+      // WOM Computed Metrics
       db.query<any>(`
         SELECT metric, value, rank
         FROM player_computed_snapshots
         WHERE player_snapshot_id = $1
         ORDER BY metric
-      `, [playerSnapshot.id])
+      `, [playerSnapshot.id]),
+      
+      // Collection Log Items (current state)
+      db.query<any>(`
+        SELECT 
+          category,
+          source,
+          item_id,
+          item_name,
+          quantity,
+          total_items,
+          last_updated_at
+        FROM osrs_account_collection_log
+        WHERE osrs_account_id = $1
+        ORDER BY category, source, item_name
+      `, [osrsAccount.id]),
+      
+      // Collection Log Drops (historical events from Dink)
+      db.query<any>(`
+        SELECT 
+          category,
+          source,
+          item_id,
+          item_name,
+          quantity,
+          killcount_at_drop,
+          obtained_at,
+          event_data
+        FROM osrs_account_collection_log_drops
+        WHERE osrs_account_id = $1
+        ORDER BY obtained_at DESC
+        LIMIT 100
+      `, [osrsAccount.id]),
+      
+      // Combat Achievements
+      db.query<any>(`
+        SELECT 
+          ca.name,
+          ca.tier,
+          ca.type,
+          ca.monster,
+          ca.description,
+          oaca.completed_at
+        FROM osrs_account_combat_achievements oaca
+        JOIN combat_achievements ca ON oaca.combat_achievement_id = ca.id
+        WHERE oaca.osrs_account_id = $1
+        ORDER BY 
+          CASE ca.tier
+            WHEN 'Easy' THEN 1
+            WHEN 'Medium' THEN 2
+            WHEN 'Hard' THEN 3
+            WHEN 'Elite' THEN 4
+            WHEN 'Master' THEN 5
+            WHEN 'Grandmaster' THEN 6
+          END,
+          ca.name
+      `, [osrsAccount.id]),
+      
+      // Diary Completions
+      db.query<any>(`
+        SELECT 
+          adt.diary_name,
+          adt.tier,
+          adt.total_tasks,
+          oadc.completed_at
+        FROM osrs_account_diary_completions oadc
+        JOIN achievement_diary_tiers adt ON oadc.diary_tier_id = adt.id
+        WHERE oadc.osrs_account_id = $1
+        ORDER BY adt.diary_name, 
+          CASE adt.tier
+            WHEN 'easy' THEN 1
+            WHEN 'medium' THEN 2
+            WHEN 'hard' THEN 3
+            WHEN 'elite' THEN 4
+          END
+      `, [osrsAccount.id]),
+      
+      // Kill Counts
+      db.query<any>(`
+        SELECT 
+          boss_name,
+          kill_count,
+          category,
+          last_updated_at
+        FROM osrs_account_killcounts
+        WHERE osrs_account_id = $1
+        ORDER BY kill_count DESC
+      `, [osrsAccount.id]),
+      
+      // Quests Data (stored on osrs_accounts table)
+      db.queryOne<any>(`
+        SELECT 
+          quests_completed,
+          quest_points,
+          quests_last_updated
+        FROM osrs_accounts
+        WHERE id = $1
+      `, [osrsAccount.id])
     ])
+
+    // Group collection log items by category for better organization
+    const collectionLogByCategory = collectionLogItems.reduce((acc: any, item: any) => {
+      if (!acc[item.category]) {
+        acc[item.category] = {}
+      }
+      if (!acc[item.category][item.source]) {
+        acc[item.category][item.source] = []
+      }
+      acc[item.category][item.source].push({
+        item_id: item.item_id,
+        item_name: item.item_name,
+        quantity: item.quantity
+      })
+      return acc
+    }, {})
+
+    // Group diary completions by area
+    const diariesByArea = diaryCompletions.reduce((acc: any, diary: any) => {
+      if (!acc[diary.diary_name]) {
+        acc[diary.diary_name] = {}
+      }
+      acc[diary.diary_name][diary.tier] = {
+        total_tasks: diary.total_tasks,
+        completed_at: diary.completed_at
+      }
+      return acc
+    }, {})
+
+    // Group combat achievements by tier
+    const combatAchievementsByTier = combatAchievements.reduce((acc: any, ca: any) => {
+      if (!acc[ca.tier]) {
+        acc[ca.tier] = []
+      }
+      acc[ca.tier].push({
+        name: ca.name,
+        type: ca.type,
+        monster: ca.monster,
+        description: ca.description,
+        completed_at: ca.completed_at
+      })
+      return acc
+    }, {})
 
     // Format the response
     res.status(200).json({
@@ -136,7 +273,9 @@ router.get('/:memberId/osrs-accounts/:osrsAccountId', requireMemberAuth, async (
           created_at: osrsAccount.created_at,
           updated_at: osrsAccount.updated_at
         },
-        snapshot: {
+        
+        // WOM Snapshot Data
+        wom_snapshot: {
           id: playerSnapshot.id,
           player_id: playerSnapshot.player_id,
           username: playerSnapshot.username,
@@ -163,17 +302,6 @@ router.get('/:memberId/osrs-accounts/:osrsAccountId', requireMemberAuth, async (
             rank: skill.rank,
             ehp: parseFloat(skill.ehp)
           })),
-          bosses: bosses.map(boss => ({
-            boss: boss.boss,
-            kills: boss.kills,
-            rank: boss.rank,
-            ehb: parseFloat(boss.ehb)
-          })),
-          activities: activities.map(activity => ({
-            activity: activity.activity,
-            score: activity.score,
-            rank: activity.rank
-          })),
           computed: computed.map(comp => ({
             metric: comp.metric,
             value: parseFloat(comp.value),
@@ -186,6 +314,85 @@ router.get('/:memberId/osrs-accounts/:osrsAccountId', requireMemberAuth, async (
             last_imported_at: playerSnapshot.last_imported_at
           }
         },
+        
+        // Achievement & Progress Data
+        achievements: {
+          quests: {
+            completed: questsData?.quests_completed || [],
+            quest_points: questsData?.quest_points || 0,
+            total_completed: questsData?.quests_completed?.length || 0,
+            last_updated: questsData?.quests_last_updated
+          },
+          
+          diaries: {
+            by_area: diariesByArea,
+            total_completed: diaryCompletions.length,
+            summary: {
+              easy: diaryCompletions.filter((d: any) => d.tier === 'easy').length,
+              medium: diaryCompletions.filter((d: any) => d.tier === 'medium').length,
+              hard: diaryCompletions.filter((d: any) => d.tier === 'hard').length,
+              elite: diaryCompletions.filter((d: any) => d.tier === 'elite').length
+            }
+          },
+          
+          combat_achievements: {
+            by_tier: combatAchievementsByTier,
+            total_completed: combatAchievements.length,
+            summary: {
+              easy: combatAchievements.filter((ca: any) => ca.tier === 'Easy').length,
+              medium: combatAchievements.filter((ca: any) => ca.tier === 'Medium').length,
+              hard: combatAchievements.filter((ca: any) => ca.tier === 'Hard').length,
+              elite: combatAchievements.filter((ca: any) => ca.tier === 'Elite').length,
+              master: combatAchievements.filter((ca: any) => ca.tier === 'Master').length,
+              grandmaster: combatAchievements.filter((ca: any) => ca.tier === 'Grandmaster').length
+            }
+          }
+        },
+        
+        // Collection Log Data
+        collection_log: {
+          items: collectionLogByCategory,
+          total_obtained: collectionLogItems.length,
+          total_unique_sources: Object.keys(collectionLogByCategory).reduce((count: number, category: string) => {
+            return count + Object.keys(collectionLogByCategory[category]).length
+          }, 0),
+          by_category: Object.keys(collectionLogByCategory).map(category => ({
+            category,
+            obtained: Object.values(collectionLogByCategory[category]).flat().length,
+            sources: Object.keys(collectionLogByCategory[category]).length
+          })),
+          recent_drops: collectionLogDrops.map((drop: any) => ({
+            category: drop.category,
+            source: drop.source,
+            item_id: drop.item_id,
+            item_name: drop.item_name,
+            quantity: drop.quantity,
+            killcount_at_drop: drop.killcount_at_drop,
+            obtained_at: drop.obtained_at,
+            event_data: drop.event_data
+          }))
+        },
+        
+        // Kill Counts
+        kill_counts: {
+          bosses: killCounts.map((kc: any) => ({
+            boss_name: kc.boss_name,
+            kill_count: kc.kill_count,
+            category: kc.category,
+            last_updated_at: kc.last_updated_at
+          })),
+          total_bosses: killCounts.length,
+          total_kills: killCounts.reduce((sum: number, kc: any) => sum + (kc.kill_count || 0), 0),
+          by_category: killCounts.reduce((acc: any, kc: any) => {
+            if (!acc[kc.category]) {
+              acc[kc.category] = { count: 0, total_kills: 0 }
+            }
+            acc[kc.category].count++
+            acc[kc.category].total_kills += kc.kill_count || 0
+            return acc
+          }, {})
+        },
+        
         clan_snapshot: {
           id: latestClanSnapshot.id,
           snapshot_date: latestClanSnapshot.snapshot_date,

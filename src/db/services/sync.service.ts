@@ -30,7 +30,8 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
     
     console.log('========================================')
     console.log('SYNC SERVICE - TESTING MODE')
-    console.log('Running steps: 1, 2, 5.5 (quests), 6 (diaries), 7 (CAs), 8 (collection log), 9 (kill counts)')
+    console.log('Running steps: 1, 2, 5.5 (quests), 6 (diaries), 7 (CAs), 8 (collection log), 9 (kill counts), 11 (denorm counters)')
+    console.log('Skipping: Points calculation (step 10)')
     console.log('========================================\n')
     
     // 1. Upsert OSRS account
@@ -123,14 +124,16 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
     await storeKillCounts(client, account.id, payload.collectionLog)
     console.log('✅ Step 9 complete\n')
     
-    // TEMPORARY: Skip steps 10-11 for testing
-    console.log('⏭️  Skipping steps 10-11 (points/denormalized counters) for testing\n')
+    // TEMPORARY: Skip step 10 for testing (points calculation)
+    console.log('⏭️  Skipping step 10 (points calculation) for testing\n')
     
     // 10. Update points breakdown with current points (not delta)
     // await updatePointsBreakdown(client, account.id, pointsToAward)
     
     // 11. Update denormalized counters on osrs_accounts
-    // await updateDenormalizedCounters(client, account.id, payload)
+    console.log('Step 11: Update denormalized counters...')
+    await updateDenormalizedCounters(client, account.id, payload)
+    console.log('✅ Step 11 complete\n')
     
     await client.query('COMMIT')
     
