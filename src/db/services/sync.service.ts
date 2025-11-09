@@ -30,7 +30,7 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
     
     console.log('========================================')
     console.log('SYNC SERVICE - TESTING MODE')
-    console.log('Only running steps: 1, 2, 6, 7, + Quest storage')
+    console.log('Running steps: 1, 2, 5.5 (quests), 6 (diaries), 7 (CAs), 8 (collection log), 9 (kill counts)')
     console.log('========================================\n')
     
     // 1. Upsert OSRS account
@@ -112,14 +112,19 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
     console.log(`   Combat Achievements stored: ${caCompleted}`)
     console.log(`   CA Points: ${payload.combatAchievements.totalPoints}\n`)
     
-    // TEMPORARY: Skip steps 8-11 for testing
-    console.log('⏭️  Skipping steps 8-11 for testing\n')
-    
     // 8. Store collection log data
-    // await storeCollectionLog(client, account.id, payload.collectionLog)
+    console.log('Step 8: Store collection log data...')
+    await storeCollectionLog(client, account.id, payload.collectionLog)
+    console.log('✅ Step 8 complete')
+    console.log(`   Obtained items: ${payload.collectionLog.obtainedItems}/${payload.collectionLog.totalItems}\n`)
     
-    // 9. Store kill counts
-    // await storeKillCounts(client, account.id, payload.collectionLog)
+    // 9. Store kill counts from collection log
+    console.log('Step 9: Store kill counts...')
+    await storeKillCounts(client, account.id, payload.collectionLog)
+    console.log('✅ Step 9 complete\n')
+    
+    // TEMPORARY: Skip steps 10-11 for testing
+    console.log('⏭️  Skipping steps 10-11 (points/denormalized counters) for testing\n')
     
     // 10. Update points breakdown with current points (not delta)
     // await updatePointsBreakdown(client, account.id, pointsToAward)
@@ -664,35 +669,14 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
 /**
  * Store Collection Log Data
  * 
- * Strategy: 
- * 1. Upsert summary (total obtained/total items)
- * 2. DELETE all drops, INSERT current state
+ * Strategy: INSERT new items only, with data integrity check
+ * Collection log items are permanent - once obtained, they can't be lost.
  * 
- * Note: We store ALL obtained items, not just new ones
- * This ensures data integrity if player loses an item or data gets corrupted
+ * Note: This is ONLY for the current state table (osrs_account_collection_log).
+ * The osrs_account_collection_log_drops table is for historical event data (Dink webhooks)
+ * and is NOT touched by SYNC events.
  */
 async function storeCollectionLog(client: any, accountId: number, collectionLog: CollectionLogData) {
-  // Upsert collection log summary
-  await client.query(`
-    INSERT INTO osrs_account_collection_log (
-      osrs_account_id,
-      total_obtained,
-      total_items,
-      last_updated_at
-    ) VALUES ($1, $2, $3, NOW())
-    ON CONFLICT (osrs_account_id)
-    DO UPDATE SET
-      total_obtained = $2,
-      total_items = $3,
-      last_updated_at = NOW()
-  `, [accountId, collectionLog.obtainedItems, collectionLog.totalItems])
-  
-  // Delete existing drops
-  await client.query(
-    'DELETE FROM osrs_account_collection_log_drops WHERE osrs_account_id = $1',
-    [accountId]
-  )
-  
   // Build list of obtained items
   interface ObtainedItem {
     category: string
@@ -723,52 +707,98 @@ async function storeCollectionLog(client: any, accountId: number, collectionLog:
     }
   }
   
-  // Insert all obtained items
-  if (obtainedItems.length > 0) {
+  // Get existing collection log items from DB
+  const existingResult = await client.query(`
+    SELECT item_id, item_name, source
+    FROM osrs_account_collection_log
+    WHERE osrs_account_id = $1
+  `, [accountId])
+  
+  // Create sets for comparison (use item_id + source as key for uniqueness)
+  const existingKeys = new Set<string>(
+    existingResult.rows.map((row: any) => `${row.item_id}|${row.source}`)
+  )
+  const incomingKeys = new Set<string>(
+    obtainedItems.map(item => `${item.item_id}|${item.source}`)
+  )
+  
+  console.log(`DEBUG: Existing collection log items in DB: ${existingKeys.size}`)
+  console.log(`DEBUG: Incoming collection log items: ${incomingKeys.size}`)
+  
+  // Check for discrepancies: items in DB but not in incoming data
+  const missingKeys = Array.from(existingKeys).filter(key => !incomingKeys.has(key))
+  
+  if (missingKeys.length > 0) {
+    // Parse missing items for better error message
+    const missingItems = existingResult.rows
+      .filter((row: any) => missingKeys.includes(`${row.item_id}|${row.source}`))
+      .slice(0, 10)
+      .map((row: any) => `${row.item_name} (${row.source})`)
+    
+    console.error('❌ COLLECTION LOG DATA INTEGRITY ERROR')
+    console.error(`   Account ID: ${accountId}`)
+    console.error(`   Existing items in DB: ${existingKeys.size}`)
+    console.error(`   Incoming items: ${incomingKeys.size}`)
+    console.error(`   Missing items (in DB but not in sync): ${missingKeys.length}`)
+    console.error(`   First 10 missing: ${missingItems.join(', ')}`)
+    
+    throw new Error(
+      `Collection log data integrity error: ${missingKeys.length} obtained items are missing from sync data. ` +
+      `This should never happen as collection log items cannot be lost. ` +
+      `Refusing to update to prevent data loss.`
+    )
+  }
+  
+  // Insert new items only
+  const newItems = obtainedItems.filter(item => !existingKeys.has(`${item.item_id}|${item.source}`))
+  
+  if (newItems.length > 0) {
     const values: string[] = []
     const params: any[] = []
     let paramIndex = 1
     
-    for (const item of obtainedItems) {
-      values.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, NOW())`)
+    for (const item of newItems) {
+      values.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, NOW())`)
       params.push(
         accountId,
         item.category,
         item.source,
         item.item_id,
         item.item_name,
-        item.quantity
+        item.quantity,
+        collectionLog.totalItems
       )
-      paramIndex += 6
+      paramIndex += 7
     }
     
     await client.query(`
-      INSERT INTO osrs_account_collection_log_drops (
+      INSERT INTO osrs_account_collection_log (
         osrs_account_id,
         category,
         source,
         item_id,
         item_name,
         quantity,
-        obtained_at
+        total_items,
+        last_updated_at
       ) VALUES ${values.join(', ')}
     `, params)
+    
+    console.log(`   ✅ Inserted ${newItems.length} new collection log items`)
+  } else {
+    console.log(`   ℹ️  No new collection log items to insert`)
   }
 }
 
 /**
  * Store Kill Counts
  * 
+ * Strategy: UPSERT kill counts (can increase or stay the same, never decrease)
+ * Kill counts are permanent - they only go up, never down.
+ * 
  * Extracts KC from collection log entries and stores in dedicated table.
- * Strategy: DELETE all existing, INSERT current state
  */
 async function storeKillCounts(client: any, accountId: number, collectionLog: CollectionLogData) {
-  // Delete existing KC
-  await client.query(
-    'DELETE FROM osrs_account_killcounts WHERE osrs_account_id = $1',
-    [accountId]
-  )
-  
   // Build list of KC entries
   interface KcEntry {
     boss_name: string
@@ -791,7 +821,44 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
     }
   }
   
-  // Insert current KC
+  // Get existing kill counts from DB
+  const existingResult = await client.query(`
+    SELECT boss_name, kill_count
+    FROM osrs_account_killcounts
+    WHERE osrs_account_id = $1
+  `, [accountId])
+  
+  const existingKc = new Map<string, number>()
+  for (const row of existingResult.rows) {
+    existingKc.set(row.boss_name, row.kill_count)
+  }
+  
+  console.log(`DEBUG: Existing kill count entries in DB: ${existingKc.size}`)
+  console.log(`DEBUG: Incoming kill count entries: ${kcEntries.length}`)
+  
+  // Check for data integrity: KC should never decrease
+  const decreasedKc: string[] = []
+  for (const entry of kcEntries) {
+    const existingCount = existingKc.get(entry.boss_name)
+    if (existingCount !== undefined && entry.kill_count < existingCount) {
+      decreasedKc.push(`${entry.boss_name}: ${existingCount} -> ${entry.kill_count}`)
+    }
+  }
+  
+  if (decreasedKc.length > 0) {
+    console.error('❌ KILL COUNT DATA INTEGRITY ERROR')
+    console.error(`   Account ID: ${accountId}`)
+    console.error(`   Kill counts decreased (should never happen): ${decreasedKc.length}`)
+    console.error(`   First 10: ${decreasedKc.slice(0, 10).join(', ')}`)
+    
+    throw new Error(
+      `Kill count data integrity error: ${decreasedKc.length} kill counts decreased. ` +
+      `Kill counts should only increase or stay the same, never decrease. ` +
+      `Refusing to update to prevent data corruption.`
+    )
+  }
+  
+  // Upsert kill counts (insert new, update existing if higher)
   if (kcEntries.length > 0) {
     const values: string[] = []
     const params: any[] = []
@@ -816,7 +883,15 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
         category,
         last_updated_at
       ) VALUES ${values.join(', ')}
+      ON CONFLICT (osrs_account_id, boss_name)
+      DO UPDATE SET
+        kill_count = EXCLUDED.kill_count,
+        category = EXCLUDED.category,
+        last_updated_at = NOW()
+      WHERE osrs_account_killcounts.kill_count < EXCLUDED.kill_count
     `, params)
+    
+    console.log(`   ✅ Upserted ${kcEntries.length} kill count entries`)
   }
 }
 
