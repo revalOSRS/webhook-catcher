@@ -620,6 +620,31 @@ async function storeCombatAchievements(client: any, accountId: number, combatAch
 }
 
 /**
+ * Normalize diary names from RuneLite plugin to match database names
+ * 
+ * RuneLite sends shortened names, but database has full official names
+ */
+function normalizeDiaryName(pluginName: string): string {
+  const diaryNameMap: Record<string, string> = {
+    'Lumbridge': 'Lumbridge & Draynor',
+    'Kourend': 'Kourend & Kebos',
+    'Western': 'Western Provinces',
+    // Full names that match exactly
+    'Ardougne': 'Ardougne',
+    'Desert': 'Desert',
+    'Falador': 'Falador',
+    'Fremennik': 'Fremennik',
+    'Kandarin': 'Kandarin',
+    'Karamja': 'Karamja',
+    'Morytania': 'Morytania',
+    'Varrock': 'Varrock',
+    'Wilderness': 'Wilderness'
+  }
+  
+  return diaryNameMap[pluginName] || pluginName
+}
+
+/**
  * Store Achievement Diary Completions
  * 
  * Strategy: INSERT only NEW completions (ON CONFLICT DO NOTHING)
@@ -635,14 +660,37 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
   
   const entries: DiaryEntry[] = []
   for (const [area, progress] of Object.entries(diaries.progress) as [string, any][]) {
-    if (progress.easy) entries.push({ area, tier: 'easy' })
-    if (progress.medium) entries.push({ area, tier: 'medium' })
-    if (progress.hard) entries.push({ area, tier: 'hard' })
-    if (progress.elite) entries.push({ area, tier: 'elite' })
+    const normalizedArea = normalizeDiaryName(area)
+    if (progress.easy) entries.push({ area: normalizedArea, tier: 'easy' })
+    if (progress.medium) entries.push({ area: normalizedArea, tier: 'medium' })
+    if (progress.hard) entries.push({ area: normalizedArea, tier: 'hard' })
+    if (progress.elite) entries.push({ area: normalizedArea, tier: 'elite' })
   }
+  
+  console.log(`DEBUG: Attempting to store ${entries.length} diary completions`)
   
   // Insert current completions using FK lookup (skip if already exists)
   if (entries.length > 0) {
+    // First, validate that all diary names exist in the reference table
+    for (const entry of entries) {
+      const result = await client.query(`
+        SELECT id FROM achievement_diary_tiers 
+        WHERE diary_name = $1 AND tier = $2
+      `, [entry.area, entry.tier])
+      
+      if (result.rows.length === 0) {
+        console.error(`❌ Diary not found in reference table: "${entry.area}" (${entry.tier})`)
+        console.error(`   Available diary names in DB:`)
+        const availableDiaries = await client.query(`
+          SELECT DISTINCT diary_name FROM achievement_diary_tiers ORDER BY diary_name
+        `)
+        availableDiaries.rows.forEach((row: any) => {
+          console.error(`   - "${row.diary_name}"`)
+        })
+        throw new Error(`Diary "${entry.area}" with tier "${entry.tier}" not found in achievement_diary_tiers table`)
+      }
+    }
+    
     const values: string[] = []
     const params: any[] = []
     let paramIndex = 1
