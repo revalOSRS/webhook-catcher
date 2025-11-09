@@ -228,6 +228,11 @@ router.get('/:memberId/osrs-accounts/:osrsAccountId', requireMemberAuth, async (
       return acc
     }, {})
 
+    // Count unique items (by item_id) across all sources
+    // OSRS collection log counts unique items, not unique (item + source) combinations
+    const uniqueItemIds = new Set(collectionLogItems.map((item: any) => item.item_id))
+    const totalUniqueItems = uniqueItemIds.size
+
     // Group diary completions by area
     const diariesByArea = diaryCompletions.reduce((acc: any, diary: any) => {
       if (!acc[diary.diary_name]) {
@@ -352,15 +357,21 @@ router.get('/:memberId/osrs-accounts/:osrsAccountId', requireMemberAuth, async (
         // Collection Log Data
         collection_log: {
           items: collectionLogByCategory,
-          total_obtained: collectionLogItems.length,
+          total_obtained: totalUniqueItems, // Count unique items, not (item + source) combinations
           total_unique_sources: Object.keys(collectionLogByCategory).reduce((count: number, category: string) => {
             return count + Object.keys(collectionLogByCategory[category]).length
           }, 0),
-          by_category: Object.keys(collectionLogByCategory).map(category => ({
-            category,
-            obtained: Object.values(collectionLogByCategory[category]).flat().length,
-            sources: Object.keys(collectionLogByCategory[category]).length
-          })),
+          by_category: Object.keys(collectionLogByCategory).map(category => {
+            // Count unique item_ids per category
+            const categoryItems = Object.values(collectionLogByCategory[category]).flat() as any[]
+            const uniqueItemIdsInCategory = new Set(categoryItems.map((item: any) => item.item_id))
+            
+            return {
+              category,
+              obtained: uniqueItemIdsInCategory.size, // Count unique items, not duplicates
+              sources: Object.keys(collectionLogByCategory[category]).length
+            }
+          }),
           recent_drops: collectionLogDrops.map((drop: any) => ({
             category: drop.category,
             source: drop.source,
