@@ -190,12 +190,17 @@ async function upsertOsrsAccount(client: any, payload: SyncEventPayload) {
       
       if (account.account_hash === null) {
         // Legacy account found - add hash and account_type
+        console.log(`🔄 Upgrading legacy account: ${username} (ID: ${account.id})`)
+        console.log(`   Adding account_hash: ${accountHash}`)
+        console.log(`   Adding account_type: ${accountType}`)
+        
         await client.query(`
           UPDATE osrs_accounts
           SET 
             account_hash = $1,
             account_type = $2,
-            last_synced_at = NOW()
+            last_synced_at = NOW(),
+            updated_at = NOW()
           WHERE id = $3
         `, [accountHash, accountType, account.id])
         
@@ -449,8 +454,8 @@ function calculatePointsDelta(current: PointsBreakdown, previous: PointsBreakdow
 /**
  * Store Achievement Diary Completions
  * 
+ * Uses FK to achievement_diary_tiers table.
  * Strategy: DELETE all existing, INSERT current state
- * This ensures data stays in sync even if player loses progress (shouldn't happen but safe)
  */
 async function storeAchievementDiaries(client: any, accountId: number, diaries: any) {
   // Delete existing entries
@@ -460,7 +465,12 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
   )
   
   // Build list of completed diaries
-  const entries: Array<{ area: string; tier: string }> = []
+  interface DiaryEntry {
+    area: string
+    tier: string
+  }
+  
+  const entries: DiaryEntry[] = []
   for (const [area, progress] of Object.entries(diaries.progress) as [string, any][]) {
     if (progress.easy) entries.push({ area, tier: 'easy' })
     if (progress.medium) entries.push({ area, tier: 'medium' })
@@ -468,14 +478,19 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
     if (progress.elite) entries.push({ area, tier: 'elite' })
   }
   
-  // Insert current completions
+  // Insert current completions using FK lookup
   if (entries.length > 0) {
     const values: string[] = []
     const params: any[] = []
     let paramIndex = 1
     
     for (const entry of entries) {
-      values.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, NOW())`)
+      // Lookup diary_tier_id from achievement_diary_tiers table
+      values.push(`(
+        $${paramIndex}, 
+        (SELECT id FROM achievement_diary_tiers WHERE diary_name = $${paramIndex + 1} AND tier = $${paramIndex + 2}),
+        NOW()
+      )`)
       params.push(accountId, entry.area, entry.tier)
       paramIndex += 3
     }
@@ -483,8 +498,7 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
     await client.query(`
       INSERT INTO osrs_account_diary_completions (
         osrs_account_id,
-        diary_area,
-        tier,
+        diary_tier_id,
         completed_at
       ) VALUES ${values.join(', ')}
     `, params)
