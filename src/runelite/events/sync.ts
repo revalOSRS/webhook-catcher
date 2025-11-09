@@ -31,8 +31,14 @@ export async function handleSyncEvent(payload: SyncEventPayload): Promise<{
   console.log(`Combat Level: ${player.combatLevel || 'Unknown'}`)
   console.log(`Total Level: ${player.totalLevel || 'Unknown'}`)
   console.log('----------------------------------------')
-  console.log(`Quest Points: ${quests.questPoints}/${quests.totalQuests * 2}`)
-  console.log(`Quests Completed: ${quests.completedQuests}/${quests.totalQuests}`)
+  
+  // Calculate total quests from questStates
+  const totalQuests = Object.keys(quests.questStates).length
+  
+  console.log(`Quest Points: ${quests.questPoints}`)
+  console.log(`Quests Completed: ${quests.completed}/${totalQuests}`)
+  console.log(`Quests In Progress: ${quests.inProgress}`)
+  console.log(`Quests Not Started: ${quests.notStarted}`)
   console.log('----------------------------------------')
   console.log('Achievement Diaries:')
   
