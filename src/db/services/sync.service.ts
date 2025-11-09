@@ -511,13 +511,8 @@ async function storeQuests(client: any, accountId: number, quests: QuestsData) {
  * If existing data conflicts with incoming data, we throw an error to prevent data corruption.
  */
 async function storeCombatAchievements(client: any, accountId: number, combatAchievements: CombatAchievementsData) {
-  console.log('========================================')
-  console.log('DEBUG: Combat Achievements Payload')
-  console.log('========================================')
-  console.log(JSON.stringify(combatAchievements, null, 2))
-  console.log('========================================')
   
-  // Extract all completed tasks from tierProgress
+  // Extract all completed tasks from allTasks array
   interface CompletedTask {
     tier: string
     taskName: string
@@ -526,16 +521,15 @@ async function storeCombatAchievements(client: any, accountId: number, combatAch
   
   const completedTasks: CompletedTask[] = []
   
-  for (const [tierName, tierData] of Object.entries(combatAchievements.tierProgress) as [string, any][]) {
-    if (tierData.tasks && Array.isArray(tierData.tasks)) {
-      for (const task of tierData.tasks) {
-        if (task.isComplete) {
-          completedTasks.push({
-            tier: tierName,
-            taskName: task.name,
-            type: task.type
-          })
-        }
+  // Iterate through allTasks and filter for completed ones
+  if (combatAchievements.allTasks && Array.isArray(combatAchievements.allTasks)) {
+    for (const task of combatAchievements.allTasks) {
+      if (task.completed) {
+        completedTasks.push({
+          tier: task.tier,
+          taskName: task.name,
+          type: task.type
+        })
       }
     }
   }
