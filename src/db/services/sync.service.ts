@@ -23,7 +23,7 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
     
     console.log('========================================')
     console.log('SYNC SERVICE - TESTING MODE')
-    console.log('Only running steps: 1, 2, 6')
+    console.log('Only running steps: 1, 2, 6, 7, + Quest storage')
     console.log('========================================\n')
     
     // 1. Upsert OSRS account
@@ -83,17 +83,30 @@ export async function storeSyncData(payload: SyncEventPayload): Promise<{
       total: 0
     }
     
+    // 5.5. Store quest data (stored on osrs_accounts table directly)
+    console.log('Step 5.5: Store quest data...')
+    await storeQuests(client, account.id, payload.quests)
+    console.log('✅ Step 5.5 complete')
+    console.log(`   Quests completed: ${payload.quests.completedQuests}`)
+    console.log(`   Quest points: ${payload.quests.questPoints}\n`)
+    
     // 6. Store achievement diary completions
     console.log('Step 6: Store achievement diary completions...')
     await storeAchievementDiaries(client, account.id, payload.achievementDiaries)
     console.log('✅ Step 6 complete')
     console.log(`   Diaries stored: ${payload.achievementDiaries.totalCompleted}\n`)
     
-    // TEMPORARY: Skip steps 7-11 for testing
-    console.log('⏭️  Skipping steps 7-11 for testing\n')
-    
     // 7. Store combat achievements
-    // await storeCombatAchievements(client, account.id, payload.combatAchievements)
+    console.log('Step 7: Store combat achievements...')
+    await storeCombatAchievements(client, account.id, payload.combatAchievements)
+    const caCompleted = Object.values(payload.combatAchievements.tierProgress)
+      .reduce((sum, tier) => sum + tier.completed, 0)
+    console.log('✅ Step 7 complete')
+    console.log(`   Combat Achievements stored: ${caCompleted}`)
+    console.log(`   CA Points: ${payload.combatAchievements.totalPoints}\n`)
+    
+    // TEMPORARY: Skip steps 8-11 for testing
+    console.log('⏭️  Skipping steps 8-11 for testing\n')
     
     // 8. Store collection log data
     // await storeCollectionLog(client, account.id, payload.collectionLog)
@@ -452,18 +465,141 @@ function calculatePointsDelta(current: PointsBreakdown, previous: PointsBreakdow
 }
 
 /**
+ * Store Quest Completions
+ * 
+ * Quests are stored as an array on osrs_accounts table.
+ * Strategy: UPDATE the array field directly
+ */
+async function storeQuests(client: any, accountId: number, quests: any) {
+  // Extract completed quest names from the quests array
+  const completedQuestNames = quests.quests
+    .filter((quest: any) => quest.status === 'COMPLETED')
+    .map((quest: any) => quest.name)
+  
+  await client.query(`
+    UPDATE osrs_accounts
+    SET 
+      quests_completed = $1,
+      quest_points = $2,
+      quests_last_updated = NOW()
+    WHERE id = $3
+  `, [completedQuestNames, quests.questPoints, accountId])
+}
+
+/**
+ * Store Combat Achievements
+ * 
+ * Strategy: 
+ * 1. Verify existing completions match incoming data (data integrity check)
+ * 2. INSERT only NEW completions using FK to combat_achievements table
+ * 
+ * Once a combat achievement is completed, it's permanent and never gets uncompleted.
+ * If existing data conflicts with incoming data, we throw an error to prevent data corruption.
+ */
+async function storeCombatAchievements(client: any, accountId: number, combatAchievements: any) {
+  // Extract all completed tasks from tierProgress
+  interface CompletedTask {
+    tier: string
+    taskName: string
+    type: string
+  }
+  
+  const completedTasks: CompletedTask[] = []
+  
+  for (const [tierName, tierData] of Object.entries(combatAchievements.tierProgress) as [string, any][]) {
+    if (tierData.tasks && Array.isArray(tierData.tasks)) {
+      for (const task of tierData.tasks) {
+        if (task.isComplete) {
+          completedTasks.push({
+            tier: tierName,
+            taskName: task.name,
+            type: task.type
+          })
+        }
+      }
+    }
+  }
+  
+  // Get existing combat achievements from DB (join with reference table to get names)
+  const existingResult = await client.query(`
+    SELECT ca.name
+    FROM osrs_account_combat_achievements oaca
+    JOIN combat_achievements ca ON oaca.combat_achievement_id = ca.id
+    WHERE oaca.osrs_account_id = $1
+  `, [accountId])
+  
+  const existingTaskNames = new Set<string>(existingResult.rows.map((row: any) => row.name as string))
+  const incomingTaskNames = new Set<string>(completedTasks.map(task => task.taskName))
+  
+  // Check for discrepancies: tasks in DB but not in incoming data
+  const missingTasks = Array.from(existingTaskNames).filter(name => !incomingTaskNames.has(name))
+  
+  if (missingTasks.length > 0) {
+    console.error('❌ COMBAT ACHIEVEMENT DATA INTEGRITY ERROR')
+    console.error(`   Account ID: ${accountId}`)
+    console.error(`   Existing tasks in DB: ${existingTaskNames.size}`)
+    console.error(`   Incoming tasks: ${incomingTaskNames.size}`)
+    console.error(`   Missing tasks (in DB but not in sync): ${missingTasks.length}`)
+    console.error(`   First 10 missing: ${missingTasks.slice(0, 10).join(', ')}`)
+    
+    throw new Error(
+      `Combat Achievement data integrity error: ${missingTasks.length} completed tasks are missing from sync data. ` +
+      `This should never happen as combat achievements cannot be uncompleted. ` +
+      `Refusing to update to prevent data loss.`
+    )
+  }
+  
+  // Insert new completed tasks only (using FK to combat_achievements)
+  const newTasks = completedTasks.filter(task => !existingTaskNames.has(task.taskName))
+  
+  if (newTasks.length > 0) {
+    // First, ensure all tasks exist in combat_achievements reference table
+    // (Upsert tasks into reference table if they don't exist)
+    for (const task of newTasks) {
+      await client.query(`
+        INSERT INTO combat_achievements (name, tier, type)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (name) DO NOTHING
+      `, [task.taskName, task.tier, task.type])
+    }
+    
+    // Now insert completions using FK lookup
+    const values: string[] = []
+    const params: any[] = []
+    let paramIndex = 1
+    
+    for (const task of newTasks) {
+      values.push(`(
+        $${paramIndex},
+        (SELECT id FROM combat_achievements WHERE name = $${paramIndex + 1}),
+        NOW()
+      )`)
+      params.push(accountId, task.taskName)
+      paramIndex += 2
+    }
+    
+    await client.query(`
+      INSERT INTO osrs_account_combat_achievements (
+        osrs_account_id,
+        combat_achievement_id,
+        completed_at
+      ) VALUES ${values.join(', ')}
+    `, params)
+    
+    console.log(`   ✅ Inserted ${newTasks.length} new combat achievements`)
+  } else {
+    console.log(`   ℹ️  No new combat achievements to insert`)
+  }
+}
+
+/**
  * Store Achievement Diary Completions
  * 
+ * Strategy: INSERT only NEW completions (ON CONFLICT DO NOTHING)
+ * Achievement diaries, once completed, are permanent and never get uncompleted.
  * Uses FK to achievement_diary_tiers table.
- * Strategy: DELETE all existing, INSERT current state
  */
 async function storeAchievementDiaries(client: any, accountId: number, diaries: any) {
-  // Delete existing entries
-  await client.query(
-    'DELETE FROM osrs_account_diary_completions WHERE osrs_account_id = $1',
-    [accountId]
-  )
-  
   // Build list of completed diaries
   interface DiaryEntry {
     area: string
@@ -478,7 +614,7 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
     if (progress.elite) entries.push({ area, tier: 'elite' })
   }
   
-  // Insert current completions using FK lookup
+  // Insert current completions using FK lookup (skip if already exists)
   if (entries.length > 0) {
     const values: string[] = []
     const params: any[] = []
@@ -501,36 +637,8 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
         diary_tier_id,
         completed_at
       ) VALUES ${values.join(', ')}
+      ON CONFLICT (osrs_account_id, diary_tier_id) DO NOTHING
     `, params)
-  }
-}
-
-async function storeCombatAchievements(tx: any, accountId: number, combatAchievements: any) {
-  // Delete existing entries
-  await tx`DELETE FROM osrs_account_combat_achievements WHERE osrs_account_id = ${accountId}`
-  
-  // Insert completed tasks
-  const completedTasks = combatAchievements.allTasks.filter((t: any) => t.completed)
-  
-  if (completedTasks.length > 0) {
-    await tx`
-      INSERT INTO osrs_account_combat_achievements (
-        osrs_account_id,
-        task_id,
-        task_name,
-        tier,
-        points,
-        completed_at
-      )
-      SELECT * FROM ${tx.json(completedTasks.map((t: any) => ({
-        osrs_account_id: accountId,
-        task_id: t.id,
-        task_name: t.name,
-        tier: t.tier.toLowerCase(),
-        points: t.points,
-        completed_at: new Date()
-      })))}
-    `
   }
 }
 
