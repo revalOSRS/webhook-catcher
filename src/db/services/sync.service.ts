@@ -5,7 +5,14 @@
  */
 
 import { pool } from '../connection.js'
-import type { SyncEventPayload, DiaryProgress } from '../../runelite/types/sync-event.type.js'
+import type { 
+  SyncEventPayload, 
+  DiaryProgress,
+  QuestsData,
+  AchievementDiariesData,
+  CombatAchievementsData,
+  CollectionLogData
+} from '../../runelite/types/sync-event.type.js'
 import { calculatePointsFromSync, type PointsBreakdown } from '../../services/points-system.js'
 
 // ===== Main SYNC Storage Function =====
@@ -470,7 +477,7 @@ function calculatePointsDelta(current: PointsBreakdown, previous: PointsBreakdow
  * Quests are stored as an array on osrs_accounts table.
  * Strategy: UPDATE the array field directly
  */
-async function storeQuests(client: any, accountId: number, quests: any) {
+async function storeQuests(client: any, accountId: number, quests: QuestsData) {
   // Safety check: ensure quest data exists
   if (!quests || !quests.questStates) {
     console.warn('⚠️  No quest data available to store')
@@ -503,7 +510,13 @@ async function storeQuests(client: any, accountId: number, quests: any) {
  * Once a combat achievement is completed, it's permanent and never gets uncompleted.
  * If existing data conflicts with incoming data, we throw an error to prevent data corruption.
  */
-async function storeCombatAchievements(client: any, accountId: number, combatAchievements: any) {
+async function storeCombatAchievements(client: any, accountId: number, combatAchievements: CombatAchievementsData) {
+  console.log('========================================')
+  console.log('DEBUG: Combat Achievements Payload')
+  console.log('========================================')
+  console.log(JSON.stringify(combatAchievements, null, 2))
+  console.log('========================================')
+  
   // Extract all completed tasks from tierProgress
   interface CompletedTask {
     tier: string
@@ -527,6 +540,8 @@ async function storeCombatAchievements(client: any, accountId: number, combatAch
     }
   }
   
+  console.log(`DEBUG: Found ${completedTasks.length} completed tasks in payload`)
+  
   // Get existing combat achievements from DB (join with reference table to get names)
   const existingResult = await client.query(`
     SELECT ca.name
@@ -537,6 +552,9 @@ async function storeCombatAchievements(client: any, accountId: number, combatAch
   
   const existingTaskNames = new Set<string>(existingResult.rows.map((row: any) => row.name as string))
   const incomingTaskNames = new Set<string>(completedTasks.map(task => task.taskName))
+  
+  console.log(`DEBUG: Existing tasks in DB: ${existingTaskNames.size}`)
+  console.log(`DEBUG: Incoming tasks: ${incomingTaskNames.size}`)
   
   // Check for discrepancies: tasks in DB but not in incoming data
   const missingTasks = Array.from(existingTaskNames).filter(name => !incomingTaskNames.has(name))
@@ -606,7 +624,7 @@ async function storeCombatAchievements(client: any, accountId: number, combatAch
  * Achievement diaries, once completed, are permanent and never get uncompleted.
  * Uses FK to achievement_diary_tiers table.
  */
-async function storeAchievementDiaries(client: any, accountId: number, diaries: any) {
+async function storeAchievementDiaries(client: any, accountId: number, diaries: AchievementDiariesData) {
   // Build list of completed diaries
   interface DiaryEntry {
     area: string
@@ -659,7 +677,7 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
  * Note: We store ALL obtained items, not just new ones
  * This ensures data integrity if player loses an item or data gets corrupted
  */
-async function storeCollectionLog(client: any, accountId: number, collectionLog: any) {
+async function storeCollectionLog(client: any, accountId: number, collectionLog: CollectionLogData) {
   // Upsert collection log summary
   await client.query(`
     INSERT INTO osrs_account_collection_log (
@@ -750,7 +768,7 @@ async function storeCollectionLog(client: any, accountId: number, collectionLog:
  * Extracts KC from collection log entries and stores in dedicated table.
  * Strategy: DELETE all existing, INSERT current state
  */
-async function storeKillCounts(client: any, accountId: number, collectionLog: any) {
+async function storeKillCounts(client: any, accountId: number, collectionLog: CollectionLogData) {
   // Delete existing KC
   await client.query(
     'DELETE FROM osrs_account_killcounts WHERE osrs_account_id = $1',
