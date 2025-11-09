@@ -4,11 +4,9 @@
  * Represents comprehensive player data synchronized from RuneLite plugin
  */
 
-// Base event structure
-export interface RuneLiteBaseEvent {
-  eventType: string
-  eventTimestamp: number
-}
+import { RuneLiteBaseEvent } from './base-event.type.js'
+import { RuneLiteEventType } from './event.enum.js'
+
 
 // ===== Player Information =====
 
@@ -135,23 +133,10 @@ export interface CollectionLogData {
 // ===== SYNC Event Payload =====
 
 export interface SyncEventPayload extends RuneLiteBaseEvent {
-  eventType: 'SYNC'
+  eventType: RuneLiteEventType.SYNC
   player: PlayerInfo
   quests: QuestsData
   achievementDiaries: AchievementDiariesData
   combatAchievements: CombatAchievementsData
   collectionLog: CollectionLogData
 }
-
-// ===== Helper Types =====
-
-export interface SyncSummary {
-  player: string
-  accountHash?: string
-  questPoints: number
-  diariesCompleted: number
-  combatAchievementsCompleted: number
-  collectionLogItems: number
-  syncedAt: Date
-}
-

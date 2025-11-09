@@ -4,22 +4,11 @@
  * Central export for all RuneLite webhook event types
  */
 
-export * from './sync.types.js'
-
-// Base event type discriminator
-export type RuneLiteEventType = 'SYNC' 
-  | 'ACHIEVEMENT' 
-  | 'LOOT' 
-  | 'DEATH' 
-  | 'LEVELUP'
-  | 'PET'
-  | 'SPEEDRUN'
-  | 'AREA_ENTRY'
-  | 'EMOTE'
-  | 'CLUE'
+export * from './sync-event.type.js'
+export * from './event.enum.js'
 
 // Union type for all RuneLite events (extensible)
-import { SyncEventPayload } from './sync.types.js'
+import { SyncEventPayload } from './sync-event.type.js'
 
 export type RuneLiteEvent = SyncEventPayload // | OtherEventPayload | ...
 

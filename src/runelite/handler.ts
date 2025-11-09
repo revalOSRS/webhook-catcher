@@ -5,7 +5,7 @@
  */
 
 import { RuneLiteEvent } from './types/index.js'
-import { SyncEventPayload } from './types/sync.types.js'
+import { SyncEventPayload } from './types/sync-event.type.js'
 import { handleSyncEvent } from './events/sync.js'
 
 /**
