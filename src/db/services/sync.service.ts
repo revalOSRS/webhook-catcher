@@ -909,8 +909,8 @@ const BOSS_KC_MAPPINGS: Record<string, KcMapping[]> = {
   ],
   
   // Perilous Moons (Doom): Uses total_completions attribute
-  'perilous_moons': [
-    { bossName: 'perilous_moons', kcAttribute: 'total_completions', category: 'Bosses' }
+  'doom_of_mokhaiotl': [
+    { bossName: 'doom_of_mokhaiotl', kcAttribute: 'total_completions', category: 'Bosses' }
   ],
   
   // TzHaar Fight Cave: Uses kc attribute (explicit mapping for clarity)
