@@ -974,7 +974,7 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
         // Raid has custom mappings (multi-mode raids)
         for (const mapping of mappings) {
           const kc = (raidEntry as any)[mapping.kcAttribute]
-          if (typeof kc === 'number' && kc > 0) {
+          if (typeof kc === 'number' && kc >= 0) {
             kcEntries.push({
               boss_name: mapping.bossName,
               kill_count: kc,
@@ -985,7 +985,7 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
       } else {
         // Raid doesn't have custom mappings, use default 'kc' attribute
         const kc = (raidEntry as any).kc
-        if (typeof kc === 'number' && kc > 0) {
+        if (typeof kc === 'number' && kc >= 0) {
           kcEntries.push({
             boss_name: raidName,
             kill_count: kc,
@@ -1005,7 +1005,7 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
         // Boss has custom mappings (multi-mode bosses)
         for (const mapping of mappings) {
           const kc = (bossEntry as any)[mapping.kcAttribute]
-          if (typeof kc === 'number' && kc > 0) {
+          if (typeof kc === 'number' && kc >= 0) {
             kcEntries.push({
               boss_name: mapping.bossName,
               kill_count: kc,
@@ -1016,7 +1016,7 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
       } else {
         // Boss doesn't have custom mappings, use default 'kc' attribute
         const kc = (bossEntry as any).kc
-        if (typeof kc === 'number' && kc > 0) {
+        if (typeof kc === 'number' && kc >= 0) {
           kcEntries.push({
             boss_name: bossName,
             kill_count: kc,
