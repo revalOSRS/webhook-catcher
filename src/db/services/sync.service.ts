@@ -933,6 +933,12 @@ const BOSS_KC_MAPPINGS: Record<string, KcMapping[]> = {
   'vetion_and_calvarion': [
     { bossName: 'vetion', kcAttribute: 'vetion_kc', category: 'Bosses' },
     { bossName: 'calvarion', kcAttribute: 'calvarion_kc', category: 'Bosses' }
+  ],
+  
+  // The Gauntlet: Split into normal and corrupted modes
+  'the_gauntlet': [
+    { bossName: 'the_gauntlet', kcAttribute: 'kc', category: 'Bosses' },
+    { bossName: 'the_corrupted_gauntlet', kcAttribute: 'corrupted_gauntlet_kc', category: 'Bosses' }
   ]
 }
 
