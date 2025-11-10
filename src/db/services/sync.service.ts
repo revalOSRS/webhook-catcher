@@ -726,6 +726,9 @@ async function storeAchievementDiaries(client: any, accountId: number, diaries: 
  * Strategy: INSERT new items only, with data integrity check
  * Collection log items are permanent - once obtained, they can't be lost.
  * 
+ * Important: We store each (item_id, source) combination separately to track
+ * which bosses/activities dropped which items. This is valuable for historical tracking.
+ * 
  * Note: This is ONLY for the current state table (osrs_account_collection_log).
  * The osrs_account_collection_log_drops table is for historical event data (Dink webhooks)
  * and is NOT touched by SYNC events.
@@ -776,8 +779,12 @@ async function storeCollectionLog(client: any, accountId: number, collectionLog:
     obtainedItems.map(item => `${item.item_id}|${item.source}`)
   )
   
-  console.log(`DEBUG: Existing collection log items in DB: ${existingKeys.size}`)
-  console.log(`DEBUG: Incoming collection log items: ${incomingKeys.size}`)
+  console.log(`DEBUG: Existing collection log entries in DB: ${existingKeys.size}`)
+  console.log(`DEBUG: Incoming collection log entries: ${incomingKeys.size}`)
+  
+  // Count unique item_ids for information
+  const uniqueItemIds = new Set(obtainedItems.map(item => item.item_id))
+  console.log(`DEBUG: Unique item_ids in incoming data: ${uniqueItemIds.size}`)
   
   // Check for discrepancies: items in DB but not in incoming data
   const missingKeys = Array.from(existingKeys).filter(key => !incomingKeys.has(key))
@@ -791,9 +798,9 @@ async function storeCollectionLog(client: any, accountId: number, collectionLog:
     
     console.error('❌ COLLECTION LOG DATA INTEGRITY ERROR')
     console.error(`   Account ID: ${accountId}`)
-    console.error(`   Existing items in DB: ${existingKeys.size}`)
-    console.error(`   Incoming items: ${incomingKeys.size}`)
-    console.error(`   Missing items (in DB but not in sync): ${missingKeys.length}`)
+    console.error(`   Existing entries in DB: ${existingKeys.size}`)
+    console.error(`   Incoming entries: ${incomingKeys.size}`)
+    console.error(`   Missing entries (in DB but not in sync): ${missingKeys.length}`)
     console.error(`   First 10 missing: ${missingItems.join(', ')}`)
     
     throw new Error(
@@ -836,12 +843,97 @@ async function storeCollectionLog(client: any, accountId: number, collectionLog:
         total_items,
         last_updated_at
       ) VALUES ${values.join(', ')}
+      ON CONFLICT (osrs_account_id, item_id, source) DO NOTHING
     `, params)
     
-    console.log(`   ✅ Inserted ${newItems.length} new collection log items`)
+    console.log(`   ✅ Inserted ${newItems.length} new collection log entries`)
   } else {
-    console.log(`   ℹ️  No new collection log items to insert`)
+    console.log(`   ℹ️  No new collection log entries to insert`)
   }
+}
+
+/**
+ * KC Mapper Interface
+ * Defines how to extract KC from a RuneLite plugin payload entry
+ */
+interface KcMapping {
+  /** The boss name to store in the database */
+  bossName: string
+  /** The attribute name in the payload to extract KC from (e.g., 'kc', 'challenge_mode', 'hard_mode') */
+  kcAttribute: string
+  /** The category to store ('Bosses' or 'Raids') */
+  category: 'Bosses' | 'Raids'
+}
+
+/**
+ * Raid KC Mappings
+ * Maps RuneLite plugin raid entries to database boss entries with specific KC attributes
+ */
+const RAID_KC_MAPPINGS: Record<string, KcMapping[]> = {
+  // Chambers of Xeric: Normal mode (kc) and Challenge Mode (challenge_mode)
+  'chambers_of_xeric': [
+    { bossName: 'chambers_of_xeric', kcAttribute: 'kc', category: 'Raids' },
+    { bossName: 'chambers_of_xeric_challenge_mode', kcAttribute: 'challenge_mode', category: 'Raids' }
+  ],
+  
+  // Theatre of Blood: Normal mode (kc) and Hard Mode (hard_mode)
+  'theatre_of_blood': [
+    { bossName: 'theatre_of_blood', kcAttribute: 'kc', category: 'Raids' },
+    { bossName: 'theatre_of_blood_hard_mode', kcAttribute: 'hard_mode', category: 'Raids' }
+  ],
+  
+  // Tombs of Amascut: Entry Mode (entry_mode) and Expert Mode (expert_mode)
+  'tombs_of_amascut': [
+    { bossName: 'tombs_of_amascut', kcAttribute: 'entry_mode', category: 'Raids' },
+    { bossName: 'tombs_of_amascut_expert_mode', kcAttribute: 'expert_mode', category: 'Raids' }
+  ]
+}
+
+/**
+ * Boss KC Mappings
+ * Maps RuneLite plugin boss entries to database boss entries
+ * For most bosses, we just use the 'kc' attribute and keep the same name
+ */
+const BOSS_KC_MAPPINGS: Record<string, KcMapping[]> = {
+  // Callisto & Artio: Split into two separate bosses
+  'callisto_and_artio': [
+    { bossName: 'callisto', kcAttribute: 'callisto_kc', category: 'Bosses' },
+    { bossName: 'artio', kcAttribute: 'artio_kc', category: 'Bosses' }
+  ],
+  
+  // Dagannoth Kings: Split into three separate bosses (Prime, Supreme, Rex)
+  'dagannoth_kings': [
+    { bossName: 'dagannoth_prime', kcAttribute: 'dagannoth_prime_kc', category: 'Bosses' },
+    { bossName: 'dagannoth_supreme', kcAttribute: 'dagannoth_supreme_kc', category: 'Bosses' },
+    { bossName: 'dagannoth_rex', kcAttribute: 'dagannoth_rex_kc', category: 'Bosses' }
+  ],
+  
+  // Perilous Moons (Doom): Uses total_completions attribute
+  'perilous_moons': [
+    { bossName: 'perilous_moons', kcAttribute: 'total_completions', category: 'Bosses' }
+  ],
+  
+  // TzHaar Fight Cave: Uses kc attribute (explicit mapping for clarity)
+  'the_fight_caves': [
+    { bossName: 'the_fight_caves', kcAttribute: 'kc', category: 'Bosses' }
+  ],
+  
+  // Moons of Peril: Uses kc attribute (may expand to modes later)
+  'moons_of_peril': [
+    { bossName: 'moons_of_peril', kcAttribute: 'kc', category: 'Bosses' }
+  ],
+  
+  // Venenatis & Spindel: Split into two separate bosses
+  'venenatis_and_spindel': [
+    { bossName: 'venenatis', kcAttribute: 'venenatis_kc', category: 'Bosses' },
+    { bossName: 'spindel', kcAttribute: 'spindel_kc', category: 'Bosses' }
+  ],
+  
+  // Vet'ion & Calvar'ion: Split into two separate bosses
+  'vetion_and_calvarion': [
+    { bossName: 'vetion', kcAttribute: 'vetion_kc', category: 'Bosses' },
+    { bossName: 'calvarion', kcAttribute: 'calvarion_kc', category: 'Bosses' }
+  ]
 }
 
 /**
@@ -850,10 +942,10 @@ async function storeCollectionLog(client: any, accountId: number, collectionLog:
  * Strategy: UPSERT kill counts (can increase or stay the same, never decrease)
  * Kill counts are permanent - they only go up, never down.
  * 
- * Extracts KC from collection log entries and stores in dedicated table.
+ * Only processes KCs from "Bosses" and "Raids" categories.
+ * For raids with multiple modes, splits them into separate boss entries.
  */
 async function storeKillCounts(client: any, accountId: number, collectionLog: CollectionLogData) {
-  // Build list of KC entries
   interface KcEntry {
     boss_name: string
     kill_count: number
@@ -862,15 +954,69 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
   
   const kcEntries: KcEntry[] = []
   
-  for (const [categoryName, category] of Object.entries(collectionLog.categories)) {
-    for (const [bossName, entry] of Object.entries(category as any)) {
-      const kc = (entry as any).kc
-      if (typeof kc === 'number' && kc > 0) {
-        kcEntries.push({
-          boss_name: bossName,
-          kill_count: kc,
-          category: categoryName
-        })
+  // Only process "Bosses" and "Raids" categories
+  const categories = collectionLog.categories
+  const bossesCategory = categories['Bosses']
+  const raidsCategory = categories['Raids']
+  
+  // Process Raids category
+  if (raidsCategory) {
+    for (const [raidName, raidEntry] of Object.entries(raidsCategory as any)) {
+      const mappings = RAID_KC_MAPPINGS[raidName]
+      
+      if (mappings) {
+        // Raid has custom mappings (multi-mode raids)
+        for (const mapping of mappings) {
+          const kc = (raidEntry as any)[mapping.kcAttribute]
+          if (typeof kc === 'number' && kc > 0) {
+            kcEntries.push({
+              boss_name: mapping.bossName,
+              kill_count: kc,
+              category: mapping.category
+            })
+          }
+        }
+      } else {
+        // Raid doesn't have custom mappings, use default 'kc' attribute
+        const kc = (raidEntry as any).kc
+        if (typeof kc === 'number' && kc > 0) {
+          kcEntries.push({
+            boss_name: raidName,
+            kill_count: kc,
+            category: 'Raids'
+          })
+        }
+      }
+    }
+  }
+  
+  // Process Bosses category
+  if (bossesCategory) {
+    for (const [bossName, bossEntry] of Object.entries(bossesCategory as any)) {
+      const mappings = BOSS_KC_MAPPINGS[bossName]
+      
+      if (mappings) {
+        // Boss has custom mappings (multi-mode bosses)
+        for (const mapping of mappings) {
+          const kc = (bossEntry as any)[mapping.kcAttribute]
+          if (typeof kc === 'number' && kc > 0) {
+            kcEntries.push({
+              boss_name: mapping.bossName,
+              kill_count: kc,
+              category: mapping.category
+            })
+          }
+        }
+      } else {
+        // Boss doesn't have custom mappings, use default 'kc' attribute
+        const kc = (bossEntry as any).kc
+        if (typeof kc === 'number' && kc > 0) {
+          kcEntries.push({
+            boss_name: bossName,
+            kill_count: kc,
+            category: 'Bosses'
+          })
+        }
       }
     }
   }
@@ -887,8 +1033,8 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
     existingKc.set(row.boss_name, row.kill_count)
   }
   
-  console.log(`DEBUG: Existing kill count entries in DB: ${existingKc.size}`)
-  console.log(`DEBUG: Incoming kill count entries: ${kcEntries.length}`)
+  console.log(`   📊 KC Processing: ${kcEntries.length} entries from Bosses & Raids`)
+  console.log(`   📊 Existing KC entries in DB: ${existingKc.size}`)
   
   // Check for data integrity: KC should never decrease
   const decreasedKc: string[] = []
@@ -946,6 +1092,8 @@ async function storeKillCounts(client: any, accountId: number, collectionLog: Co
     `, params)
     
     console.log(`   ✅ Upserted ${kcEntries.length} kill count entries`)
+  } else {
+    console.log(`   ℹ️  No kill counts to upsert`)
   }
 }
 
