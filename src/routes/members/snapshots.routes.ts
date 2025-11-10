@@ -11,7 +11,7 @@ import { requireMemberAuth } from '../../middleware/auth.js'
 const router = Router()
 
 /**
- * GET /:memberId/snapshots/:osrsAccountId
+ * GET /:memberId/accounts/:accountId/snapshots
  * 
  * Returns historical WOM snapshots grouped by day for a specific OSRS account.
  * Useful for showing historical progression of skills, bosses, and activities.
@@ -23,9 +23,9 @@ const router = Router()
  * - includeActivities: Include activity snapshots (default: true)
  * - includeComputed: Include computed metrics (default: true)
  */
-router.get('/:memberId/snapshots/:osrsAccountId', requireMemberAuth, async (req, res) => {
+router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async (req, res) => {
   try {
-    const { osrsAccountId } = req.params
+    const { accountId } = req.params
     const authenticatedMember = (req as any).authenticatedMember
     const discordId = authenticatedMember.discord_id
 
@@ -43,7 +43,7 @@ router.get('/:memberId/snapshots/:osrsAccountId', requireMemberAuth, async (req,
         ehp, ehb, is_primary, last_synced_at, created_at
       FROM osrs_accounts
       WHERE id = $1 AND discord_id = $2
-    `, [parseInt(osrsAccountId), discordId])
+    `, [parseInt(accountId), discordId])
 
     if (!osrsAccount) {
       return res.status(404).json({
