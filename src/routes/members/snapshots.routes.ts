@@ -14,13 +14,14 @@ const router = Router()
  * GET /:memberId/accounts/:accountId/snapshots
  * 
  * Returns historical WOM snapshots grouped by day for a specific OSRS account.
- * Useful for showing historical progression of skills, bosses, and activities.
+ * Useful for showing historical progression of skills and computed metrics.
+ * 
+ * Note: Boss and activity data is now tracked via the RuneLite SYNC system
+ * in osrs_account_killcounts. This endpoint only returns WOM skill snapshots.
  * 
  * Query parameters:
  * - days: Number of days to look back (default: 30, max: 365)
  * - includeSkills: Include skill snapshots (default: true)
- * - includeBosses: Include boss snapshots (default: true)
- * - includeActivities: Include activity snapshots (default: true)
  * - includeComputed: Include computed metrics (default: true)
  */
 router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async (req, res) => {
@@ -32,8 +33,6 @@ router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async 
     // Parse query parameters
     const days = Math.min(parseInt(req.query.days as string) || 30, 365)
     const includeSkills = req.query.includeSkills !== 'false'
-    const includeBosses = req.query.includeBosses !== 'false'
-    const includeActivities = req.query.includeActivities !== 'false'
     const includeComputed = req.query.includeComputed !== 'false'
 
     // Verify the OSRS account belongs to the authenticated member
@@ -109,7 +108,9 @@ router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async 
     const snapshotIds = snapshots.map(s => s.id)
 
     // Fetch related data in parallel if requested
-    const [skillsData, bossesData, activitiesData, computedData] = await Promise.all([
+    // Note: Bosses and activities are now tracked via RuneLite SYNC system (osrs_account_killcounts)
+    // We only fetch skills and computed metrics from WOM snapshots
+    const [skillsData, computedData] = await Promise.all([
       includeSkills ? db.query<any>(`
         SELECT 
           player_snapshot_id,
@@ -121,29 +122,6 @@ router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async 
         FROM player_skills_snapshots
         WHERE player_snapshot_id = ANY($1)
         ORDER BY player_snapshot_id, skill
-      `, [snapshotIds]) : Promise.resolve([]),
-
-      includeBosses ? db.query<any>(`
-        SELECT 
-          player_snapshot_id,
-          boss,
-          kills,
-          rank,
-          ehb
-        FROM player_bosses_snapshots
-        WHERE player_snapshot_id = ANY($1)
-        ORDER BY player_snapshot_id, boss
-      `, [snapshotIds]) : Promise.resolve([]),
-
-      includeActivities ? db.query<any>(`
-        SELECT 
-          player_snapshot_id,
-          activity,
-          score,
-          rank
-        FROM player_activities_snapshots
-        WHERE player_snapshot_id = ANY($1)
-        ORDER BY player_snapshot_id, activity
       `, [snapshotIds]) : Promise.resolve([]),
 
       includeComputed ? db.query<any>(`
@@ -160,8 +138,6 @@ router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async 
 
     // Group related data by snapshot_id for efficient lookup
     const skillsBySnapshot = new Map<number, any[]>()
-    const bossesBySnapshot = new Map<number, any[]>()
-    const activitiesBySnapshot = new Map<number, any[]>()
     const computedBySnapshot = new Map<number, any[]>()
 
     if (includeSkills) {
@@ -175,33 +151,6 @@ router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async 
           level: skill.level,
           rank: skill.rank,
           ehp: skill.ehp
-        })
-      }
-    }
-
-    if (includeBosses) {
-      for (const boss of bossesData) {
-        if (!bossesBySnapshot.has(boss.player_snapshot_id)) {
-          bossesBySnapshot.set(boss.player_snapshot_id, [])
-        }
-        bossesBySnapshot.get(boss.player_snapshot_id)!.push({
-          boss: boss.boss,
-          kills: boss.kills,
-          rank: boss.rank,
-          ehb: boss.ehb
-        })
-      }
-    }
-
-    if (includeActivities) {
-      for (const activity of activitiesData) {
-        if (!activitiesBySnapshot.has(activity.player_snapshot_id)) {
-          activitiesBySnapshot.set(activity.player_snapshot_id, [])
-        }
-        activitiesBySnapshot.get(activity.player_snapshot_id)!.push({
-          activity: activity.activity,
-          score: activity.score,
-          rank: activity.rank
         })
       }
     }
@@ -240,14 +189,6 @@ router.get('/:memberId/accounts/:accountId/snapshots', requireMemberAuth, async 
 
       if (includeSkills) {
         result.skills = skillsBySnapshot.get(snapshot.id) || []
-      }
-
-      if (includeBosses) {
-        result.bosses = bossesBySnapshot.get(snapshot.id) || []
-      }
-
-      if (includeActivities) {
-        result.activities = activitiesBySnapshot.get(snapshot.id) || []
       }
 
       if (includeComputed) {
