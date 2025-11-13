@@ -14,6 +14,10 @@ import clanRoutes from './routes/clan/index.js'
 import battleshipRoutes from './routes/battleship/index.js'
 import activityRoutes from './routes/activity.routes.js'
 import eventFiltersRoutes from './routes/event-filters.routes.js'
+import clanEventsRoutes from './routes/admin/clan-events/index.js'
+
+// Import middleware
+import { requireDiscordAdmin } from './middleware/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -110,6 +114,9 @@ app.use('/api/members', membersRoutes)
 app.use('/api/clan', clanRoutes)
 app.use('/api/battleship', battleshipRoutes)
 app.use('/api/activity-events', activityRoutes)
+
+// Admin routes - protected by Discord rank check
+app.use('/api/admin/clan-events', requireDiscordAdmin, clanEventsRoutes)
 
 // Public RuneLite plugin endpoint (no /api prefix for backward compatibility)
 app.use('/event-filters', eventFiltersRoutes)

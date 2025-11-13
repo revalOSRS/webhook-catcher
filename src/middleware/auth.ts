@@ -1,6 +1,13 @@
 import { Request, Response, NextFunction } from 'express'
 import * as db from '../db/connection.js'
 
+// Define Discord IDs that have admin access
+// TODO: Move this to environment variables or database configuration
+const ADMIN_DISCORD_IDS = [
+  '603849391970975744',  // Example Discord ID - replace with actual admin IDs
+  // Add more admin Discord IDs here
+]
+
 /**
  * Middleware to verify admin API key
  */
@@ -15,6 +22,78 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
   
   next()
+}
+
+/**
+ * Middleware to verify Discord admin access
+ * Requires both X-Discord-Id and X-Member-Code headers
+ * Checks if the Discord ID is in the admin whitelist and validates member code
+ */
+export async function requireDiscordAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const discordId = req.headers['x-discord-id'] as string
+    const memberCode = req.headers['x-member-code'] as string
+    
+    // Check for required headers
+    if (!discordId || !memberCode) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required'
+      })
+    }
+    
+    // Validate member code format
+    const code = parseInt(memberCode)
+    if (isNaN(code)) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication failed'
+      })
+    }
+    
+    // Check if Discord ID is in admin whitelist
+    if (!ADMIN_DISCORD_IDS.includes(discordId)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Access denied'
+      })
+    }
+    
+    // Get member from database and verify credentials
+    const members = await db.query<any>(`
+      SELECT id, discord_id, discord_username, member_code, is_active
+      FROM members
+      WHERE discord_id = $1
+    `, [discordId])
+    
+    if (members.length === 0) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Access denied'
+      })
+    }
+    
+    const member = members[0]
+    
+    // Verify member code matches and member is active
+    if (code !== member.member_code || !member.is_active) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Access denied'
+      })
+    }
+    
+    // Attach authenticated admin member to request
+    (req as any).authenticatedAdmin = member
+    next()
+    
+  } catch (error) {
+    console.error('Admin authentication error:', error)
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    })
+  }
 }
 
 /**
