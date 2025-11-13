@@ -64,6 +64,8 @@ app.post('/reval-webhook', express.json({
         timestamp: new Date().toISOString()
       })
     }
+    
+    console.log('RuneLite webhook received', JSON.stringify(req.body, null, 2))
 
     // Process event through handler
     const result = await handleRuneLiteEvent(req.body)
