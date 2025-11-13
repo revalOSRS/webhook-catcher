@@ -33,7 +33,7 @@ app.use(cors({
     'http://localhost:5174'
   ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH','OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Member-Code', 'X-Admin-Key', 'X-Discord-Id', 'Content-Encoding']
 }))
 
