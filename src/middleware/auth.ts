@@ -61,7 +61,7 @@ export async function requireDiscordAdmin(req: Request, res: Response, next: Nex
     
     // Get member from database and verify credentials
     const members = await db.query<any>(`
-      SELECT id, discord_id, discord_username, member_code, is_active
+      SELECT id, discord_id, discord_tag, member_code, is_active
       FROM members
       WHERE discord_id = $1
     `, [discordId])
