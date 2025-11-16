@@ -156,10 +156,10 @@ router.get('/', async (req: Request, res: Response) => {
         role: wm.role,
         joined_at: wm.createdAt,
         snapshot: snapshot ? {
-          total_level: snapshot.total_level,
-          total_xp: snapshot.total_xp,
-          ehp: snapshot.ehp,
-          ehb: snapshot.ehb,
+          total_level: Number(snapshot.total_level),
+          total_xp: Number(snapshot.total_xp),
+          ehp: Number(snapshot.ehp),
+          ehb: Number(snapshot.ehb),
           last_changed: snapshot.last_changed,
           last_imported_at: snapshot.last_imported_at,
           activities: snapshot.activities || null,
@@ -169,14 +169,7 @@ router.get('/', async (req: Request, res: Response) => {
     })
 
     res.json({
-      status: 'success',
       data: enrichedMembers,
-      count: enrichedMembers.length,
-      total: filteredMembers.length,
-      pagination: {
-        limit,
-        offset
-      }
     })
   } catch (error: any) {
     console.error('Error fetching clan members:', error)
