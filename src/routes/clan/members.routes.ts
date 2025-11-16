@@ -128,19 +128,6 @@ router.get('/', async (req: Request, res: Response) => {
       }
     }
 
-    // Get Discord IDs for members from our database (to link WOM data to Discord users)
-    const womIdsForDiscord = paginatedMembers.map((wm: any) => wm.player.id)
-    const discordLinks = await query(`
-      SELECT wom_player_id, discord_id
-      FROM osrs_accounts
-      WHERE wom_player_id = ANY($1)
-    `, [womIdsForDiscord])
-
-    const discordLinkMap = new Map()
-    discordLinks.forEach((link: any) => {
-      discordLinkMap.set(link.wom_player_id, link.discord_id)
-    })
-
     // Combine data
     const enrichedMembers = paginatedMembers.map((wm: any) => {
       const player = wm.player
@@ -152,7 +139,6 @@ router.get('/', async (req: Request, res: Response) => {
         wom_id: player.id,
         username: player.username,
         display_name: player.displayName,
-        discord_id: discordLinkMap.get(player.id) || null,
         role: wm.role,
         joined_at: wm.createdAt,
         snapshot: snapshot ? {
