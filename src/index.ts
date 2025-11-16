@@ -28,9 +28,7 @@ const app = express()
 app.use(cors({
   origin: [
     'https://www.revalosrs.ee',
-    'http://localhost:3000',
     'http://localhost:5173',
-    'http://localhost:5174'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH','OPTIONS'],
@@ -114,7 +112,7 @@ app.post('/webhook', async (req, res) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/members', membersRoutes)
 app.use('/api/clan', clanRoutes)
-app.use('/api/battleship', battleshipRoutes)
+// app.use('/api/battleship', battleshipRoutes)
 app.use('/api/activity-events', activityRoutes)
 
 // Admin routes - protected by Discord rank check
