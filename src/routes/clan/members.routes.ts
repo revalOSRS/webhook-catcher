@@ -19,31 +19,20 @@ router.get('/', async (req: Request, res: Response) => {
     const search = req.query.search as string
 
     // Build query with optional search
+    // Get members with their primary OSRS account's WOM ID
     let sql = `
       SELECT 
         m.id,
         m.ingame_name,
         m.discord_username,
         m.discord_id,
-        m.wom_id,
         m.is_active,
         m.joined_date,
         m.left_date,
-        s.total_level,
-        s.total_xp,
-        s.ehp,
-        s.ehb,
-        s.last_changed,
-        s.last_imported_at,
-        s.activities,
-        s.bosses
+        oa.wom_player_id as wom_id,
+        oa.osrs_nickname
       FROM members m
-      LEFT JOIN snapshots s ON s.member_id = m.id
-        AND s.last_imported_at = (
-          SELECT MAX(last_imported_at) 
-          FROM snapshots 
-          WHERE member_id = m.id
-        )
+      LEFT JOIN osrs_accounts oa ON oa.discord_id = m.discord_id AND oa.is_primary = true
       WHERE 1=1
     `
     
@@ -56,7 +45,7 @@ router.get('/', async (req: Request, res: Response) => {
       paramIndex++
     }
 
-    sql += ` ORDER BY m.is_active DESC, s.total_level DESC NULLS LAST, m.ingame_name ASC`
+    sql += ` ORDER BY m.is_active DESC, m.ingame_name ASC`
     sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`
     params.push(limit, offset)
 
@@ -82,31 +71,127 @@ router.get('/', async (req: Request, res: Response) => {
       })
     })
 
+    // Get latest snapshots for members with WOM IDs
+    const womIds = members
+      .filter((m: any) => m.wom_id)
+      .map((m: any) => m.wom_id)
+    
+    let snapshotsMap = new Map()
+    
+    if (womIds.length > 0) {
+      // Get latest snapshot for each player
+      const snapshots = await query(`
+        SELECT DISTINCT ON (player_id)
+          ps.player_id,
+          ps.total_level,
+          ps.total_exp as total_xp,
+          ps.ehp,
+          ps.ehb,
+          ps.last_changed_at as last_changed,
+          ps.last_imported_at
+        FROM player_snapshots ps
+        WHERE ps.player_id = ANY($1)
+        ORDER BY ps.player_id, ps.snapshot_date DESC, ps.last_imported_at DESC
+      `, [womIds])
+
+      snapshots.forEach((snap: any) => {
+        snapshotsMap.set(snap.player_id, snap)
+      })
+
+      // Get activities for these snapshots
+      const snapshotIds = snapshots.map((s: any) => s.player_id)
+      if (snapshotIds.length > 0) {
+        const activities = await query(`
+          SELECT 
+            ps.player_id,
+            jsonb_object_agg(pa.activity, 
+              jsonb_build_object(
+                'score', pa.score,
+                'rank', pa.rank
+              )
+            ) as activities
+          FROM player_snapshots ps
+          INNER JOIN player_activities_snapshots pa ON pa.player_snapshot_id = ps.id
+          WHERE ps.player_id = ANY($1)
+            AND ps.id IN (
+              SELECT DISTINCT ON (player_id) id
+              FROM player_snapshots
+              WHERE player_id = ANY($1)
+              ORDER BY player_id, snapshot_date DESC, last_imported_at DESC
+            )
+          GROUP BY ps.player_id
+        `, [snapshotIds])
+
+        activities.forEach((act: any) => {
+          const snap = snapshotsMap.get(act.player_id)
+          if (snap) {
+            snap.activities = act.activities
+          }
+        })
+
+        // Get bosses for these snapshots
+        const bosses = await query(`
+          SELECT 
+            ps.player_id,
+            jsonb_object_agg(pb.boss, 
+              jsonb_build_object(
+                'kills', pb.kills,
+                'rank', pb.rank,
+                'ehb', pb.ehb
+              )
+            ) as bosses
+          FROM player_snapshots ps
+          INNER JOIN player_bosses_snapshots pb ON pb.player_snapshot_id = ps.id
+          WHERE ps.player_id = ANY($1)
+            AND ps.id IN (
+              SELECT DISTINCT ON (player_id) id
+              FROM player_snapshots
+              WHERE player_id = ANY($1)
+              ORDER BY player_id, snapshot_date DESC, last_imported_at DESC
+            )
+          GROUP BY ps.player_id
+        `, [snapshotIds])
+
+        bosses.forEach((boss: any) => {
+          const snap = snapshotsMap.get(boss.player_id)
+          if (snap) {
+            snap.bosses = boss.bosses
+          }
+        })
+      }
+    }
+
     // Combine data
-    const enrichedMembers = members.map((member: any) => ({
-      id: member.id,
-      ingame_name: member.ingame_name,
-      discord_username: member.discord_username,
-      discord_id: member.discord_id,
-      is_active: member.is_active,
-      joined_date: member.joined_date,
-      left_date: member.left_date,
-      wom_id: member.wom_id,
-      
-      role: member.wom_id && womMemberMap.has(member.wom_id) 
-        ? womMemberMap.get(member.wom_id).role 
-        : null,
-      snapshot: member.total_level ? {
-        total_level: member.total_level,
-        total_xp: member.total_xp,
-        ehp: member.ehp,
-        ehb: member.ehb,
-        last_changed: member.last_changed,
-        last_imported_at: member.last_imported_at,
-        activities: member.activities || null,
-        bosses: member.bosses || null
-      } : null
-    }))
+    const enrichedMembers = members.map((member: any) => {
+      const snapshot = member.wom_id && snapshotsMap.has(member.wom_id) 
+        ? snapshotsMap.get(member.wom_id) 
+        : null
+
+      return {
+        id: member.id,
+        ingame_name: member.ingame_name,
+        discord_username: member.discord_username,
+        discord_id: member.discord_id,
+        is_active: member.is_active,
+        joined_date: member.joined_date,
+        left_date: member.left_date,
+        wom_id: member.wom_id,
+        osrs_nickname: member.osrs_nickname,
+        role: member.wom_id && womMemberMap.has(member.wom_id) 
+          ? womMemberMap.get(member.wom_id).role 
+          : null,
+        snapshot: snapshot ? {
+          total_level: snapshot.total_level,
+          total_xp: snapshot.total_xp,
+          ehp: snapshot.ehp,
+          ehb: snapshot.ehb,
+          last_changed: snapshot.last_changed,
+          last_imported_at: snapshot.last_imported_at,
+          activities: snapshot.activities || null,
+          bosses: snapshot.bosses || null
+        } : null
+      }
+    })
 
     res.json({
       status: 'success',
