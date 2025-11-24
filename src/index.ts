@@ -5,13 +5,12 @@ import cors from 'cors'
 import compression from 'compression'
 
 import { DinkService } from './modules/dink/index.js'
-import { handleRuneLiteEvent, validateRuneLiteEvent } from './runelite/handler.js'
+import { RuneLiteService } from './modules/runelite/index.js'
 
 // Import route modules
 import authRoutes from './routes/app/auth.routes.js'
 import membersRoutes from './routes/app/members/index.js'
 import clanRoutes from './routes/app/clan/index.js'
-import battleshipRoutes from './routes/app/battleship/index.js'
 import activityRoutes from './routes/app/activity.routes.js'
 import eventFiltersRoutes from './routes/app/event-filters.routes.js'
 import clanEventsRoutes from './routes/app/clan-events.routes.js'
@@ -54,7 +53,7 @@ app.post('/reval-webhook', express.json({
   }
 }), async (req, res) => {
   try {    
-    const validation = validateRuneLiteEvent(req.body)
+    const validation = RuneLiteService.validateRuneLiteEvent(req.body)
     if (!validation.valid) {
       console.error(`[RuneLite Webhook] Validation error: ${validation.error}`)
       return res.status(400).json({ 
@@ -67,7 +66,7 @@ app.post('/reval-webhook', express.json({
     console.log('RuneLite webhook received', JSON.stringify(req.body, null, 2))
 
     // Process event through handler
-    const result = await handleRuneLiteEvent(req.body)
+    const result = await RuneLiteService.handleRuneLiteEvent(req.body)
     
     res.status(200).json({ 
       status: 'success', 
