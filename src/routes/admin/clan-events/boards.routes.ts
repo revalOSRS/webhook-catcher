@@ -4,23 +4,30 @@ import { query } from '../../../db/connection.js';
 const router = Router();
 
 /**
- * GET /api/bingo/boards
- * Get all boards with optional filtering by event_id
- * Query params: event_id, limit, offset
+ * GET /api/admin/clan-events/boards
+ * Get all boards with optional filtering by event_id or team_id
+ * Query params: event_id, team_id, limit, offset
+ * 
+ * Returns: Array<BoardSummary>
+ * 
+ * Note: For team-specific board management, use /events/:eventId/teams/:teamId/board instead
  */
 router.get('/', async (req: Request, res: Response) => {
 	try {
-		const { event_id, limit = '50', offset = '0' } = req.query;
+		const { event_id, team_id, limit = '50', offset = '0' } = req.query;
 
 		let sql = `
 			SELECT 
 				bb.*,
 				e.name as event_name,
 				e.status as event_status,
+				et.name as team_name,
+				et.color as team_color,
 				COUNT(bbt.id) as total_tiles,
 				COUNT(bbt.id) FILTER (WHERE bbt.is_completed = true) as completed_tiles
 			FROM bingo_boards bb
 			JOIN events e ON bb.event_id = e.id
+			LEFT JOIN event_teams et ON bb.team_id = et.id
 			LEFT JOIN bingo_board_tiles bbt ON bb.id = bbt.board_id
 			WHERE 1=1
 		`;
@@ -34,8 +41,14 @@ router.get('/', async (req: Request, res: Response) => {
 			paramIndex++;
 		}
 
+		if (team_id) {
+			sql += ` AND bb.team_id = $${paramIndex}`;
+			params.push(team_id);
+			paramIndex++;
+		}
+
 		sql += `
-			GROUP BY bb.id, e.name, e.status
+			GROUP BY bb.id, e.name, e.status, et.name, et.color
 			ORDER BY bb.created_at DESC
 			LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
 		`;
@@ -62,8 +75,12 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/bingo/boards/:id
- * Get a single board with all its tiles
+ * GET /api/admin/clan-events/boards/:id
+ * Get a single board with all its tiles and effects
+ * 
+ * Returns: BoardResponse (board with tiles, tile_effects, row_effects, column_effects)
+ * 
+ * Note: For team-specific board management, use /events/:eventId/teams/:teamId/board instead
  */
 router.get('/:id', async (req: Request, res: Response) => {
 	try {
@@ -75,9 +92,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 				bb.*,
 				e.name as event_name,
 				e.status as event_status,
-				e.event_type
+				e.event_type,
+				et.name as team_name,
+				et.color as team_color
 			FROM bingo_boards bb
 			JOIN events e ON bb.event_id = e.id
+			LEFT JOIN event_teams et ON bb.team_id = et.id
 			WHERE bb.id = $1
 		`, [id]);
 
@@ -110,35 +130,24 @@ router.get('/:id', async (req: Request, res: Response) => {
 			ORDER BY bbt.position
 		`, [id]);
 
-		// Get row effects
-		const rowEffects = await query(`
+		// Get line effects (merged row and column effects)
+		const lineEffects = await query(`
 			SELECT 
-				bre.*,
+				bble.*,
 				bbd.name as buff_name,
 				bbd.type as buff_type,
 				bbd.effect_type,
 				bbd.effect_value,
 				bbd.icon as buff_icon
-			FROM bingo_board_row_effects bre
-			JOIN bingo_buffs_debuffs bbd ON bre.buff_debuff_id = bbd.id
-			WHERE bre.board_id = $1 AND bre.is_active = true
-			ORDER BY bre.row_number
+			FROM bingo_board_line_effects bble
+			JOIN bingo_buffs_debuffs bbd ON bble.buff_debuff_id = bbd.id
+			WHERE bble.board_id = $1 AND bble.is_active = true
+			ORDER BY bble.line_type, bble.line_identifier
 		`, [id]);
 
-		// Get column effects
-		const columnEffects = await query(`
-			SELECT 
-				bce.*,
-				bbd.name as buff_name,
-				bbd.type as buff_type,
-				bbd.effect_type,
-				bbd.effect_value,
-				bbd.icon as buff_icon
-			FROM bingo_board_column_effects bce
-			JOIN bingo_buffs_debuffs bbd ON bce.buff_debuff_id = bbd.id
-			WHERE bce.board_id = $1 AND bce.is_active = true
-			ORDER BY bce.column_letter
-		`, [id]);
+		// Separate row and column effects
+		const rowEffects = lineEffects.filter(e => e.line_type === 'row');
+		const columnEffects = lineEffects.filter(e => e.line_type === 'column');
 
 		res.json({
 			success: true,
@@ -160,14 +169,15 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/bingo/boards
- * Create a new board
- * Body: { event_id, name, description, columns, rows, show_row_column_buffs, metadata }
+ * POST /api/admin/clan-events/boards
+ * Create a new team-specific board
+ * Body: { event_id, team_id, name, description, columns, rows, show_row_column_buffs, metadata }
  */
 router.post('/', async (req: Request, res: Response) => {
 	try {
 		const {
 			event_id,
+			team_id,
 			name,
 			description,
 			columns = 7,
@@ -194,6 +204,20 @@ router.post('/', async (req: Request, res: Response) => {
 			});
 		}
 
+		// If team_id is provided, validate it belongs to the event
+		if (team_id) {
+			const teamCheck = await query(
+				'SELECT id FROM event_teams WHERE id = $1 AND event_id = $2',
+				[team_id, event_id]
+			);
+			if (teamCheck.length === 0) {
+				return res.status(404).json({
+					success: false,
+					error: 'Team not found or does not belong to this event'
+				});
+			}
+		}
+
 		// Validate grid size
 		if (columns < 1 || columns > 20 || rows < 1 || rows > 20) {
 			return res.status(400).json({
@@ -205,12 +229,12 @@ router.post('/', async (req: Request, res: Response) => {
 
 		const result = await query(`
 			INSERT INTO bingo_boards (
-				event_id, name, description, columns, rows, 
+				event_id, team_id, name, description, columns, rows, 
 				show_row_column_buffs, metadata
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			RETURNING *
-		`, [event_id, name, description, columns, rows, show_row_column_buffs, JSON.stringify(metadata)]);
+		`, [event_id, team_id || null, name, description, columns, rows, show_row_column_buffs, JSON.stringify(metadata)]);
 
 		res.status(201).json({
 			success: true,
@@ -228,7 +252,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 /**
- * PATCH /api/bingo/boards/:id
+ * PATCH /api/admin/clan-events/boards/:id
  * Update a board
  */
 router.patch('/:id', async (req: Request, res: Response) => {
@@ -237,7 +261,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 		const updates = req.body;
 
 		// Check if board exists
-		const existing = await query('SELECT id FROM bingo_boards WHERE id = $1', [id]);
+		const existing = await query('SELECT id, event_id FROM bingo_boards WHERE id = $1', [id]);
 		if (existing.length === 0) {
 			return res.status(404).json({
 				success: false,
@@ -245,8 +269,24 @@ router.patch('/:id', async (req: Request, res: Response) => {
 			});
 		}
 
+		// If updating team_id, validate it belongs to the event
+		if (updates.team_id !== undefined) {
+			if (updates.team_id) {
+				const teamCheck = await query(
+					'SELECT id FROM event_teams WHERE id = $1 AND event_id = $2',
+					[updates.team_id, existing[0].event_id]
+				);
+				if (teamCheck.length === 0) {
+					return res.status(404).json({
+						success: false,
+						error: 'Team not found or does not belong to this event'
+					});
+				}
+			}
+		}
+
 		// Build dynamic update query
-		const allowedFields = ['name', 'description', 'columns', 'rows', 'show_row_column_buffs', 'metadata'];
+		const allowedFields = ['name', 'description', 'columns', 'rows', 'show_row_column_buffs', 'team_id', 'metadata'];
 		const updateFields: string[] = [];
 		const values: any[] = [];
 		let paramIndex = 1;
@@ -297,7 +337,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * DELETE /api/bingo/boards/:id
+ * DELETE /api/admin/clan-events/boards/:id
  * Delete a board
  */
 router.delete('/:id', async (req: Request, res: Response) => {
@@ -329,9 +369,12 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/bingo/boards/:id/tiles
+ * POST /api/admin/clan-events/boards/:id/tiles
  * Add a tile to the board
  * Body: { tile_id, position, custom_points, metadata }
+ * 
+ * @deprecated Use /events/:eventId/teams/:teamId/board/tiles instead
+ * This endpoint is kept for backwards compatibility
  */
 router.post('/:id/tiles', async (req: Request, res: Response) => {
 	try {
@@ -402,8 +445,11 @@ router.post('/:id/tiles', async (req: Request, res: Response) => {
 });
 
 /**
- * DELETE /api/bingo/boards/:boardId/tiles/:tileId
+ * DELETE /api/admin/clan-events/boards/:boardId/tiles/:tileId
  * Remove a tile from the board
+ * 
+ * @deprecated Use /events/:eventId/teams/:teamId/board/tiles/:tileId instead
+ * This endpoint is kept for backwards compatibility
  */
 router.delete('/:boardId/tiles/:tileId', async (req: Request, res: Response) => {
 	try {
@@ -437,8 +483,11 @@ router.delete('/:boardId/tiles/:tileId', async (req: Request, res: Response) => 
 });
 
 /**
- * PATCH /api/bingo/boards/:boardId/tiles/:tileId
+ * PATCH /api/admin/clan-events/boards/:boardId/tiles/:tileId
  * Update a board tile (position, custom_points, completion status, etc.)
+ * 
+ * @deprecated Use /events/:eventId/teams/:teamId/board/tiles/:tileId instead
+ * This endpoint is kept for backwards compatibility
  */
 router.patch('/:boardId/tiles/:tileId', async (req: Request, res: Response) => {
 	try {

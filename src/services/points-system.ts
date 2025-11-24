@@ -8,7 +8,7 @@ import type {
   SyncEventPayload, 
   CombatAchievementTier,
   DiaryProgress 
-} from '../runelite/types/sync-event.type.js'
+} from '../modules/runelite/types/index.js'
 
 // ===== Point Values =====
 

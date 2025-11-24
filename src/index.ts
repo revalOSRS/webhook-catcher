@@ -4,17 +4,18 @@ import { fileURLToPath } from 'url'
 import cors from 'cors'
 import compression from 'compression'
 
-import { handler as dinkHandler } from './dink/handler.js'
+import { DinkService } from './modules/dink/index.js'
 import { handleRuneLiteEvent, validateRuneLiteEvent } from './runelite/handler.js'
 
 // Import route modules
-import authRoutes from './routes/auth.routes.js'
-import membersRoutes from './routes/members/index.js'
-import clanRoutes from './routes/clan/index.js'
-import battleshipRoutes from './routes/battleship/index.js'
-import activityRoutes from './routes/activity.routes.js'
-import eventFiltersRoutes from './routes/event-filters.routes.js'
-import clanEventsRoutes from './routes/admin/clan-events/index.js'
+import authRoutes from './routes/app/auth.routes.js'
+import membersRoutes from './routes/app/members/index.js'
+import clanRoutes from './routes/app/clan/index.js'
+import battleshipRoutes from './routes/app/battleship/index.js'
+import activityRoutes from './routes/app/activity.routes.js'
+import eventFiltersRoutes from './routes/app/event-filters.routes.js'
+import clanEventsRoutes from './routes/app/clan-events.routes.js'
+import adminClanEventsRoutes from './routes/admin/clan-events/index.js'
 
 // Import middleware
 import { requireDiscordAdmin } from './middleware/auth.js'
@@ -45,7 +46,7 @@ app.get('/health', (req, res) => {
 
 // RuneLite plugin webhook endpoint with large payload support
 app.post('/reval-webhook', express.json({ 
-  limit: '50mb',  // Large limit for comprehensive collection log / combat achievement data
+  // limit: '50mb',  // Large limit for comprehensive collection log / combat achievement data
   verify: (req, res, buf, encoding) => {
     if (req.headers['content-encoding'] === 'gzip') {
       console.log('Received gzip-compressed RuneLite plugin data')
@@ -95,10 +96,10 @@ app.post('/webhook', async (req, res) => {
 
     if (req.headers['user-agent']?.includes('Dink')) {
       console.log('Received Dink webhook')
-      result = await dinkHandler(req)
+      result = await DinkService.processWebhook(req)
     } else {
       console.log('Received non-Dink webhook')
-      // result = await dinkHandler(req)
+      // result = await DinkService.processWebhook(req)
     }
 
     res.status(200).json(result)
@@ -114,9 +115,10 @@ app.use('/api/members', membersRoutes)
 app.use('/api/clan', clanRoutes)
 // app.use('/api/battleship', battleshipRoutes)
 app.use('/api/activity-events', activityRoutes)
+app.use('/api/clan-events', clanEventsRoutes)
 
 // Admin routes - protected by Discord rank check
-app.use('/api/admin/clan-events', requireDiscordAdmin, clanEventsRoutes)
+app.use('/api/admin/clan-events', requireDiscordAdmin, adminClanEventsRoutes)
 
 // Public RuneLite plugin endpoint (no /api prefix for backward compatibility)
 app.use('/event-filters', eventFiltersRoutes)

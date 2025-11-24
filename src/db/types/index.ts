@@ -22,22 +22,25 @@ export type {
   DonationCategory
 } from './donation.types.js'
 
-// Coffer types
+// Coffer types (clan coffer that holds donations)
 export type {
   CofferMovement
 } from './coffer.types.js'
 
-// Token types
+// Token types (in-game tokens for each player)
 export type {
   TokenMovement
 } from './token.types.js'
 
 // Snapshot types
 export type {
-  ClanSnapshot,
+  ClanStatisticsSnapshot,
+  SnapshotFailedMember,
   PlayerSnapshot,
   PlayerSkillSnapshot,
-  SnapshotFailedMember
+  PlayerBossSnapshot,
+  PlayerActivitySnapshot,
+  PlayerComputedSnapshot
 } from './snapshot.types.js'
 
 // Achievement types
@@ -150,33 +153,5 @@ export {
   getEventFilters
 } from './event-filters.types.js'
 
-// Donation types
-export type {
-  Donation,
-  DonationCategory
-} from './donation.types.js'
-
-// Token types (in-game tokens for each player)
-export type {
-  TokenMovement
-} from './token.types.js'
-
-// Coffer types (clan coffer that holds donations)
-export type {
-  CofferMovement
-} from './coffer.types.js'
-
-// Snapshot types
-export type {
-  ClanStatisticsSnapshot,
-  SnapshotFailedMember,
-  PlayerSnapshot,
-  PlayerSkillSnapshot,
-  PlayerBossSnapshot,
-  PlayerActivitySnapshot,
-  PlayerComputedSnapshot
-} from './snapshot.types.js'
-
-// Battleship types (already exists in separate file)
+// Battleship types
 export * from './battleship.types.js'
-

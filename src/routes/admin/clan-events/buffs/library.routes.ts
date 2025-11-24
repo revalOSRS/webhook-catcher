@@ -4,7 +4,7 @@ import { query } from '../../../../db/connection.js';
 const router = Router();
 
 /**
- * GET /api/bingo/buffs/library
+ * GET /api/admin/clan-events/buffs/library
  * Get all buffs/debuffs from the library
  * Query params: type, is_active, search, limit, offset
  */
@@ -75,7 +75,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/bingo/buffs/library/:id
+ * GET /api/admin/clan-events/buffs/library/:id
  * Get a single buff/debuff by ID
  */
 router.get('/:id', async (req: Request, res: Response) => {
@@ -95,12 +95,11 @@ router.get('/:id', async (req: Request, res: Response) => {
 		const usageStats = await query(`
 			SELECT 
 				COUNT(DISTINCT bbte.board_tile_id) as applied_to_tiles,
-				COUNT(DISTINCT bbre.board_id) as applied_to_rows,
-				COUNT(DISTINCT bbce.board_id) as applied_to_columns
+				COUNT(DISTINCT bble.board_id) FILTER (WHERE bble.line_type = 'row') as applied_to_rows,
+				COUNT(DISTINCT bble.board_id) FILTER (WHERE bble.line_type = 'column') as applied_to_columns
 			FROM bingo_buffs_debuffs bbd
 			LEFT JOIN bingo_board_tile_effects bbte ON bbd.id = bbte.buff_debuff_id
-			LEFT JOIN bingo_board_row_effects bbre ON bbd.id = bbre.buff_debuff_id
-			LEFT JOIN bingo_board_column_effects bbce ON bbd.id = bbce.buff_debuff_id
+			LEFT JOIN bingo_board_line_effects bble ON bbd.id = bble.buff_debuff_id
 			WHERE bbd.id = $1
 		`, [id]);
 
@@ -122,7 +121,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/bingo/buffs/library
+ * POST /api/admin/clan-events/buffs/library
  * Create a new buff/debuff in the library
  * Body: { id, name, description, type, effect_type, effect_value, icon, metadata }
  */
@@ -191,7 +190,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 /**
- * PATCH /api/bingo/buffs/library/:id
+ * PATCH /api/admin/clan-events/buffs/library/:id
  * Update a buff/debuff in the library
  */
 router.patch('/:id', async (req: Request, res: Response) => {
@@ -260,7 +259,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * DELETE /api/bingo/buffs/library/:id
+ * DELETE /api/admin/clan-events/buffs/library/:id
  * Delete a buff/debuff from the library
  */
 router.delete('/:id', async (req: Request, res: Response) => {
@@ -271,8 +270,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 		const usage = await query(`
 			SELECT 
 				(SELECT COUNT(*) FROM bingo_board_tile_effects WHERE buff_debuff_id = $1) +
-				(SELECT COUNT(*) FROM bingo_board_row_effects WHERE buff_debuff_id = $1) +
-				(SELECT COUNT(*) FROM bingo_board_column_effects WHERE buff_debuff_id = $1) as count
+				(SELECT COUNT(*) FROM bingo_board_line_effects WHERE buff_debuff_id = $1) as count
 		`, [id]);
 
 		if (parseInt(usage[0].count) > 0) {

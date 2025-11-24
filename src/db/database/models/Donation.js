@@ -5,7 +5,6 @@ class Donation {
         this.id = data.id;
         this.player_discord_id = data.player_discord_id;
         this.amount = data.amount;
-        this.category_id = data.category_id || 1;
         this.screenshot_url = data.screenshot_url;
         this.status = data.status || 'pending';
         this.submitted_at = data.submitted_at;
@@ -20,24 +19,23 @@ class Donation {
     // Create a new donation submission
     static async create(data) {
         // If status is approved and no reviewed_at provided, use current timestamp
-        const reviewedAt = data.status === 'approved' && !data.reviewed_at 
-            ? new Date().toISOString() 
+        const reviewedAt = data.status === 'approved' && !data.reviewed_at
+            ? new Date().toISOString()
             : data.reviewed_at;
-            
+
         const result = await query(`
             INSERT INTO donations (
-                player_discord_id, amount, category_id, screenshot_url,
+                player_discord_id, amount, screenshot_url,
                 message_id, channel_id, note, status, reviewed_by, reviewed_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING *
         `, [
-            data.player_discord_id, 
-            data.amount, 
-            data.category_id || 1,
-            data.screenshot_url || null, 
-            data.message_id || null, 
-            data.channel_id || null, 
+            data.player_discord_id,
+            data.amount,
+            data.screenshot_url || null,
+            data.message_id || null,
+            data.channel_id || null,
             data.note || null,
             data.status || 'pending',
             data.reviewed_by || null,
@@ -71,16 +69,11 @@ class Donation {
     // Find pending donations
     static async findPending() {
         const result = await query(`
-            SELECT d.*, dc.name as category_name
-            FROM donations d
-            LEFT JOIN donation_categories dc ON d.category_id = dc.id
-            WHERE d.status = 'pending'
-            ORDER BY d.submitted_at ASC
+            SELECT * FROM donations
+            WHERE status = 'pending'
+            ORDER BY submitted_at ASC
         `);
-        return result.map(row => ({
-            ...new Donation(row),
-            category_name: row.category_name
-        }));
+        return result.map(row => new Donation(row));
     }
 
     // Update donation status
@@ -100,16 +93,6 @@ class Donation {
         return null;
     }
 
-    // Get donation with category info
-    async getWithCategory() {
-        const result = await query(`
-            SELECT d.*, dc.name as category_name, dc.description as category_description
-            FROM donations d
-            LEFT JOIN donation_categories dc ON d.category_id = dc.id
-            WHERE d.id = ?
-        `, [this.id]);
-        return result.length > 0 ? result[0] : null;
-    }
 
     // Delete donation
     async delete() {

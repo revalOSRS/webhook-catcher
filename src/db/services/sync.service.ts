@@ -12,7 +12,7 @@ import type {
   AchievementDiariesData,
   CombatAchievementsData,
   CollectionLogData
-} from '../../runelite/types/sync-event.type.js'
+} from '../../modules/runelite/types/index.js'
 import { calculatePointsFromSync, type PointsBreakdown } from '../../services/points-system.js'
 
 // ===== Main SYNC Storage Function =====
