@@ -5,7 +5,7 @@
  * These types define request/response structures for member routes
  */
 
-import type { Member } from '../../modules/members/types/index.js'
+import type { Member } from '../../../modules/members/types/index.js'
 
 /**
  * Member Profile API Response

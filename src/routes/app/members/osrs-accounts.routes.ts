@@ -5,8 +5,8 @@
  */
 
 import { Router } from 'express'
-import * as db from '../../db/connection.js'
-import { requireMemberAuth } from '../../middleware/auth.js'
+import * as db from '../../../db/connection.js'
+import { requireMemberAuth } from '../../../middleware/auth.js'
 
 const router = Router()
 

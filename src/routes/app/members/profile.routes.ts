@@ -6,13 +6,10 @@
 
 import { Router } from 'express'
 import { 
-  getMemberByDiscordId, 
-  getOsrsAccountsByDiscordId, 
-  getRecentDonations, 
-  getDonationStats
-} from '../../modules/members/index.js'
-import { getDiscordAvatar } from '../../services/discord.js'
-import { requireMemberAuth } from '../../middleware/auth.js'
+  MembersService
+} from '../../../modules/members/index.js'
+import { DiscordService } from '../../../modules/discord/index.js'
+import { requireMemberAuth } from '../../../middleware/auth.js'
 
 const router = Router()
 
@@ -23,7 +20,7 @@ router.get('/:memberId', requireMemberAuth, async (req, res) => {
     const discordId = authenticatedMember.discord_id
 
     // Get member info
-    const member = await getMemberByDiscordId(discordId)
+    const member = await MembersService.getMemberByDiscordId(discordId)
     if (!member) {
       return res.status(404).json({ 
         status: 'error', 
@@ -38,7 +35,7 @@ router.get('/:memberId', requireMemberAuth, async (req, res) => {
     const [donationStats, allDonations, discordAvatar] = await Promise.all([
       MembersService.getDonationStats(discordId),
       MembersService.getRecentDonations(discordId),
-      getDiscordAvatar(member.discord_id)
+      DiscordService.getDiscordAvatar(member.discord_id)
     ])
 
     res.status(200).json({

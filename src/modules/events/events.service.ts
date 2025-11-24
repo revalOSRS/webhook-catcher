@@ -134,10 +134,14 @@ export class EventsService {
     }
   }> {
     // Get clan events summary
-    const clanEvents = await this.getRecentEventsSummary(days)
+    const summary = await this.getRecentEventsSummary(days)
 
     return {
-      clanEvents
+      clanEvents: {
+        totalEvents: summary.eventCount,
+        totalFundsUsed: summary.totalFundsUsed,
+        avgFundsPerEvent: summary.avgFundsPerEvent
+      }
     }
   }
 

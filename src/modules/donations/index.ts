@@ -7,11 +7,11 @@
 export type * from './types/index.js'
 
 // Entity types
-export type { Donation, DonationCategory } from './donations.entity.js'
+export type { Donation } from './donations.entity.js'
 
 // Service
 export { DonationsService } from './donations.service.js'
 
 // Entity (for direct database access if needed)
-export { DonationsEntity, DonationCategoriesEntity } from './donations.entity.js'
+export { DonationsEntity } from './donations.entity.js'
 

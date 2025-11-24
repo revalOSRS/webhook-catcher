@@ -99,7 +99,11 @@ export class CofferService {
     uniqueDonors: number
     avgDonation: number
   }> {
-    return this.movementsEntity.getStats()
+    const stats = await this.movementsEntity.getStats()
+    return {
+      ...stats,
+      totalEventExpenses: 0 // TODO: Calculate from events if needed
+    }
   }
 
   /**

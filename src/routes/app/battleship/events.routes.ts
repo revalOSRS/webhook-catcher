@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { requireAdmin } from '../../middleware/auth.js'
-import * as battleshipService from '../../db/services/battleship.service.js'
+import { requireAdmin } from '../../../middleware/auth.js'
+import * as battleshipService from '../../../db/services/battleship.service.js'
 
 const router = Router()
 

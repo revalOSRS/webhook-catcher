@@ -1,5 +1,5 @@
 import { addImageToPayload, formatRuneScapeNumber } from '../discord-utils.js'
-import { getDeathDescription } from '../handler.js'
+import { DinkService } from '../dink.service.js'
 
 export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
   const {
@@ -33,7 +33,7 @@ export const createDeathEmbed = async (fields, imageBuffer, imageFilename) => {
   const discordUserAvatarHash = discordUser?.avatar
 
   // Use the shared death description function with proper Estonian grammar
-  const description = `☠️ **${getDeathDescription(playerName, killerName || 'Grim Reaper')}** 🕯️`
+  const description = `☠️ **${DinkService.getDeathDescription(playerName, killerName || 'Grim Reaper')}** 🕯️`
 
   const payload = {
     embeds: [

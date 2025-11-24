@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { MembersService } from '../modules/members/index.js'
-import { getDiscordAvatar } from '../services/discord.js'
+import { MembersService } from '../../modules/members/index.js'
+import { DiscordService } from '../../modules/discord/index.js'
 
 const router = Router()
 
@@ -175,7 +175,7 @@ router.post('/discord', async (req, res) => {
     }
 
     // Fetch avatar
-    const discordAvatar = await getDiscordAvatar(member.discord_id)
+    const discordAvatar = await DiscordService.getDiscordAvatar(member.discord_id)
 
     return res.status(200).json({
       status: 'success',

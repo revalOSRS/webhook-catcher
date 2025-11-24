@@ -3,5 +3,5 @@
  */
 
 // Re-export bingo requirement types
-export * from '../../../types/bingo-requirements.js'
+export * from '../../../../types/bingo-requirements.js'
 

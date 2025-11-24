@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { DinkService } from '../modules/dink/index.js'
-import { getGroupActivity } from '../services/wiseoldman.js'
+import { DinkService } from '../../modules/dink/index.js'
+import { WiseOldManService } from '../../modules/wiseoldman/index.js'
 
 const router = Router()
 
@@ -47,7 +47,7 @@ router.get('/wom', async (req, res) => {
     const limit = parseInt(req.query.limit as string) || 20
     const offset = parseInt(req.query.offset as string) || 0
 
-    const activity = await getGroupActivity(CLAN_GROUP_ID, limit, offset)
+    const activity = await WiseOldManService.getGroupActivity(CLAN_GROUP_ID, limit, offset)
     
     res.json({
       status: 'success',

@@ -5,7 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import { getEventFilters, DEFAULT_EVENT_FILTERS } from '../db/types/event-filters.types.js'
+import { getEventFilters, DEFAULT_EVENT_FILTERS } from '../../db/types/event-filters.types.js'
 
 const router = Router()
 

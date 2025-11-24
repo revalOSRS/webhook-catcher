@@ -3,9 +3,6 @@
  * Central export for all achievement-related functionality
  */
 
-// Types
-export type * from './types/index.js'
-
 // Entity types (definition tables only - account completions moved to osrs-accounts module)
 export type { AchievementDiaryTier } from './entities/achievement-diary-tiers.entity.js'
 export type { CombatAchievement } from './entities/combat-achievements.entity.js'

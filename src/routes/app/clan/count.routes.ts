@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express'
-import * as db from '../../db/connection.js'
+import * as db from '../../../db/connection.js'
 
 const router = Router()
 

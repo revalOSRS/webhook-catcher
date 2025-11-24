@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
-import { query } from '../../db/connection.js'
-import { getGroupMembers } from '../../services/wiseoldman.js'
+import { query } from '../../../db/connection.js'
+import { WiseOldManService } from '../../../modules/wiseoldman/index.js'
 
 const router = Router()
 
@@ -28,7 +28,7 @@ router.get('/', async (req: Request, res: Response) => {
         })
       }
       
-      womMembers = await getGroupMembers(CLAN_GROUP_ID)
+      womMembers = await WiseOldManService.getGroupMembers(CLAN_GROUP_ID)
     } catch (error) {
       console.error('Error fetching WOM members:', error)
       return res.status(500).json({

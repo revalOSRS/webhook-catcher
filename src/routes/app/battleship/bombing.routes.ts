@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import * as battleshipService from '../../db/services/battleship.service.js'
-import { query } from '../../db/connection.js'
+import * as battleshipService from '../../../db/services/battleship.service.js'
+import { query } from '../../../db/connection.js'
 
 const router = Router()
 

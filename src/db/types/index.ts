@@ -18,8 +18,7 @@ export type {
 
 // Donation types
 export type {
-  Donation,
-  DonationCategory
+  Donation
 } from './donation.types.js'
 
 // Coffer types (clan coffer that holds donations)
@@ -147,9 +146,6 @@ export type {
 
 export {
   DEFAULT_EVENT_FILTERS,
-  PRODUCTION_EVENT_FILTERS,
-  PEAK_HOURS_EVENT_FILTERS,
-  isPeakHours,
   getEventFilters
 } from './event-filters.types.js'
 

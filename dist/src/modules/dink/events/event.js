@@ -1,0 +1,25 @@
+export var DinkEventType;
+(function (DinkEventType) {
+    DinkEventType["DEATH"] = "DEATH";
+    DinkEventType["COLLECTION"] = "COLLECTION";
+    DinkEventType["LEVEL"] = "LEVEL";
+    DinkEventType["LOOT"] = "LOOT";
+    DinkEventType["CLUE"] = "CLUE";
+    DinkEventType["KILL_COUNT"] = "KILL_COUNT";
+    DinkEventType["PET"] = "PET";
+    DinkEventType["SPEEDRUN"] = "SPEEDRUN";
+    DinkEventType["BARBARIAN_ASSAULT_GAMBLE"] = "BARBARIAN_ASSAULT_GAMBLE";
+    DinkEventType["CHAT"] = "CHAT";
+    DinkEventType["LOGIN"] = "LOGIN";
+    DinkEventType["LOGOUT"] = "LOGOUT";
+    DinkEventType["UNKNOWN"] = "UNKNOWN";
+    // NOT USED
+    DinkEventType["ACHIEVEMENT_DIARY"] = "ACHIEVEMENT_DIARY";
+    DinkEventType["COMBAT_ACHIEVEMENT"] = "COMBAT_ACHIEVEMENT";
+    DinkEventType["GRAND_EXCHANGE"] = "GRAND_EXCHANGE";
+    DinkEventType["PLAYER_KILL"] = "PLAYER_KILL";
+    DinkEventType["GROUP_STORAGE"] = "GROUP_STORAGE";
+    DinkEventType["SLAYER"] = "SLAYER";
+    DinkEventType["QUEST"] = "QUEST";
+    DinkEventType["TRADE"] = "TRADE";
+})(DinkEventType || (DinkEventType = {}));

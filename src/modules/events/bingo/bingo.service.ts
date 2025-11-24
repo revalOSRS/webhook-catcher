@@ -4,19 +4,12 @@
  */
 
 import * as db from '../../../db/connection.js'
+import type { RuneLiteEvent } from '../../runelite/types/index.js'
 import type {
-  RuneLiteEvent,
-  TileRequirement,
+  TileRequirements,
   TileMatchResult,
   ProgressUpdate,
-  ActiveBoardTile,
-  BossKillRequirement,
-  ItemObtainedRequirement,
-  CollectionLogRequirement,
-  PetObtainedRequirement,
-  XpGainRequirement,
-  BossSpeedrunRequirement,
-  ResourceGatheringRequirement
+  ActiveBoardTile
 } from '../../../types/bingo-requirements.js'
 
 /**
@@ -29,46 +22,11 @@ export class BingoService {
    */
   static async processRuneLiteEventForBingo(event: RuneLiteEvent): Promise<TileMatchResult> {
     try {
-      // Get all active board tiles for this player
-      const activeBoardTiles = await this.getActiveBoardTilesForPlayer(event.player.member_id)
-
-      if (activeBoardTiles.length === 0) {
-        return { matched: false, message: 'Player not in any active bingo events' }
-      }
-
-      const matchedTiles = []
-
-      // Check each active tile
-      for (const boardTile of activeBoardTiles) {
-        const tile = boardTile.tile
-        const requirements = tile.requirements
-
-        if (!requirements || !requirements.tracking) {
-          continue
-        }
-
-        // Check if this event type matches the tile's tracking requirements
-        if (this.isEventMatch(event, requirements)) {
-          const progressUpdate = await this.updateTileProgress(
-            boardTile.board_id,
-            boardTile.tile_id,
-            boardTile.position,
-            event.player.member_id,
-            event,
-            requirements
-          )
-
-          matchedTiles.push({
-            tile: tile,
-            progress: progressUpdate
-          })
-        }
-      }
-
-      return {
-        matched: matchedTiles.length > 0,
-        tiles: matchedTiles
-      }
+      // TODO: RuneLiteEvent is currently SyncEventPayload which doesn't have member_id, timestamp, or data
+      // This service needs to be refactored to work with the actual RuneLite event structure
+      // For now, return early as this needs proper implementation
+      console.warn('[BingoService] processRuneLiteEventForBingo not yet implemented for new event structure')
+      return { matched: false, message: 'Bingo event processing not yet implemented for new event structure' }
 
     } catch (error) {
       console.error('Error processing bingo event:', error)
@@ -82,115 +40,22 @@ export class BingoService {
 
   /**
    * Check if a RuneLite event matches tile requirements
+   * TODO: Refactor to use new simplified requirement system (TileRequirements)
    */
-  private static isEventMatch(event: RuneLiteEvent, requirements: TileRequirement): boolean {
-    const { type, tracking } = requirements
-
-    // Handle multiple requirements differently
-    if (type === 'multiple_requirements') {
-      // For multiple requirements, check if event type is in the list
-      return (tracking as any).event_types?.includes(event.eventType) || false
-    }
-
-    // Check if event type matches for single requirements
-    if ((tracking as any).event_type !== event.eventType) {
-      return false
-    }
-
-    switch (type) {
-      case 'boss_kills':
-        return this.matchBossKill(event, requirements as BossKillRequirement)
-
-      case 'item_obtained':
-        return this.matchItemObtained(event, requirements as ItemObtainedRequirement)
-
-      case 'collection_log':
-        return this.matchCollectionLog(event, requirements as CollectionLogRequirement)
-
-      case 'pet_obtained':
-        return this.matchPetObtained(event, requirements as PetObtainedRequirement)
-
-      case 'xp_gain':
-        return this.matchXpGain(event, requirements as XpGainRequirement)
-
-      case 'boss_speedrun':
-        return this.matchBossSpeedrun(event, requirements as BossSpeedrunRequirement)
-
-      case 'resource_gathering':
-        return this.matchResourceGathering(event, requirements as ResourceGatheringRequirement)
-
-      default:
-        console.warn(`Unsupported requirement type for matching: ${type}`)
-        return false
-    }
+  private static isEventMatch(event: RuneLiteEvent, requirements: TileRequirements): boolean {
+    // TODO: Implement matching logic for new requirement system
+    // This needs to be rewritten to work with:
+    // - match_type ('all' | 'any')
+    // - requirements array (SimplifiedRequirement[])
+    // - tiers array (TieredRequirement[])
+    return false
   }
 
-  private static matchBossKill(event: RuneLiteEvent, requirements: BossKillRequirement): boolean {
-    if (event.eventType !== 'npc_kill') return false
-
-    const npcName = (event.data as any).npc_name || (event.data as any).source
-    return npcName === requirements.tracking.npc_name
-  }
-
-  private static matchItemObtained(event: RuneLiteEvent, requirements: ItemObtainedRequirement): boolean {
-    if (event.eventType !== 'loot') return false
-
-    const items = (event.data as any).items || []
-    const requiredItems = requirements.items || []
-
-    if (requirements.match_type === 'any') {
-      // Match if ANY required item is in the loot
-      return requiredItems.some(reqItem =>
-        items.some((item: any) => item.id === reqItem.item_id)
-      )
-    } else {
-      // Match if ALL required items are in the loot (with quantities)
-      return requiredItems.every(reqItem =>
-        items.some((item: any) =>
-          item.id === reqItem.item_id &&
-          item.quantity >= (reqItem.quantity || 1)
-        )
-      )
-    }
-  }
-
-  private static matchCollectionLog(event: RuneLiteEvent, requirements: CollectionLogRequirement): boolean {
-    if (event.eventType !== 'collection_log') return false
-
-    return (event.data as any).category === requirements.category
-  }
-
-  private static matchPetObtained(event: RuneLiteEvent, requirements: PetObtainedRequirement): boolean {
-    if (event.eventType !== 'loot') return false
-    if (!(event.data as any).is_pet) return false
-
-    const items = (event.data as any).items || []
-    const requiredPets = requirements.pets || []
-
-    return requiredPets.some(reqPet =>
-      items.some((item: any) => item.id === reqPet.pet_id)
-    )
-  }
-
-  private static matchXpGain(event: RuneLiteEvent, requirements: XpGainRequirement): boolean {
-    if (event.eventType !== 'xp_gained') return false
-
-    return (event.data as any).skill === requirements.skill
-  }
-
-  private static matchBossSpeedrun(event: RuneLiteEvent, requirements: BossSpeedrunRequirement): boolean {
-    if (event.eventType !== 'boss_kill_time') return false
-
-    return (event.data as any).boss_name === requirements.tracking.boss_name &&
-           (event.data as any).kill_time_seconds <= requirements.time_limit_seconds
-  }
-
-  private static matchResourceGathering(event: RuneLiteEvent, requirements: ResourceGatheringRequirement): boolean {
-    if (event.eventType !== 'loot') return false
-
-    const items = (event.data as any).items || []
-    return items.some((item: any) => item.id === requirements.resource_id)
-  }
+  // TODO: Re-implement matching functions for new simplified requirement types:
+  // - ITEM_DROP
+  // - PET
+  // - VALUE_DROP
+  // - SPEEDRUN
 
   // ============================================================================
   // Progress Tracking
@@ -246,7 +111,7 @@ export class BingoService {
     position: string,
     memberId: number,
     event: RuneLiteEvent,
-    requirements: TileRequirement
+    requirements: TileRequirements
   ): Promise<ProgressUpdate> {
     // Get current progress
     const existingProgress = await db.query(`
@@ -334,7 +199,7 @@ export class BingoService {
    */
   private static calculateProgress(
     event: RuneLiteEvent,
-    requirements: TileRequirement,
+    requirements: TileRequirements,
     bonusTiers: any[],
     basePoints: number,
     existingProgress: any
@@ -345,57 +210,28 @@ export class BingoService {
     completed: boolean
     metadata: any
   } {
+    // TODO: Re-implement progress calculation for new simplified requirement system
+    // This needs to handle:
+    // - match_type ('all' | 'any')
+    // - requirements array (SimplifiedRequirement[])
+    // - tiers array (TieredRequirement[])
+    // - Requirement types: ITEM_DROP, PET, VALUE_DROP, SPEEDRUN
+    
     const metadata = existingProgress?.metadata || {}
-
-    switch (requirements.type) {
-      case 'boss_kills':
-        return this.calculateBossKillProgress(event, requirements as BossKillRequirement, metadata)
-
-      case 'item_obtained':
-        return this.calculateItemProgress(event, requirements as ItemObtainedRequirement, bonusTiers, metadata)
-
-      case 'xp_gain':
-        return this.calculateXpProgress(event, requirements as XpGainRequirement, bonusTiers, metadata)
-
-      case 'resource_gathering':
-        return this.calculateResourceProgress(event, requirements as ResourceGatheringRequirement, metadata)
-
-      case 'boss_speedrun':
-        return this.calculateBossSpeedrunProgress(event, requirements as BossSpeedrunRequirement, bonusTiers, basePoints, metadata)
-
-      // Single completion requirements
-      case 'collection_log':
-      case 'pet_obtained':
-      case 'diary_completion':
-      case 'combat_achievement':
-        return {
-          progress: 100,
-          count: 1,
-          target: 1,
-          completed: true,
-          metadata: {
-            ...metadata,
-            completed_at: event.timestamp,
-            event_data: event.data,
-            base_points: basePoints,
-            total_points: basePoints
-          }
-        }
-
-      default:
-        return {
-          progress: 100,
-          count: 1,
-          target: 1,
-          completed: true,
-          metadata: { ...metadata }
-        }
+    
+    return {
+      progress: 0,
+      count: 0,
+      target: 1,
+      completed: false,
+      metadata: { ...metadata }
     }
   }
 
+  // TODO: Re-implement for new requirement system
   private static calculateBossKillProgress(
     event: RuneLiteEvent,
-    requirements: BossKillRequirement,
+    requirements: any,
     metadata: any
   ): any {
     const currentCount = metadata.kill_count || 0
@@ -411,11 +247,11 @@ export class BingoService {
       metadata: {
         ...metadata,
         kill_count: newCount,
-        last_kill_at: event.timestamp,
+        last_kill_at: event.eventTimestamp,
         kills: [
           ...(metadata.kills || []),
           {
-            timestamp: event.timestamp,
+            timestamp: event.eventTimestamp,
             count: newCount
           }
         ]
@@ -423,13 +259,15 @@ export class BingoService {
     }
   }
 
+  // TODO: Re-implement for new requirement system
   private static calculateItemProgress(
     event: RuneLiteEvent,
-    requirements: ItemObtainedRequirement,
+    requirements: any,
     bonusTiers: any[],
     metadata: any
   ): any {
-    const eventData = event.data as any
+    // TODO: SyncEventPayload doesn't have a data property
+    const eventData = {} as any
     const items = eventData.items || []
 
     // Initialize obtained items tracking
@@ -447,7 +285,7 @@ export class BingoService {
           item_name: reqItem.item_name,
           quantity: newQty,
           required: reqItem.quantity || 1,
-          last_obtained_at: event.timestamp
+          last_obtained_at: event.eventTimestamp
         }
       }
     })
@@ -487,7 +325,7 @@ export class BingoService {
           tiersAchieved.push({
             threshold: tier.threshold,
             points: tier.points,
-            achieved_at: event.timestamp
+            achieved_at: event.eventTimestamp
           })
           bonusPoints += tier.points
         }
@@ -502,7 +340,7 @@ export class BingoService {
       metadata: {
         ...metadata,
         obtained_items: obtainedItems,
-        last_drop_at: event.timestamp,
+        last_drop_at: event.eventTimestamp,
         tiers_achieved: tiersAchieved,
         bonus_points: bonusPoints,
         total_points: (metadata.base_points || 0) + bonusPoints
@@ -510,13 +348,15 @@ export class BingoService {
     }
   }
 
+  // TODO: Re-implement for new requirement system
   private static calculateXpProgress(
     event: RuneLiteEvent,
-    requirements: XpGainRequirement,
+    requirements: any,
     bonusTiers: any[],
     metadata: any
   ): any {
-    const eventData = event.data as any
+    // TODO: SyncEventPayload doesn't have a data property
+    const eventData = {} as any
     const xpGained = eventData.xp_gained || 0
     const currentXp = metadata.total_xp_gained || 0
     const newXp = currentXp + xpGained
@@ -540,7 +380,7 @@ export class BingoService {
               threshold: tier.threshold,
               points: tier.points,
               requirementValue: tier.requirementValue,
-              achieved_at: event.timestamp
+              achieved_at: event.eventTimestamp
             })
           }
           bonusPoints += tier.points
@@ -557,7 +397,7 @@ export class BingoService {
         ...metadata,
         total_xp_gained: newXp,
         last_xp_gain: xpGained,
-        last_xp_at: event.timestamp,
+        last_xp_at: event.eventTimestamp,
         tiers_achieved: [
           ...(metadata.tiers_achieved || []),
           ...tiersAchieved
@@ -568,14 +408,16 @@ export class BingoService {
     }
   }
 
+  // TODO: Re-implement for new requirement system
   private static calculateBossSpeedrunProgress(
     event: RuneLiteEvent,
-    requirements: BossSpeedrunRequirement,
+    requirements: any,
     bonusTiers: any[],
     basePoints: number,
     metadata: any
   ): any {
-    const eventData = event.data as any
+    // TODO: SyncEventPayload doesn't have a data property
+    const eventData = {} as any
     const killTimeSeconds = eventData.kill_time_seconds
 
     const currentBest = metadata.best_time_seconds || Infinity
@@ -595,7 +437,7 @@ export class BingoService {
             ...(metadata.all_attempts || []),
             {
               time: killTimeSeconds,
-              timestamp: event.timestamp
+              timestamp: event.eventTimestamp
             }
           ]
         }
@@ -616,7 +458,7 @@ export class BingoService {
             threshold: tier.threshold,
             time_seconds: tier.requirementValue,
             points: tier.points,
-            achieved_at: event.timestamp
+            achieved_at: event.eventTimestamp
           })
           bonusPoints += tier.points
         }
@@ -632,7 +474,7 @@ export class BingoService {
         best_time_seconds: killTimeSeconds,
         best_time_formatted: this.formatTime(killTimeSeconds),
         kill_count: (metadata.kill_count || 0) + 1,
-        achieved_at: event.timestamp,
+        achieved_at: event.eventTimestamp,
         previous_best: currentBest !== Infinity ? currentBest : null,
         tiers_achieved: tiersAchieved,
         base_points: baseCompleted ? basePoints : 0,
@@ -642,7 +484,7 @@ export class BingoService {
           ...(metadata.all_attempts || []),
           {
             time: killTimeSeconds,
-            timestamp: event.timestamp,
+            timestamp: event.eventTimestamp,
             tiers_achieved: tiersAchieved.length,
             is_new_best: true
           }
@@ -657,12 +499,14 @@ export class BingoService {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // TODO: Re-implement for new requirement system
   private static calculateResourceProgress(
     event: RuneLiteEvent,
-    requirements: ResourceGatheringRequirement,
+    requirements: any,
     metadata: any
   ): any {
-    const eventData = event.data as any
+    // TODO: SyncEventPayload doesn't have a data property
+    const eventData = {} as any
     const items = eventData.items || []
 
     const foundResource = items.find((item: any) => item.id === requirements.resource_id)
@@ -682,7 +526,7 @@ export class BingoService {
         ...metadata,
         total_gathered: newQty,
         last_gather_amount: quantityGained,
-        last_gather_at: event.timestamp
+        last_gather_at: event.eventTimestamp
       }
     }
   }
