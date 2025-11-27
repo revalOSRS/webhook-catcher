@@ -64,9 +64,11 @@ export function validateSimplifiedRequirements(requirements: TileRequirements): 
   if (requirements.requirements) {
     if (!Array.isArray(requirements.requirements)) {
       errors.push('requirements must be an array')
-    } else if (requirements.requirements.length === 0) {
-      errors.push('requirements array cannot be empty')
-    } else {
+    } else if (requirements.requirements.length === 0 && !requirements.tiers) {
+      // Only error if requirements is empty AND there are no tiers
+      errors.push('requirements array cannot be empty when no tiers are provided')
+    } else if (requirements.requirements.length > 0) {
+      // Only validate requirements if the array is not empty
       requirements.requirements.forEach((req, index) => {
         const validation = validateSimplifiedRequirement(req)
         if (!validation.valid && validation.errors) {
@@ -243,6 +245,11 @@ function validateSpeedrunRequirement(req: SpeedrunRequirement): string[] {
 
   if (!req.goal_seconds || typeof req.goal_seconds !== 'number' || req.goal_seconds < 1) {
     errors.push('goal_seconds is required and must be a positive number')
+  }
+
+  // SPEEDRUN doesn't support item_amount (that's for ITEM_DROP)
+  if ((req as any).item_amount !== undefined) {
+    errors.push('SPEEDRUN requirement does not support item_amount field')
   }
 
   return errors
