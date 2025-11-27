@@ -619,5 +619,10 @@ router.get('/:id/leaderboard', async (req: Request, res: Response) => {
 	}
 });
 
+import progressRouter from './progress.routes.js';
+
+// Mount progress routes
+router.use('/:teamId/progress', progressRouter);
+
 export default router;
 

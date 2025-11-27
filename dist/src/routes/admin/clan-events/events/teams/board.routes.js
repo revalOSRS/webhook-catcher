@@ -911,4 +911,194 @@ router.delete('/line-buffs/:effectId', async (req, res) => {
         });
     }
 });
+/**
+ * POST /api/admin/clan-events/:eventId/teams/:teamId/board/tiles/:tileId/complete
+ * Manually mark a tile as completed (admin action)
+ * Body: { completion_type: 'manual_admin', completed_by_osrs_account_id? (optional), notes? (optional) }
+ *
+ * Returns: Updated tile with completion info
+ */
+router.post('/tiles/:tileId/complete', async (req, res) => {
+    try {
+        const { eventId, teamId, tileId } = req.params;
+        const { completion_type = 'manual_admin', completed_by_osrs_account_id, notes } = req.body;
+        // Validate team and board
+        const teamCheck = await query('SELECT id FROM event_teams WHERE id = $1 AND event_id = $2', [teamId, eventId]);
+        if (teamCheck.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Team not found or does not belong to this event'
+            });
+        }
+        const boards = await query('SELECT id FROM bingo_boards WHERE event_id = $1 AND team_id = $2', [eventId, teamId]);
+        if (boards.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Board not found'
+            });
+        }
+        const boardId = boards[0].id;
+        // Check if tile exists on this board
+        const tileCheck = await query('SELECT id, is_completed FROM bingo_board_tiles WHERE id = $1 AND board_id = $2', [tileId, boardId]);
+        if (tileCheck.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Tile not found on this board'
+            });
+        }
+        if (tileCheck[0].is_completed) {
+            return res.status(409).json({
+                success: false,
+                error: 'Tile is already completed'
+            });
+        }
+        // Mark tile as completed
+        await query(`
+			UPDATE bingo_board_tiles
+			SET 
+				is_completed = true,
+				completed_at = CURRENT_TIMESTAMP,
+				completed_by_team_id = $1
+			WHERE id = $2
+		`, [teamId, tileId]);
+        // Create or update progress entry
+        const existingProgress = await query('SELECT id FROM bingo_tile_progress WHERE board_tile_id = $1 AND osrs_account_id = $2', [tileId, completed_by_osrs_account_id || null]);
+        if (existingProgress.length > 0) {
+            await query(`
+				UPDATE bingo_tile_progress
+				SET 
+					completion_type = $1,
+					completed_at = CURRENT_TIMESTAMP,
+					completed_by_osrs_account_id = $2,
+					progress_metadata = COALESCE(progress_metadata, '{}'::jsonb) || $3::jsonb
+				WHERE id = $4
+			`, [
+                completion_type,
+                completed_by_osrs_account_id || null,
+                JSON.stringify({ manual_completion: true, notes: notes || null }),
+                existingProgress[0].id
+            ]);
+        }
+        else {
+            await query(`
+				INSERT INTO bingo_tile_progress (
+					board_tile_id, osrs_account_id, progress_value, progress_metadata,
+					completion_type, completed_at, completed_by_osrs_account_id
+				)
+				VALUES ($1, $2, 1, $3, $4, CURRENT_TIMESTAMP, $5)
+			`, [
+                tileId,
+                completed_by_osrs_account_id || null,
+                JSON.stringify({ manual_completion: true, notes: notes || null }),
+                completion_type,
+                completed_by_osrs_account_id || null
+            ]);
+        }
+        // Get updated tile
+        const updatedTile = await query(`
+			SELECT 
+				bbt.*,
+				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
+				bt.base_points, bt.bonus_tiers, bt.requirements
+			FROM bingo_board_tiles bbt
+			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+			WHERE bbt.id = $1
+		`, [tileId]);
+        res.json({
+            success: true,
+            data: updatedTile[0],
+            message: 'Tile marked as completed successfully'
+        });
+    }
+    catch (error) {
+        console.error('Error completing tile:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to complete tile',
+            message: error.message
+        });
+    }
+});
+/**
+ * POST /api/admin/clan-events/:eventId/teams/:teamId/board/tiles/:tileId/revert
+ * Revert a completed tile back to incomplete (admin action)
+ *
+ * Returns: Updated tile
+ */
+router.post('/tiles/:tileId/revert', async (req, res) => {
+    try {
+        const { eventId, teamId, tileId } = req.params;
+        // Validate team and board
+        const teamCheck = await query('SELECT id FROM event_teams WHERE id = $1 AND event_id = $2', [teamId, eventId]);
+        if (teamCheck.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Team not found or does not belong to this event'
+            });
+        }
+        const boards = await query('SELECT id FROM bingo_boards WHERE event_id = $1 AND team_id = $2', [eventId, teamId]);
+        if (boards.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Board not found'
+            });
+        }
+        const boardId = boards[0].id;
+        // Check if tile exists and is completed
+        const tileCheck = await query('SELECT id, is_completed FROM bingo_board_tiles WHERE id = $1 AND board_id = $2', [tileId, boardId]);
+        if (tileCheck.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Tile not found on this board'
+            });
+        }
+        if (!tileCheck[0].is_completed) {
+            return res.status(409).json({
+                success: false,
+                error: 'Tile is not completed'
+            });
+        }
+        // Revert tile
+        await query(`
+			UPDATE bingo_board_tiles
+			SET 
+				is_completed = false,
+				completed_at = NULL,
+				completed_by_team_id = NULL
+			WHERE id = $1
+		`, [tileId]);
+        // Update progress (remove completion but keep progress)
+        await query(`
+			UPDATE bingo_tile_progress
+			SET 
+				completion_type = NULL,
+				completed_at = NULL,
+				completed_by_osrs_account_id = NULL
+			WHERE board_tile_id = $1
+		`, [tileId]);
+        // Get updated tile
+        const updatedTile = await query(`
+			SELECT 
+				bbt.*,
+				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
+				bt.base_points, bt.bonus_tiers, bt.requirements
+			FROM bingo_board_tiles bbt
+			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+			WHERE bbt.id = $1
+		`, [tileId]);
+        res.json({
+            success: true,
+            data: updatedTile[0],
+            message: 'Tile reverted successfully'
+        });
+    }
+    catch (error) {
+        console.error('Error reverting tile:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to revert tile',
+            message: error.message
+        });
+    }
+});
 export default router;

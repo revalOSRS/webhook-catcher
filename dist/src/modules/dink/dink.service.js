@@ -11,6 +11,8 @@ import { createGrandExchangeEmbed } from './events/grand-exchange.js';
 import { createCollectLogEmbed } from './events/collect-log.js';
 import { createLootEmbed } from './events/loot.js';
 import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './discord-utils.js';
+// Import tile progress service
+import { processDinkEventForTileProgress } from '../events/bingo/tile-progress.service.js';
 // Cache for dink hash verification (10 minutes)
 const dinkHashCache = new Map();
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
@@ -329,6 +331,10 @@ export class DinkService {
                             resolve({ status: 'ok', message: 'Webhook received but filtered out' });
                             return;
                         }
+                        // Process tile progress tracking (async, don't wait)
+                        processDinkEventForTileProgress(payloadData).catch((error) => {
+                            console.error('[DinkService] Error processing tile progress:', error);
+                        });
                         // Route to appropriate Discord channel based on event type
                         const sendFunction = this.getSendFunction(eventType);
                         if (sendFunction) {
@@ -367,6 +373,10 @@ export class DinkService {
                 console.log(`Event filtered out: ${eventType} for ${playerName}, not sending to Discord`);
                 return { status: 'ok', message: 'Webhook received but filtered out' };
             }
+            // Process tile progress tracking (async, don't wait)
+            processDinkEventForTileProgress(req.body).catch((error) => {
+                console.error('[DinkService] Error processing tile progress:', error);
+            });
             // Route to appropriate Discord channel based on event type
             const sendFunction = this.getSendFunction(eventType);
             if (sendFunction) {

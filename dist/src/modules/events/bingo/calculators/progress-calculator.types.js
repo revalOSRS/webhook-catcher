@@ -1,0 +1,4 @@
+/**
+ * Progress Calculator Types
+ */
+export {};

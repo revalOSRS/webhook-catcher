@@ -266,4 +266,7 @@ router.delete('/:id', async (req, res) => {
         });
     }
 });
+import registrationsRouter from './registrations.routes.js';
+// Mount registrations routes
+router.use('/:eventId/registrations', registrationsRouter);
 export default router;

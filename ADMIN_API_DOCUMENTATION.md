@@ -170,6 +170,149 @@ Delete an event (cascades to teams, boards, etc.).
 
 ---
 
+## Event Registrations
+
+Manage member registrations for events. Members must be registered before they can be added to teams.
+
+### GET `/events/:eventId/registrations`
+Get all registrations for an event.
+
+**Query Parameters:**
+- `status` (optional): Filter by status (`pending`, `confirmed`, `cancelled`)
+- `limit` (optional, default: 100)
+- `offset` (optional, default: 0)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "event_id": "uuid",
+      "member_id": "number",
+      "osrs_account_id": "number | null",
+      "status": "string",
+      "metadata": {},
+      "registered_at": "ISO8601 string",
+      "discord_id": "string",
+      "discord_username": "string | null",
+      "discord_name": "string | null",
+      "discord_discriminator": "string | null",
+      "discord_avatar": "string | null",
+      "osrs_account_name": "string | null",
+      "osrs_account_type": "string | null"
+    }
+  ],
+  "pagination": {
+    "limit": 100,
+    "offset": 0
+  }
+}
+```
+
+### GET `/events/:eventId/registrations/available`
+Get list of members available to register (not yet registered for this event).
+
+**Query Parameters:**
+- `search` (optional): Filter by username/name
+- `limit` (optional, default: 50)
+- `offset` (optional, default: 0)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "number",
+      "discord_id": "string",
+      "discord_username": "string | null",
+      "discord_name": "string | null",
+      "discord_discriminator": "string | null",
+      "discord_avatar": "string | null",
+      "osrs_accounts": [
+        {
+          "id": "number",
+          "osrs_nickname": "string",
+          "account_type": "string"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+### POST `/events/:eventId/registrations`
+Register a member for an event.
+
+**Request Body:**
+```json
+{
+  "member_id": "number (required)",
+  "osrs_account_id": "number | null (optional, must belong to member)",
+  "status": "string (optional, default: 'pending')",
+  "metadata": {}
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "event_id": "uuid",
+    "member_id": "number",
+    "osrs_account_id": "number | null",
+    "status": "string",
+    "metadata": {},
+    "registered_at": "ISO8601 string",
+    "registered_by": "number | null"
+  },
+  "message": "Member registered successfully"
+}
+```
+
+### PATCH `/events/:eventId/registrations/:id`
+Update a registration.
+
+**Request Body (all fields optional):**
+```json
+{
+  "status": "string",
+  "osrs_account_id": "number | null",
+  "metadata": {}
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": { /* Updated registration object */ },
+  "message": "Registration updated successfully"
+}
+```
+
+### DELETE `/events/:eventId/registrations/:id`
+Remove a registration.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Registration removed successfully",
+  "deleted_id": "uuid"
+}
+```
+
+---
+
 ## Teams
 
 ### GET `/teams`
@@ -721,6 +864,53 @@ Remove a buff/debuff from a row or column.
   "deleted_id": "uuid"
 }
 ```
+
+### POST `/events/:eventId/teams/:teamId/board/tiles/:tileId/complete`
+Manually mark a tile as completed (admin action). Use this for tiles that need manual verification (e.g., from Discord screenshots).
+
+**Request Body:**
+```json
+{
+  "completion_type": "manual_admin (default: 'manual_admin')",
+  "completed_by_osrs_account_id": "number | null (optional)",
+  "notes": "string (optional)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "is_completed": true,
+    "completed_at": "ISO8601 string",
+    /* ... other tile fields ... */
+  },
+  "message": "Tile marked as completed successfully"
+}
+```
+
+**Note:** Creates or updates a progress entry with `completion_type: 'manual_admin'`. Progress data is preserved.
+
+### POST `/events/:eventId/teams/:teamId/board/tiles/:tileId/revert`
+Revert a completed tile back to incomplete (admin action). Use this if a tile was completed incorrectly.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "is_completed": false,
+    "completed_at": null,
+    /* ... other tile fields ... */
+  },
+  "message": "Tile reverted successfully"
+}
+```
+
+**Note:** Progress data is preserved, only completion flags are removed.
 
 ---
 
