@@ -754,7 +754,7 @@ Get all tiles from the library with optional filtering.
         "match_type": "all | any",
         "requirements": [
           {
-            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN",
+            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
             // ... requirement fields based on type
           }
         ],
@@ -762,13 +762,21 @@ Get all tiles from the library with optional filtering.
           {
             "tier": "number",
             "requirement": {
-              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN",
+              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
               // ... requirement fields based on type
             }
           }
         ]
       },
-      "bonus_tiers": [],
+      "bonus_tiers": [
+      // ONLY for value-based thresholds (e.g., "get 10 items", "get 100k xp")
+      // For tiered requirements, use points directly in requirements.tiers[].points
+      {
+        "threshold": "10_items",
+        "requirementValue": 10,
+        "points": 5
+      }
+    ],
       "metadata": {},
       "is_active": "boolean",
       "created_at": "ISO8601 string",
@@ -809,7 +817,7 @@ Get a single tile by ID.
       "match_type": "all | any",
       "requirements": [
         {
-          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN",
+          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
           // ... requirement fields based on type
         }
       ],
@@ -817,13 +825,21 @@ Get a single tile by ID.
         {
           "tier": "number",
           "requirement": {
-            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN",
+            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
             // ... requirement fields based on type
           }
         }
       ]
     },
-    "bonus_tiers": [],
+    "bonus_tiers": [
+      // ONLY for value-based thresholds (e.g., "get 10 items", "get 100k xp")
+      // For tiered requirements, use points directly in requirements.tiers[].points
+      {
+        "threshold": "10_items",
+        "requirementValue": 10,
+        "points": 5
+      }
+    ],
     "metadata": {},
     "is_active": "boolean",
     "created_at": "ISO8601 string",
@@ -854,7 +870,7 @@ Create a new tile in the library.
     "match_type": "all | any (required)",
     "requirements": [
       {
-        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | UNIQUE_COLLECTION (required)",
+        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
         // For ITEM_DROP (single item format):
         "item_name": "string (required for single item)",
         "item_id": "number (required for single item)",
@@ -869,16 +885,22 @@ Create a new tile in the library.
         "value": "number",
         // For SPEEDRUN:
         "location": "string",
-        "goal_seconds": "number"
+        "goal_seconds": "number",
+        // For EXPERIENCE:
+        "skill": "string",
+        "experience": "number",
+        // For BA_GAMBLES:
+        "amount": "number"
       }
     ],
     "tiers": [
       {
         "tier": "number (required, 1, 2, 3, etc.)",
         "requirement": {
-          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | UNIQUE_COLLECTION (required)",
+          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
           // ... same structure as above
-        }
+        },
+        "points": "number (required) - Points awarded when this tier is completed"
       }
     ]
   },
@@ -944,7 +966,27 @@ Create a new tile in the library.
    }
    ```
 
-5. **UNIQUE_COLLECTION**: Track unique items with two collection modes:
+5. **EXPERIENCE**: Track experience gained in a specific skill
+   ```json
+   {
+     "type": "EXPERIENCE",
+     "skill": "Attack",
+     "experience": 1000000
+   }
+   ```
+   - `skill`: Skill name (e.g., "Attack", "Strength", "Magic", "Ranged", etc.)
+   - `experience`: Amount of experience required (positive number)
+
+6. **BA_GAMBLES**: Track Barbarian Assault gambles completed
+   ```json
+   {
+     "type": "BA_GAMBLES",
+     "amount": 10
+   }
+   ```
+   - `amount`: Number of gambles required (positive number)
+
+7. **UNIQUE_COLLECTION**: Track unique items with two collection modes:
    
    **MULTI_SOURCE mode** (default): Get unique items from different sources (e.g., unique drops from different bosses)
    
@@ -983,10 +1025,12 @@ Create a new tile in the library.
      "tier_increment": 1
    }
    ```
-   - **Base**: Get 1 item from any boss (A, B, C, or D)
-   - **Tier 2**: Get 1 item from a different boss
-   - **Tier 3**: Get 1 item from another different boss
+   - **Tier 1**: Get 1 item from any boss (A, B, C, or D)
+   - **Tier 2**: Get 1 item from a different boss (not the one used in Tier 1)
+   - **Tier 3**: Get 1 item from another different boss (not used in Tier 1 or 2)
    - **Tier 4**: Get 1 item from the last remaining boss
+   
+   **Note**: With `base_requirement: 1` and `allow_same_source_across_tiers: false` (default), each tier requires 1 item from a different source. The `tier_increment` is ignored in this mode.
    
    **Example 2: Progressive items per boss (4 bosses, 4 items each, different boss per tier)**
    ```json
@@ -1316,36 +1360,54 @@ This creates automatic tiers:
 - **Tier 2**: Get 2 unique items from the set (any 2 different moons)
 - **Tier 3**: Get ALL items from the set (all 4 moons)
 
-**Tiered requirements (manual tiers):**
+**Tiered requirements (manual tiers with points):**
 ```json
 {
   "match_type": "all",
-  "requirements": [],
+  "requirements": [], // Empty when using tiers
   "tiers": [
     {
       "tier": 1,
       "requirement": {
-        "type": "VALUE_DROP",
-        "value": 1000000
-      }
+        "type": "SPEEDRUN",
+        "location": "Inferno",
+        "goal_seconds": 7200
+      },
+      "points": 10
     },
     {
       "tier": 2,
       "requirement": {
-        "type": "VALUE_DROP",
-        "value": 5000000
-      }
+        "type": "SPEEDRUN",
+        "location": "Inferno",
+        "goal_seconds": 4800
+      },
+      "points": 15
     },
     {
       "tier": 3,
       "requirement": {
-        "type": "VALUE_DROP",
-        "value": 10000000
-      }
+        "type": "SPEEDRUN",
+        "location": "Inferno",
+        "goal_seconds": 3900
+      },
+      "points": 20
     }
   ]
 }
 ```
+**How it works:**
+- If someone completes Inferno in 3000 seconds (50 minutes):
+  - They beat tier 3 (3900s) → Award 20 points
+  - They beat tier 2 (4800s) → Award 15 points
+  - They beat tier 1 (7200s) → Award 10 points
+  - **Total: 45 points** (all tiers achieved)
+- If someone completes in 5000 seconds:
+  - They beat tier 2 (4800s) → Award 15 points
+  - They beat tier 1 (7200s) → Award 10 points
+  - **Total: 25 points** (tiers 1 and 2 achieved)
+
+**Note:** When using `tiers`, the `requirements` array should be empty. Points are defined directly in each tier. The `bonus_tiers` array is NOT used for tiered requirements - it's only for value-based thresholds (e.g., "get 10 items").
 
 **Response:**
 ```json
@@ -1375,7 +1437,7 @@ Create multiple tiles at once.
         "match_type": "all | any (required)",
         "requirements": [
           {
-            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | UNIQUE_COLLECTION (required)",
+            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
             // For ITEM_DROP (single item format):
             "item_name": "string (required for single item)",
             "item_id": "number (required for single item)",
@@ -1390,20 +1452,34 @@ Create multiple tiles at once.
             "value": "number",
             // For SPEEDRUN:
             "location": "string",
-            "goal_seconds": "number"
+            "goal_seconds": "number",
+            // For EXPERIENCE:
+            "skill": "string",
+            "experience": "number",
+            // For BA_GAMBLES:
+            "amount": "number"
           }
         ],
         "tiers": [
           {
             "tier": "number (required, 1, 2, 3, etc.)",
             "requirement": {
-              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | UNIQUE_COLLECTION (required)",
+              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
               // ... same structure as above
-            }
+            },
+            "points": "number (required) - Points awarded when this tier is completed"
           }
         ]
       },
-      "bonus_tiers": [],
+      "bonus_tiers": [
+      // ONLY for value-based thresholds (e.g., "get 10 items", "get 100k xp")
+      // For tiered requirements, use points directly in requirements.tiers[].points
+      {
+        "threshold": "10_items",
+        "requirementValue": 10,
+        "points": 5
+      }
+    ],
       "metadata": {},
       "is_active": "boolean"
     }
@@ -1450,7 +1526,7 @@ Update a tile in the library.
     "match_type": "all | any (required if requirements provided)",
     "requirements": [
       {
-        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | UNIQUE_COLLECTION (required)",
+        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
         // For ITEM_DROP (single item format):
         "item_name": "string (required for single item)",
         "item_id": "number (required for single item)",
@@ -1465,16 +1541,22 @@ Update a tile in the library.
         "value": "number",
         // For SPEEDRUN:
         "location": "string",
-        "goal_seconds": "number"
+        "goal_seconds": "number",
+        // For EXPERIENCE:
+        "skill": "string",
+        "experience": "number",
+        // For BA_GAMBLES:
+        "amount": "number"
       }
     ],
     "tiers": [
       {
         "tier": "number (required, 1, 2, 3, etc.)",
         "requirement": {
-          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | UNIQUE_COLLECTION (required)",
+          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
           // ... same structure as above
-        }
+        },
+        "points": "number (required) - Points awarded when this tier is completed"
       }
     ]
   },
@@ -1716,4 +1798,10 @@ All endpoints may return the following error responses:
 5. The `show_tile_buffs` setting in board metadata controls whether tile buffs are visible to app users. If `false`, only active buffs are shown.
 6. Position format for tiles: Typically "A1", "B2", etc. (column letter + row number).
 7. Line identifiers: Rows use numbers (1, 2, 3...), columns use letters (A, B, C...).
+8. **Requirements vs Tiers vs Bonus Tiers:**
+   - Use `requirements` array for simple, non-tiered requirements (e.g., "get 1 Dragon Warhammer").
+   - Use `tiers` array for tiered requirements where each tier has different criteria (e.g., speedrun tiers with different time goals). Each tier MUST include `points`.
+   - Use `bonus_tiers` ONLY for value-based thresholds on non-tiered requirements (e.g., "get 10 items" awards bonus points at milestones).
+   - When using `tiers`, the `requirements` array should typically be empty (unless you want a base requirement in addition to tiers).
+9. **UNIQUE_COLLECTION** requirements create dynamic tiers based on the number of sources. Points for these tiers should be defined in `bonus_tiers` using the `tier` field (e.g., `{ "tier": 1, "points": 4 }`).
 

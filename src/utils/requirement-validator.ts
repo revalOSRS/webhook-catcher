@@ -12,6 +12,8 @@ import type {
   ValueDropRequirement,
   SpeedrunRequirement,
   UniqueCollectionRequirement,
+  ExperienceRequirement,
+  BaGamblesRequirement,
   TieredRequirement
 } from '../types/bingo-requirements.js'
 
@@ -132,6 +134,12 @@ function validateSimplifiedRequirement(requirement: SimplifiedRequirement): Vali
         break
       case 'UNIQUE_COLLECTION':
         errors.push(...validateUniqueCollectionRequirement(requirement))
+        break
+      case 'EXPERIENCE':
+        errors.push(...validateExperienceRequirement(requirement))
+        break
+      case 'BA_GAMBLES':
+        errors.push(...validateBaGamblesRequirement(requirement))
         break
       default:
         errors.push(`Unknown requirement type: ${(requirement as any).type}`)
@@ -330,29 +338,66 @@ function validateUniqueCollectionRequirement(req: UniqueCollectionRequirement): 
     const baseReq = req.base_requirement || 1
     const tierInc = req.tier_increment || 1
     
-    req.sources.forEach((source, sourceIndex) => {
-      const sourceItemCount = source.items?.length || 0
-      // Calculate how many items this source would need for its tier
-      // Tier 1 (base): baseReq items
-      // Tier 2: baseReq + tierInc items
-      // Tier 3: baseReq + (2 * tierInc) items
-      // Tier 4: baseReq + (3 * tierInc) items, or all items if require_all_for_final_source
-      
-      const maxTierForSource = req.sources.length // Last tier uses the last source
-      const itemsNeededForThisSource = baseReq + ((maxTierForSource - 1) * tierInc)
-      
-      if (req.require_all_for_final_source && sourceIndex === req.sources.length - 1) {
-        // Last source needs all items
-        if (sourceItemCount < itemsNeededForThisSource) {
-          errors.push(`For MULTI_SOURCE mode, the final source (${source.source_name}) needs ${itemsNeededForThisSource} items but only has ${sourceItemCount} items. Consider setting require_all_for_final_source to false or adding more items.`)
+    // If tier_requirements is provided, use that instead
+    if (req.tier_requirements && req.tier_requirements.length > 0) {
+      // With tier_requirements, each tier needs the specified amount from a different source
+      const maxItemsNeeded = Math.max(...req.tier_requirements)
+      req.sources.forEach((source, sourceIndex) => {
+        const sourceItemCount = source.items?.length || 0
+        if (sourceItemCount < maxItemsNeeded) {
+          errors.push(`For MULTI_SOURCE mode with tier_requirements, source ${sourceIndex + 1} (${source.source_name}) needs at least ${maxItemsNeeded} items but only has ${sourceItemCount} items.`)
         }
-      } else {
-        // Regular tier calculation
-        if (sourceItemCount < itemsNeededForThisSource) {
-          errors.push(`For MULTI_SOURCE mode, source ${sourceIndex + 1} (${source.source_name}) needs at least ${itemsNeededForThisSource} items for tier ${maxTierForSource} but only has ${sourceItemCount} items.`)
+      })
+    } else {
+      // Original logic for base_requirement + tier_increment
+      req.sources.forEach((source, sourceIndex) => {
+        const sourceItemCount = source.items?.length || 0
+        // Calculate how many items this source would need for its tier
+        // Tier 1 (base): baseReq items
+        // Tier 2: baseReq + tierInc items
+        // Tier 3: baseReq + (2 * tierInc) items
+        // Tier 4: baseReq + (3 * tierInc) items, or all items if require_all_for_final_source
+        
+        const maxTierForSource = req.sources.length // Last tier uses the last source
+        const itemsNeededForThisSource = baseReq + ((maxTierForSource - 1) * tierInc)
+        
+        if (req.require_all_for_final_source && sourceIndex === req.sources.length - 1) {
+          // Last source needs all items
+          if (sourceItemCount < itemsNeededForThisSource) {
+            errors.push(`For MULTI_SOURCE mode, the final source (${source.source_name}) needs ${itemsNeededForThisSource} items but only has ${sourceItemCount} items. Consider setting require_all_for_final_source to false or adding more items.`)
+          }
+        } else {
+          // Regular tier calculation
+          if (sourceItemCount < itemsNeededForThisSource) {
+            errors.push(`For MULTI_SOURCE mode, source ${sourceIndex + 1} (${source.source_name}) needs at least ${itemsNeededForThisSource} items for tier ${maxTierForSource} but only has ${sourceItemCount} items.`)
+          }
         }
-      }
-    })
+      })
+    }
+  }
+
+  return errors
+}
+
+function validateExperienceRequirement(req: ExperienceRequirement): string[] {
+  const errors: string[] = []
+
+  if (!req.skill || typeof req.skill !== 'string') {
+    errors.push('skill is required and must be a string')
+  }
+
+  if (!req.experience || typeof req.experience !== 'number' || req.experience < 1) {
+    errors.push('experience is required and must be a positive number')
+  }
+
+  return errors
+}
+
+function validateBaGamblesRequirement(req: BaGamblesRequirement): string[] {
+  const errors: string[] = []
+
+  if (!req.amount || typeof req.amount !== 'number' || req.amount < 1) {
+    errors.push('amount is required and must be a positive number')
   }
 
   return errors

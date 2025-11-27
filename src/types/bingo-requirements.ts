@@ -38,6 +38,8 @@ export type SimplifiedRequirementType =
   | 'VALUE_DROP'
   | 'SPEEDRUN'
   | 'UNIQUE_COLLECTION'
+  | 'EXPERIENCE'
+  | 'BA_GAMBLES'
 
 /**
  * Item Drop Requirement
@@ -93,22 +95,45 @@ export interface SpeedrunRequirement {
 }
 
 /**
+ * Experience Requirement
+ * Tracks experience gained in a specific skill
+ */
+export interface ExperienceRequirement {
+  type: 'EXPERIENCE'
+  skill: string // Skill name (e.g., "Attack", "Strength", "Magic", etc.)
+  experience: number // Amount of experience required
+}
+
+/**
+ * BA Gambles Requirement
+ * Tracks Barbarian Assault gambles completed
+ */
+export interface BaGamblesRequirement {
+  type: 'BA_GAMBLES'
+  amount: number // Number of gambles required
+}
+
+/**
  * Unique Collection Requirement
  * Tracks unique items with two collection modes:
  * 
  * 1. MULTI_SOURCE mode: Get unique items from different sources (e.g., unique drops from different bosses)
- *    - Base requirement: Get base_requirement unique items from ANY source
- *    - Tier 2: Get (base_requirement + tier_increment) unique items from a DIFFERENT source (not yet completed)
- *    - Tier 3: Get (base_requirement + 2*tier_increment) unique items from another DIFFERENT source
- *    - Example: Bosses A, B, C, D (each with 4 items)
- *      * Base: Get 1 item from any boss (any of Boss A's 4 items)
- *      * Tier 2: Get 2 items from a different boss (any 2 of Boss B's 4 items)
- *      * Tier 3: Get 3 items from another different boss (any 3 of Boss C's 4 items)
- *      * Tier 4: Get all 4 items from the last remaining boss (all 4 of Boss D's items)
- *    - Set allow_same_source_across_tiers: true to allow items from same source across tiers
- *      * Base: Get 1 item from any boss
- *      * Tier 2: Get 2 items from any boss (could be same or different)
- *      * Tier 3: Get 4 items from any boss (could be same or different)
+ *    - Default behavior (allow_same_source_across_tiers: false):
+ *      * Tier 1: Get base_requirement items from ANY source
+ *      * Tier 2: Get base_requirement items from a DIFFERENT source (not yet completed)
+ *      * Tier 3: Get base_requirement items from another DIFFERENT source
+ *      * Each tier must use a different source than previous tiers
+ *      * Example: 4 bosses, base_requirement: 1, tier_increment: 1
+ *        - Tier 1: Get 1 item from any boss (e.g., Boss A)
+ *        - Tier 2: Get 1 item from a different boss (e.g., Boss B)
+ *        - Tier 3: Get 1 item from another different boss (e.g., Boss C)
+ *        - Tier 4: Get 1 item from the last remaining boss (Boss D)
+ *    - With tier_requirements: Override the item count per tier
+ *      * Example: tier_requirements: [1, 1, 1, 1] means 1 item per tier from different bosses
+ *    - With allow_same_source_across_tiers: true: Allows items from same source across tiers
+ *      * Tier 1: Get base_requirement items from any boss
+ *      * Tier 2: Get (base_requirement + tier_increment) items from any boss (could be same or different)
+ *      * Tier 3: Get (base_requirement + 2*tier_increment) items from any boss (could be same or different)
  * 
  * 2. PROGRESSIVE mode: Get progressively more unique items from the same source/set
  *    - Base requirement: Get base_requirement unique items from the set
@@ -149,14 +174,17 @@ export type SimplifiedRequirement =
   | ValueDropRequirement
   | SpeedrunRequirement
   | UniqueCollectionRequirement
+  | ExperienceRequirement
+  | BaGamblesRequirement
 
 /**
  * Tiered Requirement Structure
- * Each tier represents a separate requirement level
+ * Each tier represents a separate requirement level with its own points
  */
 export interface TieredRequirement {
   tier: number // Tier number (1, 2, 3, etc.)
   requirement: SimplifiedRequirement
+  points: number // Points awarded when this tier is completed
 }
 
 /**
@@ -173,10 +201,18 @@ export interface TileRequirements {
 // Tile Definition
 // ============================================================================
 
+/**
+ * Bonus Tier for awarding additional points
+ * Used ONLY for value-based thresholds (e.g., "get 10 items", "get 100k xp")
+ * For tiered requirements, use points directly in TieredRequirement instead
+ * 
+ * Example: { threshold: "10_items", requirementValue: 10, points: 5 }
+ * This awards 5 points when the progress value reaches 10
+ */
 export interface BonusTier {
-  threshold: string
-  points: number
-  requirementValue: number
+  threshold: string // e.g., "10_items", "100k_xp"
+  requirementValue: number // The value needed to achieve this tier
+  points: number // Points awarded for this tier
 }
 
 export interface TileDefinition {
@@ -187,7 +223,9 @@ export interface TileDefinition {
   difficulty: Difficulty
   icon: string
   requirements: TileRequirements
-  base_points?: number
+  base_points?: number // Base points for completing the base requirement (if no tiers)
+  // bonus_tiers is ONLY for value-based thresholds (e.g., "get 10 items")
+  // For tiered requirements, use points directly in requirements.tiers[].points
   bonus_tiers?: BonusTier[]
 }
 
