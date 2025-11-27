@@ -81,8 +81,7 @@ router.get('/', async (req: Request, res: Response) => {
 			SELECT 
 				etm.id as team_member_id,
 				m.id as member_id,
-				m.discord_username,
-				m.discord_name,
+				m.discord_tag,
 				oa.id as osrs_account_id,
 				oa.osrs_nickname as osrs_account_name,
 				COUNT(DISTINCT btp.board_tile_id) FILTER (WHERE btp.completed_at IS NOT NULL) as tiles_completed,
@@ -97,7 +96,7 @@ router.get('/', async (req: Request, res: Response) => {
 				))
 			)
 			WHERE etm.team_id = $2
-			GROUP BY etm.id, m.id, m.discord_username, m.discord_name, oa.id, oa.osrs_nickname
+			GROUP BY etm.id, m.id, m.discord_tag, oa.id, oa.osrs_nickname
 			ORDER BY tiles_completed DESC, total_progress_contributed DESC
 		`, [boardId, teamId]);
 
@@ -273,9 +272,7 @@ router.get('/members', async (req: Request, res: Response) => {
 				etm.role,
 				etm.individual_score,
 				m.id as member_id,
-				m.discord_username,
-				m.discord_name,
-				m.discord_avatar,
+				m.discord_tag,
 				oa.id as osrs_account_id,
 				oa.osrs_nickname as osrs_account_name,
 				oa.account_type as osrs_account_type,
@@ -292,8 +289,8 @@ router.get('/members', async (req: Request, res: Response) => {
 				)
 			)
 			WHERE etm.team_id = $2
-			GROUP BY etm.id, etm.role, etm.individual_score, m.id, m.discord_username, 
-				m.discord_name, m.discord_avatar, oa.id, oa.osrs_nickname, oa.account_type
+			GROUP BY etm.id, etm.role, etm.individual_score, m.id, m.discord_tag, 
+				oa.id, oa.osrs_nickname, oa.account_type
 			ORDER BY tiles_completed DESC, total_progress_contributed DESC
 		`, [boardId, teamId]);
 

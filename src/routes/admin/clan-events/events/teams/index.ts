@@ -16,10 +16,7 @@ interface TeamMember {
 	metadata: any;
 	joined_at: string;
 	discord_id: string;
-	discord_username: string | null;
-	discord_name: string | null;
-	discord_discriminator: string | null;
-	discord_avatar: string | null;
+	discord_tag: string | null;
 	osrs_account_name: string | null;
 	osrs_account_type: string | null;
 }
@@ -135,10 +132,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 			SELECT 
 				etm.*,
 				m.discord_id,
-				m.discord_username,
-				m.discord_name,
-				m.discord_discriminator,
-				m.discord_avatar,
+				m.discord_tag,
 				oa.osrs_nickname as osrs_account_name,
 				oa.account_type as osrs_account_type
 			FROM event_team_members etm
@@ -587,18 +581,16 @@ router.get('/:id/leaderboard', async (req: Request, res: Response) => {
 		const leaderboard = await query(`
 			SELECT 
 				etm.*,
-				m.discord_username,
-				m.discord_name,
-				m.discord_avatar,
+				m.discord_tag,
 				COUNT(btp.id) as tiles_contributed_to,
 				COALESCE(SUM(btp.progress_value), 0) as total_progress
 			FROM event_team_members etm
 			JOIN members m ON etm.member_id = m.id
 			LEFT JOIN bingo_tile_progress btp ON btp.osrs_account_id IN (
-				SELECT id FROM osrs_accounts WHERE member_code = m.member_code
+				SELECT id FROM osrs_accounts WHERE discord_id = m.discord_id
 			)
 			WHERE etm.team_id = $1
-			GROUP BY etm.id, m.discord_username, m.discord_name, m.discord_avatar
+			GROUP BY etm.id, m.discord_tag
 			ORDER BY etm.individual_score DESC, total_progress DESC
 		`, [id]);
 
