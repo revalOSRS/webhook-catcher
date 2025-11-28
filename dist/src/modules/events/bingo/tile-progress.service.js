@@ -16,18 +16,22 @@ import { calculateExperienceProgress } from './calculators/experience.calculator
  */
 export async function processDinkEventForTileProgress(dinkEvent) {
     try {
+        console.log(`[TileProgressService] Processing Dink event: ${dinkEvent.type} for player ${dinkEvent.playerName}`);
         // Convert Dink event to unified format
         const unifiedEvent = await adaptDinkEvent(dinkEvent);
         if (!unifiedEvent) {
             // Event type not supported for bingo tracking
+            console.log(`[TileProgressService] Event type ${dinkEvent.type} not supported for bingo tracking`);
             return;
         }
+        console.log(`[TileProgressService] Converted to unified event: ${unifiedEvent.eventType}`);
         // Process the unified event
         await processUnifiedEvent(unifiedEvent);
+        console.log(`[TileProgressService] Successfully processed event for ${unifiedEvent.playerName}`);
     }
     catch (error) {
         console.error('[TileProgressService] Error processing Dink event:', error);
-        throw error;
+        // Don't throw - we don't want to break the webhook flow
     }
 }
 /**
@@ -38,20 +42,28 @@ async function processUnifiedEvent(event) {
     const boardTiles = await getActiveBoardTilesForPlayer(event);
     if (boardTiles.length === 0) {
         // Player not in any active events or no matching tiles
+        console.log(`[TileProgressService] No active board tiles found for player ${event.playerName} (osrs_account_id: ${event.osrsAccountId})`);
         return;
     }
+    console.log(`[TileProgressService] Found ${boardTiles.length} board tiles for player ${event.playerName}`);
     // Process each matching tile
+    let matchedTiles = 0;
     for (const tile of boardTiles) {
         // Check if event matches tile requirements
         if (!matchesRequirement(event, tile.requirements)) {
             continue;
         }
+        matchedTiles++;
         // Check if tile is already completed
         if (tile.is_completed) {
+            console.log(`[TileProgressService] Tile ${tile.tile_id} already completed, skipping`);
             continue;
         }
         // Calculate and update progress
         await updateTileProgress(event, tile);
+    }
+    if (matchedTiles > 0) {
+        console.log(`[TileProgressService] Matched ${matchedTiles} tiles for event ${event.eventType}`);
     }
 }
 /**
@@ -62,7 +74,7 @@ async function getActiveBoardTilesForPlayer(event) {
     let osrsAccountId = event.osrsAccountId;
     // If not available, try to get from player name
     if (!osrsAccountId && event.playerName) {
-        const accounts = await query('SELECT id FROM osrs_accounts WHERE name = $1 LIMIT 1', [event.playerName]);
+        const accounts = await query('SELECT id FROM osrs_accounts WHERE osrs_nickname = $1 LIMIT 1', [event.playerName]);
         osrsAccountId = accounts.length > 0 ? accounts[0].id : undefined;
     }
     // Get team memberships for this OSRS account

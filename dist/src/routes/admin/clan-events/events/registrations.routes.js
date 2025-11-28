@@ -35,10 +35,7 @@ router.get('/', async (req, res) => {
 			SELECT 
 				er.*,
 				m.discord_id,
-				m.discord_username,
-				m.discord_name,
-				m.discord_discriminator,
-				m.discord_avatar,
+				m.discord_tag,
 				oa.osrs_nickname as osrs_account_name,
 				oa.account_type as osrs_account_type
 			FROM event_registrations er
@@ -98,10 +95,7 @@ router.get('/available', async (req, res) => {
 			SELECT 
 				m.id,
 				m.discord_id,
-				m.discord_username,
-				m.discord_name,
-				m.discord_discriminator,
-				m.discord_avatar,
+				m.discord_tag,
 				COALESCE(
 					json_agg(
 						json_build_object(
@@ -121,17 +115,13 @@ router.get('/available', async (req, res) => {
         const params = [eventId];
         let paramIndex = 2;
         if (search) {
-            sql += ` AND (
-				m.discord_username ILIKE $${paramIndex} OR
-				m.discord_name ILIKE $${paramIndex}
-			)`;
+            sql += ` AND m.discord_tag ILIKE $${paramIndex}`;
             params.push(`%${search}%`);
             paramIndex++;
         }
         sql += `
-			GROUP BY m.id, m.discord_id, m.discord_username, m.discord_name, 
-				m.discord_discriminator, m.discord_avatar
-			ORDER BY m.discord_username ASC, m.discord_name ASC
+			GROUP BY m.id, m.discord_id, m.discord_tag
+			ORDER BY m.discord_tag ASC
 			LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
 		`;
         params.push(parseInt(limit), parseInt(offset));

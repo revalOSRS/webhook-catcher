@@ -3,7 +3,7 @@
  * Basic CRUD operations for members
  */
 
-import { query, queryOne, pool } from '../../db/connection.js'
+import { query, queryOne } from '../../db/connection.js'
 import { BaseEntity, BaseEntityData } from '../base-entity.js'
 
 /**

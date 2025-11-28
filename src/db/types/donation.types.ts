@@ -55,6 +55,21 @@ export interface Donation {
 
   // Additional info
   note: string | null              // Optional note from submitter
+  category_id?: number | null      // FK to donation_categories(id) - Added in migration 044
+}
+
+/**
+ * Donation Category
+ * 
+ * Categories for organizing donations (e.g., "General", "Event Prize Pool", etc.)
+ * Created in migration 044.
+ */
+export interface DonationCategory {
+  id: number
+  name: string                     // Unique category name
+  description: string | null
+  is_active: boolean
+  created_at: Date
 }
 
 

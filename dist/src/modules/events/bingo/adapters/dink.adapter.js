@@ -6,29 +6,38 @@ import { DinkEventType } from '../../../dink/events/event.js';
 import { query } from '../../../../db/connection.js';
 /**
  * Convert Dink event to UnifiedGameEvent
+ * Handles both typed DinkEvent objects and raw payload objects
  */
 export async function adaptDinkEvent(dinkEvent) {
+    // Handle raw payload objects (from webhook) - type is a string
+    const eventType = typeof dinkEvent.type === 'string' ? dinkEvent.type : dinkEvent.type;
     // Get OSRS account ID from player name
     const osrsAccountId = await getOsrsAccountIdFromPlayerName(dinkEvent.playerName);
     const timestamp = new Date(); // Dink events don't have explicit timestamp, use current time
-    switch (dinkEvent.type) {
-        case DinkEventType.LOOT:
-            return adaptLootEvent(dinkEvent, osrsAccountId, timestamp);
-        case DinkEventType.PET:
-            return adaptPetEvent(dinkEvent, osrsAccountId, timestamp);
-        case DinkEventType.SPEEDRUN:
-            return adaptSpeedrunEvent(dinkEvent, osrsAccountId, timestamp);
-        case DinkEventType.BARBARIAN_ASSAULT_GAMBLE:
-            return adaptBaGambleEvent(dinkEvent, osrsAccountId, timestamp);
-        case DinkEventType.LOGOUT:
-            return adaptLogoutEvent(dinkEvent, osrsAccountId, timestamp);
-        default:
-            // Event type not supported for bingo tracking
-            return null;
+    // Check event type (handle both string and enum)
+    if (eventType === 'LOOT' || eventType === DinkEventType.LOOT) {
+        return adaptLootEvent(dinkEvent, osrsAccountId, timestamp);
     }
+    if (eventType === 'PET' || eventType === DinkEventType.PET) {
+        return adaptPetEvent(dinkEvent, osrsAccountId, timestamp);
+    }
+    if (eventType === 'SPEEDRUN' || eventType === DinkEventType.SPEEDRUN) {
+        return adaptSpeedrunEvent(dinkEvent, osrsAccountId, timestamp);
+    }
+    if (eventType === 'BARBARIAN_ASSAULT_GAMBLE' || eventType === DinkEventType.BARBARIAN_ASSAULT_GAMBLE) {
+        return adaptBaGambleEvent(dinkEvent, osrsAccountId, timestamp);
+    }
+    if (eventType === 'LOGOUT' || eventType === DinkEventType.LOGOUT) {
+        return adaptLogoutEvent(dinkEvent, osrsAccountId, timestamp);
+    }
+    // Event type not supported for bingo tracking
+    return null;
 }
 function adaptLootEvent(event, osrsAccountId, timestamp) {
-    const totalValue = event.extra.items.reduce((sum, item) => sum + (item.priceEach * item.quantity), 0);
+    // Handle both typed events and raw payloads
+    const extra = event.extra || {};
+    const items = extra.items || [];
+    const totalValue = items.reduce((sum, item) => sum + ((item.priceEach || 0) * (item.quantity || 0)), 0);
     return {
         eventType: 'LOOT',
         playerName: event.playerName,
@@ -36,18 +45,19 @@ function adaptLootEvent(event, osrsAccountId, timestamp) {
         timestamp,
         source: 'dink',
         data: {
-            items: event.extra.items.map(item => ({
+            items: items.map((item) => ({
                 id: item.id,
                 quantity: item.quantity,
                 name: item.name,
-                priceEach: item.priceEach
+                priceEach: item.priceEach || 0
             })),
-            source: event.extra.source,
+            source: extra.source,
             totalValue
         }
     };
 }
 function adaptPetEvent(event, osrsAccountId, timestamp) {
+    const extra = event.extra || {};
     return {
         eventType: 'PET',
         playerName: event.playerName,
@@ -55,14 +65,15 @@ function adaptPetEvent(event, osrsAccountId, timestamp) {
         timestamp,
         source: 'dink',
         data: {
-            petName: event.extra.petName,
-            milestone: event.extra.milestone
+            petName: extra.petName,
+            milestone: extra.milestone
         }
     };
 }
 function adaptSpeedrunEvent(event, osrsAccountId, timestamp) {
+    const extra = event.extra || {};
     // Parse time string (e.g., "1:23:45" or "23:45") to seconds
-    const timeSeconds = parseTimeStringToSeconds(event.extra.currentTime);
+    const timeSeconds = parseTimeStringToSeconds(extra.currentTime || extra.personalBest || '0');
     return {
         eventType: 'SPEEDRUN',
         playerName: event.playerName,
@@ -70,13 +81,14 @@ function adaptSpeedrunEvent(event, osrsAccountId, timestamp) {
         timestamp,
         source: 'dink',
         data: {
-            location: event.extra.questName, // Dink uses questName for speedruns
+            location: extra.questName, // Dink uses questName for speedruns
             timeSeconds,
-            isPersonalBest: event.extra.isPersonalBest
+            isPersonalBest: extra.isPersonalBest || false
         }
     };
 }
 function adaptBaGambleEvent(event, osrsAccountId, timestamp) {
+    const extra = event.extra || {};
     return {
         eventType: 'BA_GAMBLE',
         playerName: event.playerName,
@@ -84,7 +96,7 @@ function adaptBaGambleEvent(event, osrsAccountId, timestamp) {
         timestamp,
         source: 'dink',
         data: {
-            gambleCount: event.extra.gambleCount
+            gambleCount: extra.gambleCount || 1
         }
     };
 }
@@ -122,7 +134,7 @@ function parseTimeStringToSeconds(timeStr) {
  */
 async function getOsrsAccountIdFromPlayerName(playerName) {
     try {
-        const result = await query('SELECT id FROM osrs_accounts WHERE name = $1 LIMIT 1', [playerName]);
+        const result = await query('SELECT id FROM osrs_accounts WHERE osrs_nickname = $1 LIMIT 1', [playerName]);
         return result.length > 0 ? result[0].id : undefined;
     }
     catch (error) {

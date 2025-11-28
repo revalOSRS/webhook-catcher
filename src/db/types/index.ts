@@ -18,7 +18,8 @@ export type {
 
 // Donation types
 export type {
-  Donation
+  Donation,
+  DonationCategory
 } from './donation.types.js'
 
 // Coffer types (clan coffer that holds donations)
@@ -151,3 +152,24 @@ export {
 
 // Battleship types
 export * from './battleship.types.js'
+
+// Bingo types
+export type {
+  EventType as BingoEventType,
+  EventStatus,
+  Event as BingoEvent,
+  EventTeam,
+  EventTeamMember,
+  EventRegistration,
+  TileDifficulty,
+  BingoTile,
+  BingoBoard,
+  BingoBoardTile,
+  CompletionType,
+  BingoTileProgress,
+  BuffDebuffType,
+  BingoBuffDebuff,
+  BingoBoardTileEffect,
+  LineType,
+  BingoBoardLineEffect
+} from './bingo.types.js'

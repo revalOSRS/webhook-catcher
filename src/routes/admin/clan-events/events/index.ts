@@ -270,10 +270,24 @@ router.patch('/:id', async (req: Request, res: Response) => {
 		`;
 
 		const result = await query(sql, values);
+		const updatedEvent = result[0];
+
+		// If event is being activated and it's a bingo event, initialize boards for all teams
+		if (updates.status === 'active' && updatedEvent.event_type === 'bingo') {
+			try {
+				const { initializeBoardsForEvent } = await import('../../../../modules/events/bingo/board-initialization.service.js')
+				// Initialize boards asynchronously (don't block response)
+				initializeBoardsForEvent(id).catch((error) => {
+					console.error('[Events] Error initializing boards for event:', error)
+				})
+			} catch (error) {
+				console.error('[Events] Error importing board initialization service:', error)
+			}
+		}
 
 		res.json({
 			success: true,
-			data: result[0],
+			data: updatedEvent,
 			message: 'Event updated successfully'
 		});
 	} catch (error: any) {
