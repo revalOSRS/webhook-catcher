@@ -366,7 +366,24 @@ export class DinkService {
             const eventType = payloadData?.type || 'UNKNOWN'
             const playerName = payloadData?.playerName || 'Unknown Player'
 
-            // Add event to activity cache first (before Discord filtering)
+            // Check if player is in an active bingo event BEFORE filtering
+            const { isPlayerInActiveBingoEvent } = await import('../events/bingo/bingo-participant-checker.js')
+            const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName)
+
+            // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
+            // This must happen before any filtering
+            processDinkEventForTileProgress(payloadData).catch((error) => {
+              console.error('[DinkService] Error processing tile progress:', error)
+            })
+
+            // If player is in an active bingo event, skip Discord entirely
+            if (isBingoParticipant) {
+              console.log(`[DinkService] Player ${playerName} is in active bingo event, skipping Discord notification`)
+              resolve({ status: 'ok', message: 'Webhook received, processed for bingo tracking, skipped Discord' })
+              return
+            }
+
+            // Add event to activity cache (before Discord filtering)
             // Skip CHAT events from activity cache
             if (eventType !== 'CHAT') {
               const activityEvent = this.formatDinkEvent(payloadData)
@@ -385,11 +402,6 @@ export class DinkService {
               resolve({ status: 'ok', message: 'Webhook received but filtered out' })
               return
             }
-
-            // Process tile progress tracking (async, don't wait)
-            processDinkEventForTileProgress(payloadData).catch((error) => {
-              console.error('[DinkService] Error processing tile progress:', error)
-            })
 
             // Route to appropriate Discord channel based on event type
             const sendFunction = this.getSendFunction(eventType)
@@ -417,7 +429,23 @@ export class DinkService {
       const eventType = req.body?.type || 'UNKNOWN'
       const playerName = req.body?.playerName || 'Unknown Player'
 
-      // Add event to activity cache first (before Discord filtering)
+      // Check if player is in an active bingo event BEFORE filtering
+      const { isPlayerInActiveBingoEvent } = await import('../events/bingo/bingo-participant-checker.js')
+      const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName)
+
+      // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
+      // This must happen before any filtering
+      processDinkEventForTileProgress(req.body).catch((error) => {
+        console.error('[DinkService] Error processing tile progress:', error)
+      })
+
+      // If player is in an active bingo event, skip Discord entirely
+      if (isBingoParticipant) {
+        console.log(`[DinkService] Player ${playerName} is in active bingo event, skipping Discord notification`)
+        return { status: 'ok', message: 'Webhook received, processed for bingo tracking, skipped Discord' }
+      }
+
+      // Add event to activity cache (before Discord filtering)
       // Skip CHAT events from activity cache
       if (eventType !== 'CHAT') {
         const activityEvent = this.formatDinkEvent(req.body)
@@ -435,11 +463,6 @@ export class DinkService {
         console.log(`Event filtered out: ${eventType} for ${playerName}, not sending to Discord`)
         return { status: 'ok', message: 'Webhook received but filtered out' }
       }
-
-      // Process tile progress tracking (async, don't wait)
-      processDinkEventForTileProgress(req.body).catch((error) => {
-        console.error('[DinkService] Error processing tile progress:', error)
-      })
 
       // Route to appropriate Discord channel based on event type
       const sendFunction = this.getSendFunction(eventType)

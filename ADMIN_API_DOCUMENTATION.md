@@ -1995,3 +1995,23 @@ All endpoints may return the following error responses:
    - When using `tiers`, the `requirements` array should typically be empty (unless you want a base requirement in addition to tiers).
 9. **UNIQUE_COLLECTION** requirements create dynamic tiers based on the number of sources. Points for these tiers should be defined in `bonus_tiers` using the `tier` field (e.g., `{ "tier": 1, "points": 4 }`).
 
+---
+
+## Important Notes
+
+### Board Initialization
+When an event status is changed to `active` via `PATCH /events/:id`, boards are automatically created for all teams in the event. The boards are created from the generic board configuration stored in `event.config.board`. This includes:
+- Board structure (columns, rows, name, description)
+- All tiles from `config.board.tiles` array
+- Row effects from `config.board.row_effects` array
+- Column effects from `config.board.column_effects` array
+- Tile effects from `config.board.tile_effects` array
+
+### Dink Event Processing
+Dink webhook events are automatically processed for tile progress tracking. Events from players participating in active bingo events:
+- Are processed for tile progress tracking
+- Skip Discord notifications (to avoid spam)
+- Still update the activity cache
+
+Events from non-bingo participants follow the normal flow (Discord filtering, notifications, etc.).
+

@@ -93,20 +93,32 @@ async function createBoardForTeam(
 
   // Create tiles from generic board config
   if (genericBoard.tiles && Array.isArray(genericBoard.tiles)) {
+    console.log(`[BoardInitialization] Creating ${genericBoard.tiles.length} tiles for team ${teamId}`)
+    let createdCount = 0
     for (const tile of genericBoard.tiles) {
-      await query(`
-        INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (board_id, position) DO NOTHING
-      `, [
-        boardId,
-        tile.tile_id,
-        tile.position,
-        tile.custom_points || null,
-        JSON.stringify(tile.metadata || {})
-      ])
+      try {
+        const result = await query(`
+          INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (board_id, position) DO NOTHING
+          RETURNING id
+        `, [
+          boardId,
+          tile.tile_id,
+          tile.position,
+          tile.custom_points || null,
+          JSON.stringify(tile.metadata || {})
+        ])
+        if (result.length > 0) {
+          createdCount++
+        }
+      } catch (error) {
+        console.error(`[BoardInitialization] Error creating tile at position ${tile.position}:`, error)
+      }
     }
-    console.log(`[BoardInitialization] Created ${genericBoard.tiles.length} tiles for team ${teamId}`)
+    console.log(`[BoardInitialization] Successfully created ${createdCount} tiles for team ${teamId} (${genericBoard.tiles.length} total in config)`)
+  } else {
+    console.warn(`[BoardInitialization] No tiles found in generic board config for team ${teamId}`)
   }
 
   // Create row effects from generic board config
