@@ -21,21 +21,33 @@ export async function initializeBoardsForEvent(eventId: string): Promise<void> {
     const genericBoard = eventConfig.board || {}
 
     // Get all teams for this event
-    const teams = await query('SELECT id FROM event_teams WHERE event_id = $1', [eventId])
+    const teams = await query('SELECT id, name FROM event_teams WHERE event_id = $1', [eventId])
 
     if (teams.length === 0) {
       console.log(`[BoardInitialization] No teams found for event ${eventId}, skipping board creation`)
       return
     }
 
-    console.log(`[BoardInitialization] Creating boards for ${teams.length} teams in event ${eventId}`)
+    console.log(`[BoardInitialization] Found ${teams.length} teams for event ${eventId}:`, teams.map((t: any) => `${t.name} (${t.id})`).join(', '))
+    console.log(`[BoardInitialization] Creating boards for ${teams.length} teams`)
 
     // Create board for each team
+    let successCount = 0
+    let errorCount = 0
     for (const team of teams) {
-      await createBoardForTeam(eventId, team.id, genericBoard)
+      try {
+        console.log(`[BoardInitialization] Processing team ${team.name || team.id} (${team.id})`)
+        await createBoardForTeam(eventId, team.id, genericBoard)
+        successCount++
+        console.log(`[BoardInitialization] ✓ Successfully created board for team ${team.name || team.id}`)
+      } catch (error) {
+        errorCount++
+        console.error(`[BoardInitialization] ✗ Failed to create board for team ${team.name || team.id} (${team.id}):`, error)
+        // Continue processing other teams even if one fails
+      }
     }
 
-    console.log(`[BoardInitialization] Successfully created boards for all teams`)
+    console.log(`[BoardInitialization] Completed: ${successCount} boards created successfully, ${errorCount} failed`)
   } catch (error) {
     console.error(`[BoardInitialization] Error initializing boards for event ${eventId}:`, error)
     throw error
@@ -93,32 +105,48 @@ async function createBoardForTeam(
 
   // Create tiles from generic board config
   if (genericBoard.tiles && Array.isArray(genericBoard.tiles)) {
-    console.log(`[BoardInitialization] Creating ${genericBoard.tiles.length} tiles for team ${teamId}`)
-    let createdCount = 0
-    for (const tile of genericBoard.tiles) {
-      try {
-        const result = await query(`
-          INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
-          VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT (board_id, position) DO NOTHING
-          RETURNING id
-        `, [
-          boardId,
-          tile.tile_id,
-          tile.position,
-          tile.custom_points || null,
-          JSON.stringify(tile.metadata || {})
-        ])
-        if (result.length > 0) {
-          createdCount++
+    if (genericBoard.tiles.length === 0) {
+      console.log(`[BoardInitialization] Tiles array is empty in config for team ${teamId}. No tiles will be created.`)
+      console.log(`[BoardInitialization] You can add tiles later using POST /api/admin/clan-events/events/${eventId}/teams/${teamId}/board/tiles`)
+    } else {
+      console.log(`[BoardInitialization] Creating ${genericBoard.tiles.length} tiles for team ${teamId}`)
+      let createdCount = 0
+      let skippedCount = 0
+      for (const tile of genericBoard.tiles) {
+        try {
+          if (!tile.tile_id || !tile.position) {
+            console.warn(`[BoardInitialization] Skipping invalid tile (missing tile_id or position):`, tile)
+            skippedCount++
+            continue
+          }
+          
+          const result = await query(`
+            INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (board_id, position) DO NOTHING
+            RETURNING id
+          `, [
+            boardId,
+            tile.tile_id,
+            tile.position,
+            tile.custom_points || null,
+            JSON.stringify(tile.metadata || {})
+          ])
+          if (result.length > 0) {
+            createdCount++
+          } else {
+            skippedCount++ // Position already taken
+          }
+        } catch (error) {
+          console.error(`[BoardInitialization] Error creating tile at position ${tile.position}:`, error)
+          skippedCount++
         }
-      } catch (error) {
-        console.error(`[BoardInitialization] Error creating tile at position ${tile.position}:`, error)
       }
+      console.log(`[BoardInitialization] Successfully created ${createdCount} tiles for team ${teamId} (${genericBoard.tiles.length} total in config, ${skippedCount} skipped)`)
     }
-    console.log(`[BoardInitialization] Successfully created ${createdCount} tiles for team ${teamId} (${genericBoard.tiles.length} total in config)`)
   } else {
-    console.warn(`[BoardInitialization] No tiles found in generic board config for team ${teamId}`)
+    console.warn(`[BoardInitialization] No tiles array found in generic board config for team ${teamId}`)
+    console.warn(`[BoardInitialization] Add tiles to event.config.board.tiles array before activating, or add them manually after activation`)
   }
 
   // Create row effects from generic board config
