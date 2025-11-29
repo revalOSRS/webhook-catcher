@@ -21,8 +21,7 @@ import { query } from '../../../../db/connection.js'
  * Handles both typed DinkEvent objects and raw payload objects
  */
 export async function adaptDinkEvent(dinkEvent: DinkEvent | any): Promise<UnifiedGameEvent | null> {
-  // Handle raw payload objects (from webhook) - type is a string
-  const eventType = typeof dinkEvent.type === 'string' ? dinkEvent.type : dinkEvent.type
+  const eventType = dinkEvent.type
   
   // Get OSRS account ID from player name
   const osrsAccountId = await getOsrsAccountIdFromPlayerName(dinkEvent.playerName)

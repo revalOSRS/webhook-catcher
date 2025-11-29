@@ -367,8 +367,19 @@ export class DinkService {
             const eventType = payloadData?.type || 'UNKNOWN'
             const playerName = payloadData?.playerName || 'Unknown Player'
 
+          
+
             // Check if player is in an active bingo event BEFORE filtering
             const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName)
+
+            // Log LOGIN/LOGOUT events prominently
+            if (eventType === 'LOGIN' || eventType === 'LOGOUT') {
+              console.log('═══════════════════════════════════════════════════════════')
+              console.log(`🔐 ${eventType} EVENT: ${playerName}`)
+              console.log(`   Bingo Participant: ${isBingoParticipant ? 'YES' : 'NO'}`)
+              console.log(`   Timestamp: ${new Date().toISOString()}`)
+              console.log('═══════════════════════════════════════════════════════════')
+            }
 
             // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
             // This must happen before any filtering
@@ -433,6 +444,15 @@ export class DinkService {
 
       // Check if player is in an active bingo event BEFORE filtering
       const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName)
+
+      // Log LOGIN/LOGOUT events prominently
+      if (eventType === 'LOGIN' || eventType === 'LOGOUT') {
+        console.log('═══════════════════════════════════════════════════════════')
+        console.log(`🔐 ${eventType} EVENT: ${playerName}`)
+        console.log(`   Bingo Participant: ${isBingoParticipant ? 'YES' : 'NO'}`)
+        console.log(`   Timestamp: ${new Date().toISOString()}`)
+        console.log('═══════════════════════════════════════════════════════════')
+      }
 
       // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
       // This must happen before any filtering

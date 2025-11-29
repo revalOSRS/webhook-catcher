@@ -216,16 +216,84 @@ async function calculateProgress(
 ): Promise<any> {
   // Handle tiered requirements
   if (requirements.tiers && requirements.tiers.length > 0) {
-    // Check each tier and calculate progress
+    // Track completed tiers from existing metadata
+    const completedTiers: number[] = existing?.metadata?.completed_tiers || []
+    let updatedMetadata = { ...existing?.metadata }
+    let highestTierProgress = existing?.progressValue || 0
+    let tierMatched = false
+    
+    // Check each tier to see if it matches the current event
     for (const tier of requirements.tiers) {
       if (matchesRequirement(event, { match_type: 'all', requirements: [], tiers: [tier] })) {
-        return await calculateRequirementProgress(event, tier.requirement, existing, eventStartDate, tier)
+        // Get tier-specific existing progress (if stored separately)
+        const tierExisting = existing?.metadata?.[`tier_${tier.tier}_progress`] !== undefined
+          ? { progressValue: existing.metadata[`tier_${tier.tier}_progress`], metadata: existing.metadata[`tier_${tier.tier}_metadata`] || {} }
+          : existing
+        
+        // Calculate progress for this tier
+        const tierResult = await calculateRequirementProgress(event, tier.requirement, tierExisting, eventStartDate, tier)
+        
+        // If this tier is now completed and wasn't before, add it to completed tiers
+        if (tierResult.isCompleted && !completedTiers.includes(tier.tier)) {
+          completedTiers.push(tier.tier)
+          updatedMetadata[`tier_${tier.tier}_completed_at`] = event.timestamp.toISOString()
+        }
+        
+        // Update metadata with tier-specific progress
+        updatedMetadata[`tier_${tier.tier}_progress`] = tierResult.progressValue
+        updatedMetadata[`tier_${tier.tier}_metadata`] = tierResult.metadata
+        
+        // Track highest tier progress value
+        if (tierResult.progressValue > highestTierProgress) {
+          highestTierProgress = tierResult.progressValue
+        }
+        
+        tierMatched = true
+        
+        // Mark tile as complete when ANY tier is completed (so they get points)
+        // But continue tracking all tiers for additional progress
+        const tileIsComplete = completedTiers.length > 0 || tierResult.isCompleted
+        
+        return {
+          progressValue: highestTierProgress,
+          metadata: {
+            ...updatedMetadata,
+            ...tierResult.metadata,
+            completed_tiers: completedTiers.sort((a, b) => a - b),
+            total_tiers: requirements.tiers.length,
+            completed_tiers_count: completedTiers.length,
+            current_tier: tier.tier,
+            current_tier_progress: tierResult.progressValue
+          },
+          isCompleted: tileIsComplete // Mark complete when ANY tier is done
+        }
       }
     }
-    // If no tier matches, return existing progress
+    
+    // If no tier matched but we have existing progress, return it
+    if (existing) {
+      // Tile is complete if any tier was completed
+      const tileIsComplete = completedTiers.length > 0
+      return {
+        progressValue: existing.progressValue,
+        metadata: {
+          ...updatedMetadata,
+          completed_tiers: completedTiers.sort((a, b) => a - b),
+          total_tiers: requirements.tiers.length,
+          completed_tiers_count: completedTiers.length
+        },
+        isCompleted: tileIsComplete // Complete if any tier was completed
+      }
+    }
+    
+    // If no tier matches and no existing progress
     return {
-      progressValue: existing?.progressValue || 0,
-      metadata: existing?.metadata || {},
+      progressValue: 0,
+      metadata: {
+        completed_tiers: [],
+        total_tiers: requirements.tiers.length,
+        completed_tiers_count: 0
+      },
       isCompleted: false
     }
   }
