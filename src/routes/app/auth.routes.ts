@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { MembersService } from '../../modules/members/index.js'
-import { DiscordService } from '../../modules/discord/index.js'
 
 const router = Router()
 
@@ -36,12 +35,21 @@ router.post('/discord', async (req, res) => {
     }
 
     // Exchange code for access token
+    // IMPORTANT: redirect_uri must EXACTLY match what was used in the authorization URL
+    // If Discord redirects to https://www.revalosrs.ee/login?code=xxx, 
+    // then redirect_uri should be https://www.revalosrs.ee/login (without /login it won't work!)
     console.log('[Discord Auth] Exchanging code for token', {
       hasCode: !!code,
-      code: code,
+      codeLength: code?.length,
       redirectUri,
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret
+      clientId, // Log client ID to verify it matches the one in authorization URL
+      hasClientSecret: !!clientSecret,
+      // Verify: client_id in auth URL was 1426865801553776670
+      clientIdMatches: clientId === '1426865801553776670',
+      // Check if redirect URI needs /login path
+      redirectUriHasLogin: redirectUri.includes('/login'),
+      expectedWithLogin: 'https://www.revalosrs.ee/login',
+      expectedWithoutLogin: 'https://www.revalosrs.ee'
     })
 
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
@@ -74,7 +82,12 @@ router.post('/discord', async (req, res) => {
         statusText: tokenResponse.statusText,
         error: errorData,
         redirectUri,
-        codeLength: code?.length
+        codeLength: code?.length,
+        clientId,
+        // Check if client ID matches the one used in authorization
+        clientIdMatches: clientId === '1426865801553776670',
+        // Check if redirect URI matches expected
+        redirectUriMatches: redirectUri === 'https://www.revalosrs.ee'
       })
       
       let errorMessage = 'Failed to authenticate with Discord'
@@ -219,16 +232,12 @@ router.post('/discord', async (req, res) => {
       })
     }
 
-    // Fetch avatar
-    const discordAvatar = await DiscordService.getDiscordAvatar(member.discord_id)
-
     return res.status(200).json({
       status: 'success',
       data: {
         id: member.id,
         discord_id: member.discord_id,
         discord_tag: member.discord_tag,
-        discord_avatar: discordAvatar,
         member_code: member.member_code,
         is_active: member.is_active
       },
