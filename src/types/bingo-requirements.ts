@@ -77,11 +77,12 @@ export interface PetRequirement {
 
 /**
  * Value Drop Requirement
- * Tracks total value of drops
+ * Tracks if any single item in a drop is worth >= the required value
+ * (Not the total value of all items combined)
  */
 export interface ValueDropRequirement {
   type: 'VALUE_DROP'
-  value: number
+  value: number // Minimum value that a single item must be worth
 }
 
 /**

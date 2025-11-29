@@ -1370,11 +1370,14 @@ Create a new tile in the library.
    }
    ```
 
-3. **VALUE_DROP**: Track total value of drops
+3. **VALUE_DROP**: Track if any single item in a drop is worth >= the required value (not total value of all items combined)
+   - Checks each item individually: `(item.priceEach * item.quantity) >= requirement.value`
+   - Example: If requirement is `value: 1000000`, you need a single item worth 1M+ gp
+   - Multiple low-value items that sum to 1M+ do NOT count
    ```json
    {
      "type": "VALUE_DROP",
-     "value": 1000000
+     "value": 1000000  // Minimum value a single item must be worth
    }
    ```
 

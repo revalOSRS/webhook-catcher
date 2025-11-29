@@ -114,7 +114,14 @@ function matchesValueDrop(event: UnifiedGameEvent, requirement: ValueDropRequire
   if (event.eventType !== 'LOOT') return false
   
   const lootData = event.data as any // LootEventData
-  return (lootData.totalValue || 0) >= requirement.value
+  const items = lootData.items || []
+  
+  // Check if any single item (priceEach * quantity) is worth >= the required value
+  // Not the total value of all items combined
+  return items.some((item: any) => {
+    const itemValue = (item.priceEach || 0) * (item.quantity || 1)
+    return itemValue >= requirement.value
+  })
 }
 
 function matchesSpeedrun(event: UnifiedGameEvent, requirement: SpeedrunRequirement): boolean {
