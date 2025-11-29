@@ -73,11 +73,19 @@ function matchesItemDrop(event: UnifiedGameEvent, requirement: ItemDropRequireme
   
   const lootData = event.data as any // LootEventData
   
+  // Debug logging
+  console.log(`[RequirementMatcher] Checking ITEM_DROP: requirement.item_id=${requirement.item_id}, requirement.item_amount=${requirement.item_amount || 1}`)
+  console.log(`[RequirementMatcher] Event items:`, JSON.stringify(lootData.items))
+  
   // Single item format
   if (requirement.item_id !== undefined) {
-    return lootData.items.some((item: any) => 
-      item.id === requirement.item_id && item.quantity >= (requirement.item_amount || 1)
-    )
+    const matches = lootData.items.some((item: any) => {
+      const itemMatches = item.id === requirement.item_id && item.quantity >= (requirement.item_amount || 1)
+      console.log(`[RequirementMatcher] Checking item ${item.id} (qty ${item.quantity}): matches=${itemMatches}`)
+      return itemMatches
+    })
+    console.log(`[RequirementMatcher] ITEM_DROP match result: ${matches}`)
+    return matches
   }
   
   // Multiple items format

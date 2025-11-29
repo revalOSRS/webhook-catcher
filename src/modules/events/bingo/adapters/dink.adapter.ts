@@ -71,6 +71,15 @@ function adaptLootEvent(event: DinkLootEvent | any, osrsAccountId: number | unde
   const items = extra.items || []
   const totalValue = items.reduce((sum: number, item: any) => sum + ((item.priceEach || 0) * (item.quantity || 0)), 0)
   
+  const unifiedItems = items.map((item: any) => ({
+    id: item.id,
+    quantity: item.quantity,
+    name: item.name,
+    priceEach: item.priceEach || 0
+  }))
+  
+  console.log(`[DinkAdapter] Adapting LOOT event for ${event.playerName}:`, JSON.stringify(unifiedItems))
+  
   return {
     eventType: 'LOOT',
     playerName: event.playerName,
@@ -78,12 +87,7 @@ function adaptLootEvent(event: DinkLootEvent | any, osrsAccountId: number | unde
     timestamp,
     source: 'dink',
     data: {
-      items: items.map((item: any) => ({
-        id: item.id,
-        quantity: item.quantity,
-        name: item.name,
-        priceEach: item.priceEach || 0
-      })),
+      items: unifiedItems,
       source: extra.source,
       totalValue
     }

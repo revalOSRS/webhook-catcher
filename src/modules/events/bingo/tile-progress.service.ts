@@ -83,11 +83,16 @@ async function processUnifiedEvent(event: UnifiedGameEvent): Promise<void> {
   let matchedTiles = 0
   for (const tile of boardTiles) {
     // Check if event matches tile requirements
-    if (!matchesRequirement(event, tile.requirements)) {
+    const matches = matchesRequirement(event, tile.requirements)
+    console.log(`[TileProgressService] Checking tile ${tile.tile_id}: matches=${matches}, hasTiers=${!!tile.requirements.tiers}, tiersCount=${tile.requirements.tiers?.length || 0}`)
+    
+    if (!matches) {
+      console.log(`[TileProgressService] Tile ${tile.tile_id} does not match event requirements, skipping`)
       continue
     }
 
     matchedTiles++
+    console.log(`[TileProgressService] Tile ${tile.tile_id} matched! Processing...`)
 
     // For tiered requirements, check if all tiers are completed
     // For non-tiered requirements, check if tile is completed
