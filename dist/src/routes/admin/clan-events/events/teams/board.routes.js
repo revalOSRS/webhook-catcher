@@ -1044,16 +1044,57 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
                 completed_by_osrs_account_id || null
             ]);
         }
-        // Get updated tile
+        // Get updated tile with team/event info for notification
         const updatedTile = await query(`
 			SELECT 
 				bbt.*,
 				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
-				bt.base_points, bt.bonus_tiers, bt.requirements
+				bt.base_points, bt.bonus_tiers, bt.requirements,
+				et.id as team_id, et.name as team_name,
+				e.name as event_name
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+			JOIN bingo_boards bb ON bbt.board_id = bb.id
+			JOIN event_teams et ON bb.team_id = et.id
+			JOIN events e ON bb.event_id = e.id
 			WHERE bbt.id = $1
 		`, [tileId]);
+        // Send Discord notification for manual completion
+        if (updatedTile.length > 0) {
+            try {
+                const tile = updatedTile[0];
+                const progressData = existingProgress.length > 0
+                    ? await query('SELECT progress_value, progress_metadata FROM bingo_tile_progress WHERE id = $1', [existingProgress[0].id])
+                    : null;
+                let playerName = 'Admin';
+                if (completed_by_osrs_account_id) {
+                    const accounts = await query('SELECT osrs_nickname FROM osrs_accounts WHERE id = $1 LIMIT 1', [completed_by_osrs_account_id]);
+                    if (accounts.length > 0) {
+                        playerName = accounts[0].osrs_nickname || 'Admin';
+                    }
+                }
+                const { sendTileProgressNotification } = await import('../../../../../modules/events/bingo/discord-notifications.service.js');
+                await sendTileProgressNotification({
+                    teamId: tile.team_id,
+                    teamName: tile.team_name,
+                    eventName: tile.event_name,
+                    tileId: tile.tile_id,
+                    tileTask: tile.task,
+                    tilePosition: tile.position,
+                    playerName,
+                    progressValue: progressData?.[0]?.progress_value || 1,
+                    progressMetadata: progressData?.[0]?.progress_metadata || { manual_completion: true, notes: notes || null },
+                    isCompleted: true,
+                    completionType: 'manual_admin',
+                    completedTiers: progressData?.[0]?.progress_metadata?.completed_tiers,
+                    totalTiers: progressData?.[0]?.progress_metadata?.total_tiers
+                });
+            }
+            catch (error) {
+                console.error('[BoardRoutes] Error sending Discord notification:', error);
+                // Don't fail the request if notification fails
+            }
+        }
         res.json({
             success: true,
             data: updatedTile[0],

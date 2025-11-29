@@ -12,6 +12,7 @@ import { calculateValueDropProgress } from './calculators/value-drop.calculator.
 import { calculateSpeedrunProgress } from './calculators/speedrun.calculator.js'
 import { calculateBaGamblesProgress } from './calculators/ba-gambles.calculator.js'
 import { calculateExperienceProgress } from './calculators/experience.calculator.js'
+import { sendTileProgressNotification } from './discord-notifications.service.js'
 import type { UnifiedGameEvent } from './types/unified-event.types.js'
 import type { DinkEvent } from '../../dink/events/event.js'
 import type { 
@@ -35,6 +36,10 @@ interface BoardTile {
   event_start_date: Date
   requirements: TileRequirements
   is_completed: boolean
+  tile_task?: string
+  tile_position?: string
+  event_name?: string
+  team_name?: string
 }
 
 /**
@@ -186,12 +191,18 @@ async function getActiveBoardTilesForPlayer(event: UnifiedGameEvent): Promise<Bo
       bbt.id as board_tile_id,
       bbt.board_id,
       bbt.tile_id,
+      bbt.position as tile_position,
       bbt.is_completed,
       bb.team_id,
-      bt.requirements
+      bt.requirements,
+      bt.task as tile_task,
+      e.name as event_name,
+      et.name as team_name
     FROM bingo_board_tiles bbt
     JOIN bingo_boards bb ON bbt.board_id = bb.id
     JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+    JOIN events e ON bb.event_id = e.id
+    JOIN event_teams et ON bb.team_id = et.id
     WHERE bb.team_id = ANY($1::uuid[])
       AND (
         -- Include all incomplete tiles
@@ -216,7 +227,11 @@ async function getActiveBoardTilesForPlayer(event: UnifiedGameEvent): Promise<Bo
       event_id: membership?.event_id || '',
       event_start_date: membership?.event_start_date || new Date(),
       requirements: tile.requirements,
-      is_completed: tile.is_completed
+      is_completed: tile.is_completed,
+      tile_task: tile.tile_task,
+      tile_position: tile.tile_position,
+      event_name: tile.event_name,
+      team_name: tile.team_name
     }
   })
 }
@@ -239,8 +254,53 @@ async function updateTileProgress(event: UnifiedGameEvent, tile: BoardTile): Pro
   }
 
   // Check if tile should be marked as completed
-  if (progressUpdate.isCompleted) {
+  const wasCompleted = tile.is_completed
+  if (progressUpdate.isCompleted && !wasCompleted) {
     await markTileCompleted(tile.board_tile_id, event.osrsAccountId, 'auto')
+  }
+
+  // Send Discord notification for progress or completion
+  // Only send notifications for:
+  // 1. New completions (tile was just completed)
+  // 2. Significant progress updates (progress value increased)
+  const isNewCompletion = progressUpdate.isCompleted && !wasCompleted
+  const progressIncreased = existingProgress 
+    ? progressUpdate.progressValue > existingProgress.progressValue
+    : progressUpdate.progressValue > 0
+  
+  if (isNewCompletion || progressIncreased) {
+    try {
+      // Get player name from OSRS account if available
+      let playerName = event.playerName
+      if (event.osrsAccountId) {
+        const accounts = await query(
+          'SELECT osrs_nickname FROM osrs_accounts WHERE id = $1 LIMIT 1',
+          [event.osrsAccountId]
+        )
+        if (accounts.length > 0) {
+          playerName = accounts[0].osrs_nickname || playerName
+        }
+      }
+
+      await sendTileProgressNotification({
+        teamId: tile.team_id,
+        teamName: tile.team_name || 'Unknown Team',
+        eventName: tile.event_name || 'Unknown Event',
+        tileId: tile.tile_id,
+        tileTask: tile.tile_task || 'Unknown Task',
+        tilePosition: tile.tile_position || '?',
+        playerName,
+        progressValue: progressUpdate.progressValue,
+        progressMetadata: progressUpdate.metadata,
+        isCompleted: isNewCompletion, // Only true if newly completed
+        completionType: isNewCompletion ? 'auto' : null,
+        completedTiers: progressUpdate.metadata?.completed_tiers,
+        totalTiers: progressUpdate.metadata?.total_tiers
+      })
+    } catch (error) {
+      // Don't throw - notification failures shouldn't break progress tracking
+      console.error('[TileProgressService] Error sending Discord notification:', error)
+    }
   }
 }
 

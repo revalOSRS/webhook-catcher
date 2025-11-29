@@ -19,7 +19,8 @@ async function getMemberFromHeaders(req) {
 }
 /**
  * GET /api/app/clan-events
- * Get list of active events where the user is participating
+ * Get list of all active events
+ * Shows team information only for events where the user is participating
  * Requires authentication (x-member-code and x-discord-id headers)
  *
  * Returns: EventListItem[]
@@ -33,42 +34,55 @@ router.get('/', async (req, res) => {
                 error: 'Authentication required'
             });
         }
-        // Get active events where user is participating
+        // Get all active events
         const events = await query(`
-			SELECT DISTINCT
+			SELECT 
 				e.id,
 				e.name,
 				e.event_type,
 				e.status,
 				e.start_date,
 				e.end_date,
-				et.id as team_id,
-				et.name as team_name,
-				et.score as team_score,
-				COUNT(DISTINCT et2.id) as total_teams
+				COUNT(DISTINCT et.id) as total_teams
 			FROM events e
-			JOIN event_teams et ON e.id = et.event_id
-			JOIN event_team_members etm ON et.id = etm.team_id
-			LEFT JOIN event_teams et2 ON e.id = et2.event_id
+			LEFT JOIN event_teams et ON e.id = et.event_id
 			WHERE e.status = 'active'
 				AND (e.end_date IS NULL OR e.end_date > NOW())
-				AND etm.member_id = $1
-			GROUP BY e.id, e.name, e.event_type, e.status, e.start_date, e.end_date, et.id, et.name, et.score
+			GROUP BY e.id, e.name, e.event_type, e.status, e.start_date, e.end_date
 			ORDER BY e.start_date DESC NULLS LAST, e.created_at DESC
+		`);
+        // Get events where user is participating (for team info)
+        const participating = await query(`
+			SELECT 
+				et.event_id,
+				et.id as team_id,
+				et.name as team_name,
+				et.score as team_score
+			FROM event_team_members etm
+			JOIN event_teams et ON etm.team_id = et.id
+			WHERE etm.member_id = $1
 		`, [member.id]);
-        const response = events.map((event) => ({
-            id: event.id,
-            name: event.name,
-            event_type: event.event_type,
-            status: event.status,
-            start_date: event.start_date,
-            end_date: event.end_date,
-            team_count: parseInt(event.total_teams),
-            is_participating: true, // All returned events are ones user is in
-            team_id: event.team_id,
-            team_name: event.team_name,
-            team_score: event.team_score
-        }));
+        const participatingMap = new Map(participating.map((p) => [p.event_id, {
+                team_id: p.team_id,
+                team_name: p.team_name,
+                team_score: p.team_score
+            }]));
+        const response = events.map((event) => {
+            const participation = participatingMap.get(event.id);
+            return {
+                id: event.id,
+                name: event.name,
+                event_type: event.event_type,
+                status: event.status,
+                start_date: event.start_date,
+                end_date: event.end_date,
+                team_count: parseInt(event.total_teams),
+                is_participating: !!participation,
+                team_id: participation?.team_id,
+                team_name: participation?.team_name,
+                team_score: participation?.team_score
+            };
+        });
         res.json({
             success: true,
             data: response

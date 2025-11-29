@@ -13,7 +13,15 @@ router.get('/', async (req, res) => {
         const { event_id, limit = '50', offset = '0' } = req.query;
         let sql = `
 			SELECT 
-				et.*,
+				et.id,
+				et.event_id,
+				et.name,
+				et.color,
+				et.icon,
+				et.score,
+				et.metadata,
+				et.created_at,
+				et.updated_at,
 				e.name as event_name,
 				e.status as event_status,
 				COUNT(etm.id) as member_count
@@ -63,10 +71,18 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        // Get team details
+        // Get team details (exclude discord_webhook_url from response)
         const teams = await query(`
 			SELECT 
-				et.*,
+				et.id,
+				et.event_id,
+				et.name,
+				et.color,
+				et.icon,
+				et.score,
+				et.metadata,
+				et.created_at,
+				et.updated_at,
 				e.name as event_name,
 				e.status as event_status,
 				e.event_type
@@ -151,7 +167,16 @@ router.post('/', async (req, res) => {
 				event_id, name, color, icon, metadata
 			)
 			VALUES ($1, $2, $3, $4, $5)
-			RETURNING *
+			RETURNING 
+				id,
+				event_id,
+				name,
+				color,
+				icon,
+				score,
+				metadata,
+				created_at,
+				updated_at
 		`, [event_id, name, color, icon, JSON.stringify(metadata)]);
         res.status(201).json({
             success: true,
@@ -198,6 +223,7 @@ router.patch('/:id', async (req, res) => {
             }
         }
         // Build dynamic update query
+        // Note: discord_webhook_url is NOT allowed via API - must be set directly in database
         const allowedFields = ['name', 'color', 'icon', 'score', 'metadata'];
         const updateFields = [];
         const values = [];
@@ -226,7 +252,16 @@ router.patch('/:id', async (req, res) => {
 			UPDATE event_teams 
 			SET ${updateFields.join(', ')}
 			WHERE id = $${paramIndex}
-			RETURNING *
+			RETURNING 
+				id,
+				event_id,
+				name,
+				color,
+				icon,
+				score,
+				metadata,
+				created_at,
+				updated_at
 		`;
         const result = await query(sql, values);
         res.json({

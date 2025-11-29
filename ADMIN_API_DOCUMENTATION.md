@@ -407,11 +407,24 @@ Create a new team.
 }
 ```
 
+**Note:** The `discord_webhook_url` field exists in the database but **cannot be set via API**. It must be configured directly in the database. It is never returned in any API responses for security reasons.
+
 **Response:**
 ```json
 {
   "success": true,
-  "data": { /* Team object */ },
+  "data": { 
+    "id": "uuid",
+    "event_id": "uuid",
+    "name": "string",
+    "color": "string | null",
+    "icon": "string | null",
+    "score": 0,
+    "metadata": {},
+    "created_at": "ISO8601 string",
+    "updated_at": "ISO8601 string"
+    // Note: discord_webhook_url is NOT included in response
+  },
   "message": "Team created successfully"
 }
 ```
@@ -430,11 +443,24 @@ Update a team.
 }
 ```
 
+**Note:** The `discord_webhook_url` field exists in the database but **cannot be set via API**. It must be configured directly in the database. It is never returned in any API responses for security reasons.
+
 **Response:**
 ```json
 {
   "success": true,
-  "data": { /* Updated team object */ },
+  "data": { 
+    "id": "uuid",
+    "event_id": "uuid",
+    "name": "string",
+    "color": "string | null",
+    "icon": "string | null",
+    "score": 0,
+    "metadata": {},
+    "created_at": "ISO8601 string",
+    "updated_at": "ISO8601 string"
+    // Note: discord_webhook_url is NOT included in response
+  },
   "message": "Team updated successfully"
 }
 ```
@@ -2258,6 +2284,35 @@ Dink webhook events are automatically processed for tile progress tracking. Even
 - Still update the activity cache
 
 Events from non-bingo participants follow the normal flow (Discord filtering, notifications, etc.).
+
+### Discord Webhook Notifications
+Teams can have a Discord webhook URL configured (`discord_webhook_url` field on `event_teams` table). When configured, the system **automatically** sends Discord notifications for:
+- **Tile Progress Updates**: When a player makes progress on a tile (e.g., gets an item, gains XP)
+- **Tile Completions**: When a tile is completed (automatically or manually by admin)
+
+**Important:** The `discord_webhook_url` field is **backend-only** and is **never exposed** in API responses. All notification logic happens automatically on the backend when:
+- Tile progress is updated (via Dink events)
+- Tiles are marked as completed (automatically or manually via admin endpoint)
+
+**Notification Details:**
+- Notifications include: team name, event name, tile position, tile task, player name, progress details
+- For tiered tiles: shows which tiers are completed
+- For XP tiles: shows XP gained and team total XP
+- For item drops: shows items obtained
+- Completion notifications are highlighted in green
+- Progress notifications are in blue
+
+**Setting Up Webhooks (Database Only):**
+1. Create a Discord webhook in your Discord server (Server Settings → Integrations → Webhooks)
+2. Copy the webhook URL
+3. **Set the webhook URL directly in the database** by updating the `discord_webhook_url` field in the `event_teams` table for the desired team
+4. Notifications will automatically start sending for that team whenever progress/completion events occur
+
+**Important:** 
+- The `discord_webhook_url` field **cannot be set via the API** - it must be configured directly in the database for security reasons
+- If no webhook URL is configured, notifications are silently skipped (no errors)
+- The webhook URL is stored securely in the database and **never sent to the frontend or exposed in any API responses**
+- Frontend does not need to know about or handle webhook URLs - everything is automatic
 
 ### Experience (XP) Tracking
 For tiles with `EXPERIENCE` requirements:
