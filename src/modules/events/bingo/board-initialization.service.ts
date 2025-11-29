@@ -127,16 +127,27 @@ async function createBoardForTeam(
       console.log(`[BoardInitialization] Creating ${genericBoard.tiles.length} tiles for team ${teamId}`)
       let createdCount = 0
       let skippedCount = 0
-      // Process tiles with better error handling - don't let one bad tile stop the rest
-      const tilePromises = genericBoard.tiles.map(async (tile: any, i: number) => {
+      // Process tiles sequentially to avoid database connection issues
+      // (Neon serverless might have connection limits)
+      for (let i = 0; i < genericBoard.tiles.length; i++) {
+        const tile = genericBoard.tiles[i]
         try {
           console.log(`[BoardInitialization] Processing tile ${i + 1}/${genericBoard.tiles.length}: position ${tile.position}, tile_id ${tile.tile_id}`)
           
           if (!tile.tile_id || !tile.position) {
             console.warn(`[BoardInitialization] Skipping invalid tile (missing tile_id or position):`, tile)
-            return { success: false, skipped: true }
+            skippedCount++
+            continue
           }
           
+          // Check if tile exists in library first
+          const tileExists = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile.tile_id])
+          if (tileExists.length === 0) {
+            console.error(`[BoardInitialization] ✗ Tile ${tile.tile_id} does not exist in library, skipping`)
+            skippedCount++
+            continue
+          }
+
           const result = await query(`
             INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
             VALUES ($1, $2, $3, $4, $5)
@@ -150,34 +161,24 @@ async function createBoardForTeam(
             JSON.stringify(tile.metadata || {})
           ])
           
-          if (result.length > 0) {
-            console.log(`[BoardInitialization] ✓ Created tile at position ${tile.position}`)
-            return { success: true, created: true }
+          console.log(`[BoardInitialization] Query result for tile ${tile.position}:`, { 
+            resultLength: result.length, 
+            result: result.length > 0 ? result[0] : null 
+          })
+          
+          if (result && result.length > 0) {
+            createdCount++
+            console.log(`[BoardInitialization] ✓ Created tile at position ${tile.position} (ID: ${result[0].id})`)
           } else {
-            console.log(`[BoardInitialization] ⊘ Skipped tile at position ${tile.position} (already exists)`)
-            return { success: true, skipped: true }
+            skippedCount++
+            console.log(`[BoardInitialization] ⊘ Skipped tile at position ${tile.position} (conflict or no result)`)
           }
         } catch (error) {
           console.error(`[BoardInitialization] ✗ Error creating tile at position ${tile.position}:`, error)
-          return { success: false, error }
-        }
-      })
-
-      // Wait for all tiles to be processed
-      const tileResults = await Promise.allSettled(tilePromises)
-      
-      tileResults.forEach((result, i) => {
-        if (result.status === 'fulfilled') {
-          if (result.value.created) {
-            createdCount++
-          } else if (result.value.skipped) {
-            skippedCount++
-          }
-        } else {
-          console.error(`[BoardInitialization] Tile ${i + 1} promise rejected:`, result.reason)
           skippedCount++
+          // Continue with next tile even if this one fails
         }
-      })
+      }
       console.log(`[BoardInitialization] Tile creation completed for team ${teamId}: ${createdCount} created, ${skippedCount} skipped`)
     }
   } else {
