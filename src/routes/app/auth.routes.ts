@@ -38,7 +38,7 @@ router.post('/discord', async (req, res) => {
     // Exchange code for access token
     console.log('[Discord Auth] Exchanging code for token', {
       hasCode: !!code,
-      codeLength: code?.length,
+      code: code,
       redirectUri,
       hasClientId: !!clientId,
       hasClientSecret: !!clientSecret
