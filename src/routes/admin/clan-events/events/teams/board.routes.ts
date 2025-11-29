@@ -6,6 +6,18 @@ const router = Router({ mergeParams: true }); // mergeParams to access :eventId 
 /**
  * Types for board responses
  */
+interface TileProgressEntry {
+	id: string;
+	osrs_account_id: number | null;
+	progress_value: number;
+	progress_metadata: Record<string, any>;
+	completion_type: 'auto' | 'manual_admin' | null;
+	completed_at: string | null;
+	completed_by_osrs_account_id: number | null;
+	completed_by_member_id: number | null;
+	recorded_at: string;
+}
+
 interface BoardTile {
 	id: string;
 	board_id: string;
@@ -23,6 +35,8 @@ interface BoardTile {
 	description: string | null;
 	base_points: number;
 	bonus_tiers: any[];
+	requirements: any;
+	progress_entries: TileProgressEntry[];
 }
 
 interface TileEffect {
@@ -156,7 +170,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 		const board = boards[0];
 
-		// Get all tiles on this board
+		// Get all tiles on this board with progress information
 		const tiles = await query(`
 			SELECT 
 				bbt.*,
@@ -166,10 +180,29 @@ router.get('/', async (req: Request, res: Response) => {
 				bt.icon,
 				bt.description,
 				bt.base_points,
-				bt.bonus_tiers
+				bt.bonus_tiers,
+				bt.requirements,
+				COALESCE(
+					json_agg(
+						json_build_object(
+							'id', btp.id,
+							'osrs_account_id', btp.osrs_account_id,
+							'progress_value', btp.progress_value,
+							'progress_metadata', btp.progress_metadata,
+							'completion_type', btp.completion_type,
+							'completed_at', btp.completed_at,
+							'completed_by_osrs_account_id', btp.completed_by_osrs_account_id,
+							'completed_by_member_id', btp.completed_by_member_id,
+							'recorded_at', btp.recorded_at
+						)
+					) FILTER (WHERE btp.id IS NOT NULL),
+					'[]'::json
+				) as progress_entries
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+			LEFT JOIN bingo_tile_progress btp ON btp.board_tile_id = bbt.id
 			WHERE bbt.board_id = $1
+			GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.bonus_tiers, bt.requirements
 			ORDER BY bbt.position
 		`, [board.id]);
 

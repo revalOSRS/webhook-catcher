@@ -9,7 +9,8 @@ import type {
   DinkPetEvent, 
   DinkSpeedrunEvent, 
   DinkBarbarianAssaultGambleEvent,
-  DinkLogoutEvent
+  DinkLogoutEvent,
+  DinkKillCountEvent
 } from '../../../dink/events/event.js'
 import { DinkEventType } from '../../../dink/events/event.js'
 import type { UnifiedGameEvent, LootEventData, PetEventData, SpeedrunEventData, BaGambleEventData, LogoutEventData } from '../types/unified-event.types.js'
@@ -47,6 +48,18 @@ export async function adaptDinkEvent(dinkEvent: DinkEvent | any): Promise<Unifie
   
   if (eventType === 'LOGOUT' || eventType === DinkEventType.LOGOUT) {
     return adaptLogoutEvent(dinkEvent as DinkLogoutEvent, osrsAccountId, timestamp)
+  }
+  
+  // Handle KILL_COUNT events that have a time field (speedrun times)
+  if (eventType === 'KILL_COUNT' || eventType === DinkEventType.KILL_COUNT) {
+    const killCountEvent = dinkEvent as DinkKillCountEvent | any
+    const extra = killCountEvent.extra || {}
+    // If the kill count event has a time field, treat it as a speedrun
+    if (extra.time) {
+      return adaptKillCountAsSpeedrun(killCountEvent, osrsAccountId, timestamp)
+    }
+    // Otherwise, KILL_COUNT events without time are not relevant for bingo tracking
+    return null
   }
 
   // Event type not supported for bingo tracking
@@ -138,6 +151,29 @@ function adaptLogoutEvent(event: DinkLogoutEvent, osrsAccountId: number | undefi
 }
 
 /**
+ * Convert KILL_COUNT event with time to SPEEDRUN event
+ * Some NPC speedrun times come through as KILL_COUNT events with a time field
+ */
+function adaptKillCountAsSpeedrun(event: DinkKillCountEvent | any, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent {
+  const extra = event.extra || {}
+  // Parse ISO 8601 duration format (e.g., "PT1M25S" = 1 minute 25 seconds)
+  const timeSeconds = parseIso8601DurationToSeconds(extra.time || '0')
+  
+  return {
+    eventType: 'SPEEDRUN',
+    playerName: event.playerName,
+    osrsAccountId,
+    timestamp,
+    source: 'dink',
+    data: {
+      location: extra.boss || 'Unknown', // Use boss name as location
+      timeSeconds,
+      isPersonalBest: extra.isPersonalBest || false
+    }
+  }
+}
+
+/**
  * Parse time string to seconds
  * Supports formats: "1:23:45" (hours:minutes:seconds), "23:45" (minutes:seconds), "45" (seconds)
  */
@@ -154,6 +190,38 @@ function parseTimeStringToSeconds(timeStr: string): number {
     // seconds only
     return parts[0]
   }
+}
+
+/**
+ * Parse ISO 8601 duration format to seconds
+ * Supports formats: "PT1M25S" (1 minute 25 seconds), "PT45S" (45 seconds), "PT1H2M3S" (1 hour 2 minutes 3 seconds)
+ * Format: PT[hours]H[minutes]M[seconds]S
+ */
+function parseIso8601DurationToSeconds(duration: string): number {
+  // Remove PT prefix
+  const timeStr = duration.replace(/^PT/i, '')
+  
+  let totalSeconds = 0
+  
+  // Match hours: H followed by digits
+  const hoursMatch = timeStr.match(/(\d+)H/i)
+  if (hoursMatch) {
+    totalSeconds += parseInt(hoursMatch[1], 10) * 3600
+  }
+  
+  // Match minutes: M followed by digits
+  const minutesMatch = timeStr.match(/(\d+)M/i)
+  if (minutesMatch) {
+    totalSeconds += parseInt(minutesMatch[1], 10) * 60
+  }
+  
+  // Match seconds: S followed by digits
+  const secondsMatch = timeStr.match(/(\d+)S/i)
+  if (secondsMatch) {
+    totalSeconds += parseInt(secondsMatch[1], 10)
+  }
+  
+  return totalSeconds
 }
 
 /**

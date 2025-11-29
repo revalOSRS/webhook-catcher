@@ -585,7 +585,21 @@ Get a team's board with all tiles, tile effects, and line effects. If no board e
         "icon": "string | null",
         "description": "string | null",
         "base_points": "number",
-        "bonus_tiers": []
+        "bonus_tiers": [],
+        "requirements": { /* tile requirements object */ },
+        "progress_entries": [
+          {
+            "id": "uuid",
+            "osrs_account_id": "number | null",
+            "progress_value": "number",
+            "progress_metadata": {},
+            "completion_type": "auto | manual_admin | null",
+            "completed_at": "ISO8601 string | null",
+            "completed_by_osrs_account_id": "number | null",
+            "completed_by_member_id": "number | null",
+            "recorded_at": "ISO8601 string"
+          }
+        ]
       }
     ],
     "tile_effects": [
@@ -911,6 +925,123 @@ Revert a completed tile back to incomplete (admin action). Use this if a tile wa
 ```
 
 **Note:** Progress data is preserved, only completion flags are removed.
+
+---
+
+## Team Progress
+
+### GET `/events/:eventId/teams/:teamId/progress`
+Get team progress summary including completed tiles, total progress, and member contributions.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "team": {
+      "id": "uuid",
+      "name": "string",
+      "score": "number"
+    },
+    "total_tiles": "number",
+    "completed_tiles": "number",
+    "completion_percentage": "number",
+    "total_progress_value": "number",
+    "tiles_with_progress": "number",
+    "member_contributions": [
+      {
+        "team_member_id": "uuid",
+        "member_id": "number",
+        "discord_tag": "string | null",
+        "discord_avatar": "string | null",
+        "osrs_account_id": "number | null",
+        "osrs_account_name": "string | null",
+        "osrs_account_type": "string | null",
+        "tiles_completed": "number",
+        "total_progress_contributed": "number",
+        "tiles_contributed_to": "number"
+      }
+    ]
+  }
+}
+```
+
+### GET `/events/:eventId/teams/:teamId/progress/tiles`
+Get detailed tile progress for team with all progress entries.
+
+**Query Parameters:**
+- `completed_only` (optional, boolean): Filter to only completed tiles
+- `limit` (optional, default: 50): Number of results per page
+- `offset` (optional, default: 0): Pagination offset
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "board_id": "uuid",
+      "tile_id": "string",
+      "position": "string",
+      "custom_points": "number | null",
+      "is_completed": "boolean",
+      "completed_at": "ISO8601 string | null",
+      "metadata": {},
+      "task": "string",
+      "category": "string",
+      "difficulty": "string",
+      "icon": "string | null",
+      "description": "string | null",
+      "base_points": "number",
+      "bonus_tiers": [],
+      "requirements": { /* tile requirements object */ },
+      "progress_entries": [
+        {
+          "id": "uuid",
+          "osrs_account_id": "number | null",
+          "progress_value": "number",
+          "progress_metadata": {},
+          "completion_type": "auto | manual_admin | null",
+          "completed_at": "ISO8601 string | null",
+          "completed_by_osrs_account_id": "number | null",
+          "recorded_at": "ISO8601 string"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+### GET `/events/:eventId/teams/:teamId/progress/members`
+Get individual member contributions to team progress.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "team_member_id": "uuid",
+      "role": "string",
+      "individual_score": "number",
+      "member_id": "number",
+      "discord_tag": "string | null",
+      "discord_avatar": "string | null",
+      "osrs_account_id": "number | null",
+      "osrs_account_name": "string | null",
+      "osrs_account_type": "string | null",
+      "tiles_completed": "number",
+      "total_progress_contributed": "number",
+      "tiles_contributed_to": "number"
+    }
+  ]
+}
+```
 
 ---
 

@@ -16,6 +16,7 @@ import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './discord
 
 // Import tile progress service
 import { processDinkEventForTileProgress } from '../events/bingo/tile-progress.service.js'
+import { isPlayerInActiveBingoEvent } from '../events/bingo/bingo-participant-checker.js'
 
 // Cache for dink hash verification (10 minutes)
 const dinkHashCache = new Map<string, { isValid: boolean; expiresAt: number }>()
@@ -367,14 +368,15 @@ export class DinkService {
             const playerName = payloadData?.playerName || 'Unknown Player'
 
             // Check if player is in an active bingo event BEFORE filtering
-            const { isPlayerInActiveBingoEvent } = await import('../events/bingo/bingo-participant-checker.js')
             const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName)
 
             // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
             // This must happen before any filtering
-            processDinkEventForTileProgress(payloadData).catch((error) => {
+            try {
+              await processDinkEventForTileProgress(payloadData)
+            } catch (error) {
               console.error('[DinkService] Error processing tile progress:', error)
-            })
+            }
 
             // If player is in an active bingo event, skip Discord entirely
             if (isBingoParticipant) {
@@ -430,14 +432,15 @@ export class DinkService {
       const playerName = req.body?.playerName || 'Unknown Player'
 
       // Check if player is in an active bingo event BEFORE filtering
-      const { isPlayerInActiveBingoEvent } = await import('../events/bingo/bingo-participant-checker.js')
       const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName)
 
       // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
       // This must happen before any filtering
-      processDinkEventForTileProgress(req.body).catch((error) => {
+      try {
+        await processDinkEventForTileProgress(req.body)
+      } catch (error) {
         console.error('[DinkService] Error processing tile progress:', error)
-      })
+      }
 
       // If player is in an active bingo event, skip Discord entirely
       if (isBingoParticipant) {
