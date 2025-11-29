@@ -29,40 +29,27 @@ export async function initializeBoardsForEvent(eventId: string): Promise<void> {
     }
 
     console.log(`[BoardInitialization] Found ${teams.length} teams for event ${eventId}:`, teams.map((t: any) => `${t.name} (${t.id})`).join(', '))
-    console.log(`[BoardInitialization] Creating boards for ${teams.length} teams in parallel`)
+    console.log(`[BoardInitialization] Creating boards for ${teams.length} teams sequentially`)
 
-    // Create boards for all teams in parallel to prevent one hanging from blocking others
-    const boardCreationPromises = teams.map(async (team: any) => {
+    // Process teams sequentially to avoid database connection pool exhaustion
+    // Neon serverless has connection limits, and parallel inserts can cause issues
+    let successCount = 0
+    let errorCount = 0
+    
+    for (const team of teams) {
       try {
         console.log(`[BoardInitialization] Starting board creation for team ${team.name || team.id} (${team.id})`)
         await createBoardForTeam(eventId, team.id, genericBoard)
+        successCount++
         console.log(`[BoardInitialization] ✓ Successfully created board for team ${team.name || team.id}`)
-        return { teamId: team.id, teamName: team.name, success: true }
       } catch (error) {
+        errorCount++
         console.error(`[BoardInitialization] ✗ Failed to create board for team ${team.name || team.id} (${team.id}):`, error)
-        return { teamId: team.id, teamName: team.name, success: false, error }
+        // Continue with next team even if this one fails
       }
-    })
-
-    // Wait for all board creations to complete (or fail)
-    const results = await Promise.allSettled(boardCreationPromises)
-    
-    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length
-    const errorCount = results.length - successCount
+    }
 
     console.log(`[BoardInitialization] Completed: ${successCount} boards created successfully, ${errorCount} failed`)
-    
-    // Log detailed results
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        const { teamId, teamName, success } = result.value
-        if (!success) {
-          console.error(`[BoardInitialization] Team ${teamName || teamId} failed:`, result.value.error)
-        }
-      } else {
-        console.error(`[BoardInitialization] Team ${teams[index].name || teams[index].id} promise rejected:`, result.reason)
-      }
-    })
   } catch (error) {
     console.error(`[BoardInitialization] Error initializing boards for event ${eventId}:`, error)
     throw error
