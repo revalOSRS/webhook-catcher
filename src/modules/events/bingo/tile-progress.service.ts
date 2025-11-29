@@ -179,6 +179,7 @@ async function getActiveBoardTilesForPlayer(event: UnifiedGameEvent): Promise<Bo
   }
 
   // Get board tiles for these teams
+  // Exclude completed tiles UNLESS they have tiered requirements (we still track progress for incomplete tiers)
   const teamIds = teamMemberships.map(m => m.team_id)
   const tiles = await query(`
     SELECT
@@ -192,7 +193,16 @@ async function getActiveBoardTilesForPlayer(event: UnifiedGameEvent): Promise<Bo
     JOIN bingo_boards bb ON bbt.board_id = bb.id
     JOIN bingo_tiles bt ON bbt.tile_id = bt.id
     WHERE bb.team_id = ANY($1::uuid[])
-      AND bbt.is_completed = false
+      AND (
+        -- Include all incomplete tiles
+        bbt.is_completed = false
+        OR (
+          -- Include completed tiles ONLY if they have tiered requirements
+          bbt.is_completed = true
+          AND bt.requirements->'tiers' IS NOT NULL
+          AND jsonb_array_length(bt.requirements->'tiers') > 0
+        )
+      )
   `, [teamIds])
 
   // Map to BoardTile format with event info
