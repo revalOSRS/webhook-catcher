@@ -36,6 +36,14 @@ router.post('/discord', async (req, res) => {
     }
 
     // Exchange code for access token
+    console.log('[Discord Auth] Exchanging code for token', {
+      hasCode: !!code,
+      codeLength: code?.length,
+      redirectUri,
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret
+    })
+
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       headers: {
@@ -51,27 +59,54 @@ router.post('/discord', async (req, res) => {
     })
 
     if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json()
-      console.error('Discord token exchange failed:', errorData)
+      const errorText = await tokenResponse.text()
+      let errorData: any = {}
+      
+      try {
+        errorData = JSON.parse(errorText)
+      } catch (e) {
+        console.error('[Discord Auth] Failed to parse error response:', errorText)
+        errorData = { error: 'unknown', raw_response: errorText }
+      }
+      
+      console.error('[Discord Auth] Token exchange failed:', {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        error: errorData,
+        redirectUri,
+        codeLength: code?.length
+      })
       
       let errorMessage = 'Failed to authenticate with Discord'
       if (errorData.error === 'invalid_client') {
-        errorMessage = 'Invalid Discord client credentials'
+        errorMessage = 'Invalid Discord client credentials. Please check DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET.'
       } else if (errorData.error === 'invalid_grant') {
-        errorMessage = 'Invalid or expired authorization code'
+        errorMessage = 'Invalid or expired authorization code. The code may have already been used or expired. Please try logging in again.'
       } else if (errorData.error === 'redirect_uri_mismatch') {
-        errorMessage = 'Redirect URI mismatch'
+        errorMessage = `Redirect URI mismatch. Expected: ${redirectUri}. Make sure the redirect URI in your Discord app settings matches exactly.`
       }
 
       return res.status(401).json({ 
         status: 'error', 
         message: errorMessage,
-        error_code: errorData.error
+        error_code: errorData.error,
+        debug: {
+          redirect_uri_used: redirectUri,
+          error_details: errorData
+        }
       })
     }
 
     const tokenData = await tokenResponse.json()
     const accessToken = tokenData.access_token
+
+    if (!accessToken) {
+      console.error('[Discord Auth] No access token in response:', tokenData)
+      return res.status(401).json({ 
+        status: 'error', 
+        message: 'Failed to obtain access token from Discord' 
+      })
+    }
 
     // Fetch user details from Discord
     const userResponse = await fetch('https://discord.com/api/users/@me', {
@@ -81,9 +116,19 @@ router.post('/discord', async (req, res) => {
     })
 
     if (!userResponse.ok) {
+      const errorText = await userResponse.text()
+      console.error('[Discord Auth] Failed to fetch user data:', {
+        status: userResponse.status,
+        statusText: userResponse.statusText,
+        error: errorText
+      })
       return res.status(401).json({ 
         status: 'error', 
-        message: 'Failed to fetch user data from Discord' 
+        message: 'Failed to fetch user data from Discord',
+        debug: {
+          status: userResponse.status,
+          error: errorText
+        }
       })
     }
 
