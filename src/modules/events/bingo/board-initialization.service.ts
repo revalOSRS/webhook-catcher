@@ -22,7 +22,9 @@ export async function initializeBoardsForEvent(eventId: string): Promise<void> {
   const genericBoard = eventConfig.board || {}
 
   // Get all teams for this event
+  console.log(`[BoardInitialization] Querying teams for event ${eventId}`)
   const teams = await query('SELECT id, name FROM event_teams WHERE event_id = $1', [eventId])
+  console.log(`[BoardInitialization] Teams query returned ${teams.length} teams:`, JSON.stringify(teams.map((t: any) => ({ id: t.id, name: t.name }))))
 
   if (teams.length === 0) {
     console.log(`[BoardInitialization] No teams found for event ${eventId}, skipping board creation`)
@@ -32,17 +34,20 @@ export async function initializeBoardsForEvent(eventId: string): Promise<void> {
   console.log(`[BoardInitialization] Found ${teams.length} teams for event ${eventId}`)
 
   // Process each team one by one
-  for (let i = 0; i < teams.length; i++) {
-    const team = teams[i]
-    console.log(`[BoardInitialization] Processing team ${i + 1}/${teams.length}: ${team.name || team.id} (${team.id})`)
+  for (const team of teams) {
+    console.log(`[BoardInitialization] ===== STARTING TEAM ${team.name || team.id} (${team.id}) =====`)
     
     try {
       await createBoardForTeam(eventId, team.id, team.name, genericBoard)
-      console.log(`[BoardInitialization] ✓ Completed team ${i + 1}/${teams.length}: ${team.name || team.id}`)
+      console.log(`[BoardInitialization] ✓✓✓ SUCCESS team ${team.name || team.id} ✓✓✓`)
     } catch (error: any) {
-      console.error(`[BoardInitialization] ✗ Failed team ${i + 1}/${teams.length}: ${team.name || team.id}`, error)
+      console.error(`[BoardInitialization] ✗✗✗ FAILED team ${team.name || team.id} ✗✗✗`)
+      console.error(`[BoardInitialization] Error details:`, error)
+      console.error(`[BoardInitialization] Error message:`, error?.message)
+      console.error(`[BoardInitialization] Error stack:`, error?.stack)
       // Continue with next team
     }
+    console.log(`[BoardInitialization] ===== FINISHED TEAM ${team.name || team.id} =====`)
   }
 
   console.log(`[BoardInitialization] Finished initialization for event ${eventId}`)
@@ -77,47 +82,57 @@ async function createBoardForTeam(
   }
 
   // Create board
-  console.log(`[BoardInitialization] [${teamId}] Creating board`)
-  const boardResult = await query(`
-    INSERT INTO bingo_boards (
-      event_id, team_id, name, description, columns, rows, show_row_column_buffs, metadata
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    RETURNING id
-  `, [
-    eventId,
-    teamId,
-    genericBoard.name ? `${genericBoard.name} - ${teamName || 'Team'}` : `${teamName || 'Team'} Board`,
-    genericBoard.description || null,
-    genericBoard.columns || 7,
-    genericBoard.rows || 7,
-    genericBoard.show_row_column_buffs || false,
-    JSON.stringify(boardMetadata)
-  ])
+  console.log(`[BoardInitialization] [${teamId}] Creating board with INSERT query`)
+  console.log(`[BoardInitialization] [${teamId}] Event ID: ${eventId}, Team ID: ${teamId}`)
+  
+  let boardId: string
+  try {
+    const boardResult = await query(`
+      INSERT INTO bingo_boards (
+        event_id, team_id, name, description, columns, rows, show_row_column_buffs, metadata
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id
+    `, [
+      eventId,
+      teamId,
+      genericBoard.name ? `${genericBoard.name} - ${teamName || 'Team'}` : `${teamName || 'Team'} Board`,
+      genericBoard.description || null,
+      genericBoard.columns || 7,
+      genericBoard.rows || 7,
+      genericBoard.show_row_column_buffs || false,
+      JSON.stringify(boardMetadata)
+    ])
 
-  if (!boardResult || boardResult.length === 0) {
-    throw new Error(`Failed to create board - no result returned`)
+    console.log(`[BoardInitialization] [${teamId}] INSERT query completed, result:`, JSON.stringify(boardResult))
+
+    if (!boardResult || boardResult.length === 0) {
+      throw new Error(`Failed to create board - no result returned`)
+    }
+
+    boardId = boardResult[0].id
+    console.log(`[BoardInitialization] [${teamId}] ✓✓✓ Board INSERTED successfully: ${boardId} ✓✓✓`)
+  } catch (error: any) {
+    console.error(`[BoardInitialization] [${teamId}] ✗✗✗ INSERT FAILED ✗✗✗`)
+    console.error(`[BoardInitialization] [${teamId}] Error:`, error)
+    console.error(`[BoardInitialization] [${teamId}] Error message:`, error?.message)
+    throw error
   }
-
-  const boardId = boardResult[0].id
-  console.log(`[BoardInitialization] [${teamId}] Board created: ${boardId}`)
 
   // Create tiles one by one
   if (genericBoard.tiles && Array.isArray(genericBoard.tiles) && genericBoard.tiles.length > 0) {
     console.log(`[BoardInitialization] [${teamId}] Creating ${genericBoard.tiles.length} tiles`)
     
-    for (let i = 0; i < genericBoard.tiles.length; i++) {
-      const tile = genericBoard.tiles[i]
-      
+    for (const tile of genericBoard.tiles) {
       if (!tile.tile_id || !tile.position) {
-        console.warn(`[BoardInitialization] [${teamId}] Skipping tile ${i + 1} - missing tile_id or position`)
+        console.warn(`[BoardInitialization] [${teamId}] Skipping tile - missing tile_id or position`)
         continue
       }
 
       // Check if tile exists in library
       const tileExists = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile.tile_id])
       if (tileExists.length === 0) {
-        console.warn(`[BoardInitialization] [${teamId}] Skipping tile ${i + 1} - tile ${tile.tile_id} not found in library`)
+        console.warn(`[BoardInitialization] [${teamId}] Skipping tile - tile ${tile.tile_id} not found in library`)
         continue
       }
 
@@ -136,9 +151,9 @@ async function createBoardForTeam(
       ])
 
       if (result && result.length > 0) {
-        console.log(`[BoardInitialization] [${teamId}] Created tile ${i + 1}/${genericBoard.tiles.length}: ${tile.position}`)
+        console.log(`[BoardInitialization] [${teamId}] Created tile: ${tile.position}`)
       } else {
-        console.log(`[BoardInitialization] [${teamId}] Skipped tile ${i + 1}/${genericBoard.tiles.length}: ${tile.position} (conflict)`)
+        console.log(`[BoardInitialization] [${teamId}] Skipped tile: ${tile.position} (conflict)`)
       }
     }
   } else {
