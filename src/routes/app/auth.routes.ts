@@ -226,21 +226,54 @@ router.post('/discord', async (req, res) => {
 
     // Update discord_tag if changed
     if (discordTag && member.discord_tag !== discordTag) {
+      console.log('[Discord Auth] Updating discord_tag:', {
+        old: member.discord_tag,
+        new: discordTag
+      })
       member = await MembersService.upsertMember({
         discord_id: discordId,
         discord_tag: discordTag
       })
+      console.log('[Discord Auth] Member after upsert:', {
+        id: member?.id,
+        discord_id: member?.discord_id,
+        discord_tag: member?.discord_tag,
+        member_code: member?.member_code,
+        is_active: member?.is_active,
+        fullMember: member
+      })
     }
+
+    console.log('[Discord Auth] Preparing response with member:', {
+      memberType: typeof member,
+      memberIsNull: member === null,
+      memberIsUndefined: member === undefined,
+      memberKeys: member ? Object.keys(member) : 'N/A',
+      memberId: member?.id,
+      memberDiscordId: member?.discord_id,
+      memberDiscordTag: member?.discord_tag,
+      memberCode: member?.member_code,
+      memberIsActive: member?.is_active,
+      fullMemberObject: JSON.stringify(member, null, 2)
+    })
+
+    const responseData = {
+      id: member.id,
+      discord_id: member.discord_id,
+      discord_tag: member.discord_tag,
+      member_code: member.member_code,
+      is_active: member.is_active
+    }
+
+    console.log('[Discord Auth] Response data being sent:', {
+      responseData,
+      responseDataKeys: Object.keys(responseData),
+      responseDataValues: Object.values(responseData)
+    })
 
     return res.status(200).json({
       status: 'success',
-      data: {
-        id: member.id,
-        discord_id: member.discord_id,
-        discord_tag: member.discord_tag,
-        member_code: member.member_code,
-        is_active: member.is_active
-      },
+      data: responseData,
       message: 'Discord authentication successful'
     })
   } catch (error) {
