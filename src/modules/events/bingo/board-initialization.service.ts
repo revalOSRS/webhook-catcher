@@ -10,50 +10,42 @@ import { query } from '../../../db/connection.js'
  * Creates a board for each team based on the event's generic board config
  */
 export async function initializeBoardsForEvent(eventId: string): Promise<void> {
-  try {
-    // Get event config
-    const events = await query('SELECT config FROM events WHERE id = $1', [eventId])
-    if (events.length === 0) {
-      throw new Error(`Event ${eventId} not found`)
-    }
-
-    const eventConfig = events[0].config || {}
-    const genericBoard = eventConfig.board || {}
-
-    // Get all teams for this event
-    const teams = await query('SELECT id, name FROM event_teams WHERE event_id = $1', [eventId])
-
-    if (teams.length === 0) {
-      console.log(`[BoardInitialization] No teams found for event ${eventId}, skipping board creation`)
-      return
-    }
-
-    console.log(`[BoardInitialization] Found ${teams.length} teams for event ${eventId}:`, teams.map((t: any) => `${t.name} (${t.id})`).join(', '))
-    console.log(`[BoardInitialization] Creating boards for ${teams.length} teams sequentially`)
-
-    // Process teams sequentially to avoid database connection pool exhaustion
-    // Neon serverless has connection limits, and parallel inserts can cause issues
-    let successCount = 0
-    let errorCount = 0
-    
-    for (const team of teams) {
-      try {
-        console.log(`[BoardInitialization] Starting board creation for team ${team.name || team.id} (${team.id})`)
-        await createBoardForTeam(eventId, team.id, genericBoard)
-        successCount++
-        console.log(`[BoardInitialization] ✓ Successfully created board for team ${team.name || team.id}`)
-      } catch (error) {
-        errorCount++
-        console.error(`[BoardInitialization] ✗ Failed to create board for team ${team.name || team.id} (${team.id}):`, error)
-        // Continue with next team even if this one fails
-      }
-    }
-
-    console.log(`[BoardInitialization] Completed: ${successCount} boards created successfully, ${errorCount} failed`)
-  } catch (error) {
-    console.error(`[BoardInitialization] Error initializing boards for event ${eventId}:`, error)
-    throw error
+  console.log(`[BoardInitialization] Starting initialization for event ${eventId}`)
+  
+  // Get event config
+  const events = await query('SELECT config FROM events WHERE id = $1', [eventId])
+  if (events.length === 0) {
+    throw new Error(`Event ${eventId} not found`)
   }
+
+  const eventConfig = events[0].config || {}
+  const genericBoard = eventConfig.board || {}
+
+  // Get all teams for this event
+  const teams = await query('SELECT id, name FROM event_teams WHERE event_id = $1', [eventId])
+
+  if (teams.length === 0) {
+    console.log(`[BoardInitialization] No teams found for event ${eventId}, skipping board creation`)
+    return
+  }
+
+  console.log(`[BoardInitialization] Found ${teams.length} teams for event ${eventId}`)
+
+  // Process each team one by one
+  for (let i = 0; i < teams.length; i++) {
+    const team = teams[i]
+    console.log(`[BoardInitialization] Processing team ${i + 1}/${teams.length}: ${team.name || team.id} (${team.id})`)
+    
+    try {
+      await createBoardForTeam(eventId, team.id, team.name, genericBoard)
+      console.log(`[BoardInitialization] ✓ Completed team ${i + 1}/${teams.length}: ${team.name || team.id}`)
+    } catch (error: any) {
+      console.error(`[BoardInitialization] ✗ Failed team ${i + 1}/${teams.length}: ${team.name || team.id}`, error)
+      // Continue with next team
+    }
+  }
+
+  console.log(`[BoardInitialization] Finished initialization for event ${eventId}`)
 }
 
 /**
@@ -62,8 +54,11 @@ export async function initializeBoardsForEvent(eventId: string): Promise<void> {
 async function createBoardForTeam(
   eventId: string,
   teamId: string,
+  teamName: string | null,
   genericBoard: Record<string, any>
 ): Promise<void> {
+  console.log(`[BoardInitialization] [${teamId}] Starting`)
+
   // Check if board already exists
   const existing = await query(
     'SELECT id FROM bingo_boards WHERE event_id = $1 AND team_id = $2',
@@ -71,21 +66,18 @@ async function createBoardForTeam(
   )
 
   if (existing.length > 0) {
-    console.log(`[BoardInitialization] Board already exists for team ${teamId}, skipping`)
+    console.log(`[BoardInitialization] [${teamId}] Board already exists, skipping`)
     return
   }
 
-  // Get team name for board name
-  const teams = await query('SELECT name FROM event_teams WHERE id = $1', [teamId])
-  const teamName = teams.length > 0 ? teams[0].name : 'Team'
-
-  // Create board metadata with show_tile_buffs setting
+  // Create board metadata
   const boardMetadata = {
     ...(genericBoard.metadata || {}),
     show_tile_buffs: genericBoard.metadata?.show_tile_buffs !== false
   }
 
   // Create board
+  console.log(`[BoardInitialization] [${teamId}] Creating board`)
   const boardResult = await query(`
     INSERT INTO bingo_boards (
       event_id, team_id, name, description, columns, rows, show_row_column_buffs, metadata
@@ -95,7 +87,7 @@ async function createBoardForTeam(
   `, [
     eventId,
     teamId,
-    genericBoard.name ? `${genericBoard.name} - ${teamName}` : `${teamName} Board`,
+    genericBoard.name ? `${genericBoard.name} - ${teamName || 'Team'}` : `${teamName || 'Team'} Board`,
     genericBoard.description || null,
     genericBoard.columns || 7,
     genericBoard.rows || 7,
@@ -103,170 +95,133 @@ async function createBoardForTeam(
     JSON.stringify(boardMetadata)
   ])
 
+  if (!boardResult || boardResult.length === 0) {
+    throw new Error(`Failed to create board - no result returned`)
+  }
+
   const boardId = boardResult[0].id
+  console.log(`[BoardInitialization] [${teamId}] Board created: ${boardId}`)
 
-  // Create tiles from generic board config
-  if (genericBoard.tiles && Array.isArray(genericBoard.tiles)) {
-    if (genericBoard.tiles.length === 0) {
-      console.log(`[BoardInitialization] Tiles array is empty in config for team ${teamId}. No tiles will be created.`)
-      console.log(`[BoardInitialization] You can add tiles later using POST /api/admin/clan-events/events/${eventId}/teams/${teamId}/board/tiles`)
-    } else {
-      console.log(`[BoardInitialization] Creating ${genericBoard.tiles.length} tiles for team ${teamId}`)
-      let createdCount = 0
-      let skippedCount = 0
-      // Process tiles sequentially to avoid database connection issues
-      // (Neon serverless might have connection limits)
-      for (let i = 0; i < genericBoard.tiles.length; i++) {
-        const tile = genericBoard.tiles[i]
-        try {
-          console.log(`[BoardInitialization] Processing tile ${i + 1}/${genericBoard.tiles.length}: position ${tile.position}, tile_id ${tile.tile_id}`)
-          
-          if (!tile.tile_id || !tile.position) {
-            console.warn(`[BoardInitialization] Skipping invalid tile (missing tile_id or position):`, tile)
-            skippedCount++
-            continue
-          }
-          
-          // Check if tile exists in library first
-          const tileExists = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile.tile_id])
-          if (tileExists.length === 0) {
-            console.error(`[BoardInitialization] ✗ Tile ${tile.tile_id} does not exist in library, skipping`)
-            skippedCount++
-            continue
-          }
-
-          const result = await query(`
-            INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (board_id, position) DO NOTHING
-            RETURNING id
-          `, [
-            boardId,
-            tile.tile_id,
-            tile.position,
-            tile.custom_points || null,
-            JSON.stringify(tile.metadata || {})
-          ])
-          
-          console.log(`[BoardInitialization] Query result for tile ${tile.position}:`, { 
-            resultLength: result.length, 
-            result: result.length > 0 ? result[0] : null 
-          })
-          
-          if (result && result.length > 0) {
-            createdCount++
-            console.log(`[BoardInitialization] ✓ Created tile at position ${tile.position} (ID: ${result[0].id})`)
-          } else {
-            skippedCount++
-            console.log(`[BoardInitialization] ⊘ Skipped tile at position ${tile.position} (conflict or no result)`)
-          }
-        } catch (error) {
-          console.error(`[BoardInitialization] ✗ Error creating tile at position ${tile.position}:`, error)
-          skippedCount++
-          // Continue with next tile even if this one fails
-        }
+  // Create tiles one by one
+  if (genericBoard.tiles && Array.isArray(genericBoard.tiles) && genericBoard.tiles.length > 0) {
+    console.log(`[BoardInitialization] [${teamId}] Creating ${genericBoard.tiles.length} tiles`)
+    
+    for (let i = 0; i < genericBoard.tiles.length; i++) {
+      const tile = genericBoard.tiles[i]
+      
+      if (!tile.tile_id || !tile.position) {
+        console.warn(`[BoardInitialization] [${teamId}] Skipping tile ${i + 1} - missing tile_id or position`)
+        continue
       }
-      console.log(`[BoardInitialization] Tile creation completed for team ${teamId}: ${createdCount} created, ${skippedCount} skipped`)
+
+      // Check if tile exists in library
+      const tileExists = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile.tile_id])
+      if (tileExists.length === 0) {
+        console.warn(`[BoardInitialization] [${teamId}] Skipping tile ${i + 1} - tile ${tile.tile_id} not found in library`)
+        continue
+      }
+
+      // Insert tile
+      const result = await query(`
+        INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (board_id, position) DO NOTHING
+        RETURNING id
+      `, [
+        boardId,
+        tile.tile_id,
+        tile.position,
+        tile.custom_points || null,
+        JSON.stringify(tile.metadata || {})
+      ])
+
+      if (result && result.length > 0) {
+        console.log(`[BoardInitialization] [${teamId}] Created tile ${i + 1}/${genericBoard.tiles.length}: ${tile.position}`)
+      } else {
+        console.log(`[BoardInitialization] [${teamId}] Skipped tile ${i + 1}/${genericBoard.tiles.length}: ${tile.position} (conflict)`)
+      }
     }
   } else {
-    console.warn(`[BoardInitialization] No tiles array found in generic board config for team ${teamId}`)
-    console.warn(`[BoardInitialization] Add tiles to event.config.board.tiles array before activating, or add them manually after activation`)
+    console.log(`[BoardInitialization] [${teamId}] No tiles to create`)
   }
 
-  console.log(`[BoardInitialization] Creating effects for team ${teamId}`)
-
-  // Create row effects from generic board config
+  // Create row effects one by one
   if (genericBoard.row_effects && Array.isArray(genericBoard.row_effects)) {
-    console.log(`[BoardInitialization] Creating ${genericBoard.row_effects.length} row effects for team ${teamId}`)
-    try {
-      for (const effect of genericBoard.row_effects) {
-        await query(`
-          INSERT INTO bingo_board_line_effects (
-            board_id, line_type, line_identifier, buff_debuff_id,
-            applied_by, is_active, applied_at, expires_at, metadata
-          )
-          VALUES ($1, 'row', $2, $3, NULL, $4, CURRENT_TIMESTAMP, $5, $6)
-          ON CONFLICT (board_id, line_type, line_identifier, buff_debuff_id) DO NOTHING
-        `, [
-          boardId,
-          effect.row_number?.toString() || effect.row?.toString(),
-          effect.buff_debuff_id,
-          effect.is_active !== false,
-          effect.expires_at || null,
-          JSON.stringify(effect.metadata || {})
-        ])
-      }
-    } catch (error) {
-      console.error(`[BoardInitialization] Error creating row effects for team ${teamId}:`, error)
-      throw error // Re-throw to be caught by outer try-catch
+    console.log(`[BoardInitialization] [${teamId}] Creating ${genericBoard.row_effects.length} row effects`)
+    for (const effect of genericBoard.row_effects) {
+      await query(`
+        INSERT INTO bingo_board_line_effects (
+          board_id, line_type, line_identifier, buff_debuff_id,
+          applied_by, is_active, applied_at, expires_at, metadata
+        )
+        VALUES ($1, 'row', $2, $3, NULL, $4, CURRENT_TIMESTAMP, $5, $6)
+        ON CONFLICT (board_id, line_type, line_identifier, buff_debuff_id) DO NOTHING
+      `, [
+        boardId,
+        effect.row_number?.toString() || effect.row?.toString(),
+        effect.buff_debuff_id,
+        effect.is_active !== false,
+        effect.expires_at || null,
+        JSON.stringify(effect.metadata || {})
+      ])
     }
   }
 
-  // Create column effects from generic board config
+  // Create column effects one by one
   if (genericBoard.column_effects && Array.isArray(genericBoard.column_effects)) {
-    console.log(`[BoardInitialization] Creating ${genericBoard.column_effects.length} column effects for team ${teamId}`)
-    try {
-      for (const effect of genericBoard.column_effects) {
-        await query(`
-          INSERT INTO bingo_board_line_effects (
-            board_id, line_type, line_identifier, buff_debuff_id,
-            applied_by, is_active, applied_at, expires_at, metadata
-          )
-          VALUES ($1, 'column', $2, $3, NULL, $4, CURRENT_TIMESTAMP, $5, $6)
-          ON CONFLICT (board_id, line_type, line_identifier, buff_debuff_id) DO NOTHING
-        `, [
-          boardId,
-          effect.column_letter || effect.column,
-          effect.buff_debuff_id,
-          effect.is_active !== false,
-          effect.expires_at || null,
-          JSON.stringify(effect.metadata || {})
-        ])
-      }
-    } catch (error) {
-      console.error(`[BoardInitialization] Error creating column effects for team ${teamId}:`, error)
-      throw error // Re-throw to be caught by outer try-catch
+    console.log(`[BoardInitialization] [${teamId}] Creating ${genericBoard.column_effects.length} column effects`)
+    for (const effect of genericBoard.column_effects) {
+      await query(`
+        INSERT INTO bingo_board_line_effects (
+          board_id, line_type, line_identifier, buff_debuff_id,
+          applied_by, is_active, applied_at, expires_at, metadata
+        )
+        VALUES ($1, 'column', $2, $3, NULL, $4, CURRENT_TIMESTAMP, $5, $6)
+        ON CONFLICT (board_id, line_type, line_identifier, buff_debuff_id) DO NOTHING
+      `, [
+        boardId,
+        effect.column_letter || effect.column,
+        effect.buff_debuff_id,
+        effect.is_active !== false,
+        effect.expires_at || null,
+        JSON.stringify(effect.metadata || {})
+      ])
     }
   }
 
-  // Create tile effects from generic board config
+  // Create tile effects one by one
   if (genericBoard.tile_effects && Array.isArray(genericBoard.tile_effects)) {
-    console.log(`[BoardInitialization] Creating ${genericBoard.tile_effects.length} tile effects for team ${teamId}`)
-    try {
-      // First get all board tiles to map positions to IDs
-      const boardTiles = await query(
-        'SELECT id, position FROM bingo_board_tiles WHERE board_id = $1',
-        [boardId]
-      )
-      const positionToTileId = new Map(boardTiles.map((t: any) => [t.position, t.id]))
+    console.log(`[BoardInitialization] [${teamId}] Creating ${genericBoard.tile_effects.length} tile effects`)
+    
+    // Get all board tiles first
+    const boardTiles = await query(
+      'SELECT id, position FROM bingo_board_tiles WHERE board_id = $1',
+      [boardId]
+    )
+    const positionToTileId = new Map(boardTiles.map((t: any) => [t.position, t.id]))
 
-      for (const effect of genericBoard.tile_effects) {
-        const tileId = positionToTileId.get(effect.tile_position || effect.position)
-        if (!tileId) {
-          console.warn(`[BoardInitialization] Tile at position ${effect.tile_position || effect.position} not found, skipping effect`)
-          continue
-        }
-
-        await query(`
-          INSERT INTO bingo_board_tile_effects (
-            board_tile_id, buff_debuff_id, applied_by, is_active, applied_at, expires_at, metadata
-          )
-          VALUES ($1, $2, NULL, $3, CURRENT_TIMESTAMP, $4, $5)
-          ON CONFLICT (board_tile_id, buff_debuff_id) DO NOTHING
-        `, [
-          tileId,
-          effect.buff_debuff_id,
-          effect.is_active !== false,
-          effect.expires_at || null,
-          JSON.stringify(effect.metadata || {})
-        ])
+    for (const effect of genericBoard.tile_effects) {
+      const tileId = positionToTileId.get(effect.tile_position || effect.position)
+      if (!tileId) {
+        console.warn(`[BoardInitialization] [${teamId}] Tile at position ${effect.tile_position || effect.position} not found, skipping effect`)
+        continue
       }
-    } catch (error) {
-      console.error(`[BoardInitialization] Error creating tile effects for team ${teamId}:`, error)
-      throw error // Re-throw to be caught by outer try-catch
+
+      await query(`
+        INSERT INTO bingo_board_tile_effects (
+          board_tile_id, buff_debuff_id, applied_by, is_active, applied_at, expires_at, metadata
+        )
+        VALUES ($1, $2, NULL, $3, CURRENT_TIMESTAMP, $4, $5)
+        ON CONFLICT (board_tile_id, buff_debuff_id) DO NOTHING
+      `, [
+        tileId,
+        effect.buff_debuff_id,
+        effect.is_active !== false,
+        effect.expires_at || null,
+        JSON.stringify(effect.metadata || {})
+      ])
     }
   }
 
-  console.log(`[BoardInitialization] Successfully created board for team ${teamId}`)
+  console.log(`[BoardInitialization] [${teamId}] Finished`)
 }
-
