@@ -967,12 +967,19 @@ Get team progress summary including completed tiles, total progress, and member 
 ```
 
 ### GET `/events/:eventId/teams/:teamId/progress/tiles`
-Get detailed tile progress for team with all progress entries.
+Get detailed tile progress for team with all progress entries. Includes tier tracking information for tiered requirements.
 
 **Query Parameters:**
 - `completed_only` (optional, boolean): Filter to only completed tiles
 - `limit` (optional, default: 50): Number of results per page
 - `offset` (optional, default: 0): Pagination offset
+
+**Note:** For tiles with tiered requirements (`requirements.tiers`), the `progress_metadata` will include tier-specific tracking:
+- `completed_tiers`: Array of tier numbers that have been completed (e.g., `[1]` if only tier 1 is done, `[1, 2, 3]` if all tiers are done)
+- `tier_N_progress`: Progress value for each tier N
+- `tier_N_metadata`: Full metadata for each tier N
+- `tier_N_completed_at`: Timestamp when tier N was completed
+- The tile is marked `is_completed: true` when ANY tier is completed, but all tiers continue to be tracked
 
 **Response:**
 ```json
@@ -1001,7 +1008,34 @@ Get detailed tile progress for team with all progress entries.
           "id": "uuid",
           "osrs_account_id": "number | null",
           "progress_value": "number",
-          "progress_metadata": {},
+          "progress_metadata": {
+            "count": "number",
+            "current_value": "number",
+            "target_value": "number",
+            "last_update_at": "ISO8601 string",
+            "last_items_obtained": [ /* array of items */ ],
+            // For tiered requirements (when tile.requirements.tiers exists):
+            "completed_tiers": [1, 2, 3], // Array of completed tier numbers (e.g., [1] if only tier 1 is done)
+            "total_tiers": "number", // Total number of tiers defined in requirements
+            "completed_tiers_count": "number", // Number of completed tiers
+            "tier_1_progress": "number", // Progress value for tier 1 (e.g., 1 if Bones obtained)
+            "tier_1_metadata": {
+              "count": "number",
+              "current_value": "number",
+              "target_value": "number",
+              "last_items_obtained": []
+            }, // Full metadata for tier 1
+            "tier_1_completed_at": "ISO8601 string | null", // When tier 1 was completed
+            "tier_2_progress": "number", // Progress value for tier 2 (e.g., 0 if Wolf Bones not obtained)
+            "tier_2_metadata": {},
+            "tier_2_completed_at": "ISO8601 string | null",
+            "tier_3_progress": "number",
+            "tier_3_metadata": {},
+            "tier_3_completed_at": "ISO8601 string | null",
+            // ... additional tiers as needed (tier_4_progress, tier_5_progress, etc.)
+            "current_tier": "number", // Currently active tier being tracked in this update
+            "current_tier_progress": "number" // Progress for current tier
+          },
           "completion_type": "auto | manual_admin | null",
           "completed_at": "ISO8601 string | null",
           "completed_by_osrs_account_id": "number | null",
@@ -2125,6 +2159,45 @@ All endpoints may return the following error responses:
    - Use `bonus_tiers` ONLY for value-based thresholds on non-tiered requirements (e.g., "get 10 items" awards bonus points at milestones).
    - When using `tiers`, the `requirements` array should typically be empty (unless you want a base requirement in addition to tiers).
 9. **UNIQUE_COLLECTION** requirements create dynamic tiers based on the number of sources. Points for these tiers should be defined in `bonus_tiers` using the `tier` field (e.g., `{ "tier": 1, "points": 4 }`).
+10. **Tiered Requirements Progress Tracking:**
+    - For tiles with `requirements.tiers`, progress is tracked per tier
+    - Each tier's progress is stored in `progress_metadata.tier_N_progress` and `progress_metadata.tier_N_metadata`
+    - Completed tiers are tracked in `progress_metadata.completed_tiers` array
+    - The tile is marked `is_completed: true` when ANY tier is completed (so points are awarded immediately)
+    - All tiers continue to be tracked even after the tile is marked complete, allowing players to complete additional tiers for more points
+    - Check `progress_metadata.completed_tiers` to see which tiers have been completed
+    - Check `progress_metadata.total_tiers` to see how many tiers exist
+    - Example: If a tile has 3 tiers and only tier 1 is done, `completed_tiers: [1]`, `completed_tiers_count: 1`, `total_tiers: 3`
+    
+    **Frontend Display Guide for Tiered Tiles:**
+    ```javascript
+    // Check if tile has tiered requirements
+    const hasTiers = tile.requirements?.tiers && tile.requirements.tiers.length > 0;
+    
+    if (hasTiers) {
+      // Get tier progress from progress_entries[0].progress_metadata
+      const metadata = tile.progress_entries[0]?.progress_metadata || {};
+      const completedTiers = metadata.completed_tiers || [];
+      const totalTiers = metadata.total_tiers || tile.requirements.tiers.length;
+      
+      // Display progress for each tier
+      tile.requirements.tiers.forEach((tier, index) => {
+        const tierNum = tier.tier;
+        const isCompleted = completedTiers.includes(tierNum);
+        const tierProgress = metadata[`tier_${tierNum}_progress`] || 0;
+        const tierMetadata = metadata[`tier_${tierNum}_metadata`] || {};
+        
+        // Show tier status: completed, in progress, or not started
+        console.log(`Tier ${tierNum}: ${isCompleted ? '✓ Completed' : tierProgress > 0 ? 'In Progress' : 'Not Started'}`);
+        console.log(`  Progress: ${tierProgress}/${tierMetadata.target_value || tier.requirement.item_amount || 1}`);
+        console.log(`  Points: ${tier.points}`);
+      });
+      
+      // Show overall completion status
+      console.log(`Tile Status: ${tile.is_completed ? 'Completed' : 'In Progress'}`);
+      console.log(`Tiers Completed: ${completedTiers.length}/${totalTiers}`);
+    }
+    ```
 
 ---
 

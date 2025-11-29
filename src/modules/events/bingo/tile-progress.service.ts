@@ -89,9 +89,33 @@ async function processUnifiedEvent(event: UnifiedGameEvent): Promise<void> {
 
     matchedTiles++
 
-    // Check if tile is already completed
-    if (tile.is_completed) {
-      console.log(`[TileProgressService] Tile ${tile.tile_id} already completed, skipping`)
+    // For tiered requirements, check if all tiers are completed
+    // For non-tiered requirements, check if tile is completed
+    const hasTiers = tile.requirements.tiers && tile.requirements.tiers.length > 0
+    let shouldSkip = false
+    
+    if (hasTiers) {
+      // For tiered tiles, check if all tiers are completed
+      const existingProgress = await getExistingProgress(tile.board_tile_id, event.osrsAccountId)
+      const completedTiers = existingProgress?.metadata?.completed_tiers || []
+      const totalTiers = tile.requirements.tiers.length
+      const allTiersCompleted = completedTiers.length === totalTiers
+      
+      if (allTiersCompleted) {
+        console.log(`[TileProgressService] Tile ${tile.tile_id} has all tiers completed, skipping`)
+        shouldSkip = true
+      } else {
+        console.log(`[TileProgressService] Tile ${tile.tile_id} is marked complete but has incomplete tiers (${completedTiers.length}/${totalTiers}), continuing to track`)
+      }
+    } else {
+      // For non-tiered tiles, skip if already completed
+      if (tile.is_completed) {
+        console.log(`[TileProgressService] Tile ${tile.tile_id} already completed, skipping`)
+        shouldSkip = true
+      }
+    }
+    
+    if (shouldSkip) {
       continue
     }
 
