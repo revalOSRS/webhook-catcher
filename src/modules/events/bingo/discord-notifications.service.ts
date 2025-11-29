@@ -20,6 +20,7 @@ interface TileProgressNotification {
   completionType: 'auto' | 'manual_admin' | null
   completedTiers?: number[]
   totalTiers?: number
+  newlyCompletedTiers?: number[] // Tiers that were just completed in this update
 }
 
 /**
@@ -53,7 +54,12 @@ export async function sendTileProgressNotification(data: TileProgressNotificatio
       }
     })
 
-    console.log(`[DiscordNotifications] Sent ${data.isCompleted ? 'completion' : 'progress'} notification for tile ${data.tilePosition} (${data.tileTask})`)
+    const notificationType = data.isCompleted 
+      ? 'tile completion' 
+      : data.newlyCompletedTiers && data.newlyCompletedTiers.length > 0
+      ? `tier ${data.newlyCompletedTiers.join(', ')} completion`
+      : 'progress'
+    console.log(`[DiscordNotifications] Sent ${notificationType} notification for tile ${data.tilePosition} (${data.tileTask})`)
   } catch (error: any) {
     // Don't throw - we don't want to break tile progress tracking if Discord fails
     console.error(`[DiscordNotifications] Error sending notification:`, error.message)
@@ -64,11 +70,29 @@ export async function sendTileProgressNotification(data: TileProgressNotificatio
  * Build Discord embed for tile progress/completion
  */
 function buildProgressEmbed(data: TileProgressNotification, teamName: string): any {
-  const isCompletion = data.isCompleted
-  const color = isCompletion ? 0x00ff00 : 0x0099ff // Green for completion, blue for progress
-  const title = isCompletion 
-    ? `🎉 Tile Completed: ${data.tileTask}` 
-    : `📊 Progress Update: ${data.tileTask}`
+  // Check if this is a tier completion notification (for tiered tiles)
+  const isTierCompletion = data.newlyCompletedTiers && data.newlyCompletedTiers.length > 0
+  const isTileCompletion = data.isCompleted
+  
+  let color: number
+  let title: string
+  
+  if (isTileCompletion) {
+    // Full tile completion
+    color = 0x00ff00 // Green
+    title = `🎉 Tile Completed: ${data.tileTask}`
+  } else if (isTierCompletion) {
+    // Tier completion (for tiered tiles)
+    color = 0xffa500 // Orange
+    const tierText = data.newlyCompletedTiers!.length === 1 
+      ? `Tier ${data.newlyCompletedTiers![0]}`
+      : `Tiers ${data.newlyCompletedTiers!.join(', ')}`
+    title = `⭐ ${tierText} Completed: ${data.tileTask}`
+  } else {
+    // Shouldn't happen, but fallback
+    color = 0x0099ff // Blue
+    title = `📊 Progress Update: ${data.tileTask}`
+  }
 
   // Build description
   let description = `**Team:** ${teamName}\n`
@@ -76,8 +100,8 @@ function buildProgressEmbed(data: TileProgressNotification, teamName: string): a
   description += `**Position:** ${data.tilePosition}\n`
   description += `**Player:** ${data.playerName}\n\n`
 
-  // Add progress information
-  if (isCompletion) {
+  // Add completion information
+  if (isTileCompletion) {
     description += `✅ **Tile Completed!**\n`
     if (data.completionType === 'manual_admin') {
       description += `*Completed manually by admin*\n\n`
@@ -93,17 +117,20 @@ function buildProgressEmbed(data: TileProgressNotification, teamName: string): a
         description += `**Tier:** ${data.completedTiers[0]}\n`
       }
     }
-  } else {
-    description += `**Progress:** ${formatProgressValue(data.progressValue, data.progressMetadata)}\n`
+  } else if (isTierCompletion) {
+    // Tier completion notification
+    const tierText = data.newlyCompletedTiers!.length === 1
+      ? `Tier ${data.newlyCompletedTiers![0]}`
+      : `Tiers ${data.newlyCompletedTiers!.join(', ')}`
+    description += `⭐ **${tierText} Completed!**\n\n`
     
-    // Show tier progress if applicable
-    if (data.completedTiers && data.completedTiers.length > 0 && data.totalTiers) {
-      description += `**Tiers Completed:** ${data.completedTiers.length}/${data.totalTiers}\n`
+    if (data.totalTiers && data.totalTiers > 1) {
+      description += `**Progress:** ${data.completedTiers?.length || 0}/${data.totalTiers} tiers completed\n`
     }
   }
 
   // Add metadata details
-  const metadataDetails = extractMetadataDetails(data.progressMetadata)
+  const metadataDetails = extractMetadataDetails(data.progressMetadata, data.newlyCompletedTiers)
   if (metadataDetails) {
     description += `\n${metadataDetails}`
   }
@@ -145,7 +172,7 @@ function formatProgressValue(value: number, metadata: Record<string, any>): stri
 /**
  * Extract useful metadata details for display
  */
-function extractMetadataDetails(metadata: Record<string, any>): string | null {
+function extractMetadataDetails(metadata: Record<string, any>, newlyCompletedTiers?: number[]): string | null {
   const details: string[] = []
 
   // Show last items obtained
@@ -157,14 +184,16 @@ function extractMetadataDetails(metadata: Record<string, any>): string | null {
     details.push(`**Items:** ${items}`)
   }
 
-  // Show tier progress details
+  // Show tier progress details (highlight newly completed tiers)
   if (metadata.completed_tiers && metadata.completed_tiers.length > 0) {
     const tierDetails: string[] = []
     for (const tierNum of metadata.completed_tiers) {
       const tierProgress = metadata[`tier_${tierNum}_progress`]
       const tierMetadata = metadata[`tier_${tierNum}_metadata`] || {}
+      const isNewlyCompleted = newlyCompletedTiers?.includes(tierNum)
+      const prefix = isNewlyCompleted ? '⭐ ' : ''
       if (tierProgress !== undefined) {
-        tierDetails.push(`Tier ${tierNum}: ${formatProgressValue(tierProgress, tierMetadata)}`)
+        tierDetails.push(`${prefix}Tier ${tierNum}: ${formatProgressValue(tierProgress, tierMetadata)}`)
       }
     }
     if (tierDetails.length > 0) {

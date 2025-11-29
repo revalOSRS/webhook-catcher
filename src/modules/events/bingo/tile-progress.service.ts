@@ -259,16 +259,19 @@ async function updateTileProgress(event: UnifiedGameEvent, tile: BoardTile): Pro
     await markTileCompleted(tile.board_tile_id, event.osrsAccountId, 'auto')
   }
 
-  // Send Discord notification for progress or completion
-  // Only send notifications for:
-  // 1. New completions (tile was just completed)
-  // 2. Significant progress updates (progress value increased)
+  // Check for new tier completion (for tiered tiles)
+  const previousCompletedTiers = existingProgress?.metadata?.completed_tiers || []
+  const currentCompletedTiers = progressUpdate.metadata?.completed_tiers || []
+  const newTiersCompleted = currentCompletedTiers.filter(tier => !previousCompletedTiers.includes(tier))
+  const hasNewTierCompletion = newTiersCompleted.length > 0
+
+  // Check for new tile completion
   const isNewCompletion = progressUpdate.isCompleted && !wasCompleted
-  const progressIncreased = existingProgress 
-    ? progressUpdate.progressValue > existingProgress.progressValue
-    : progressUpdate.progressValue > 0
-  
-  if (isNewCompletion || progressIncreased) {
+
+  // Send Discord notification only for:
+  // 1. New tile completions (tile was just completed)
+  // 2. New tier completions (a new tier was just completed for tiered tiles)
+  if (isNewCompletion || hasNewTierCompletion) {
     try {
       // Get player name from OSRS account if available
       let playerName = event.playerName
@@ -292,10 +295,11 @@ async function updateTileProgress(event: UnifiedGameEvent, tile: BoardTile): Pro
         playerName,
         progressValue: progressUpdate.progressValue,
         progressMetadata: progressUpdate.metadata,
-        isCompleted: isNewCompletion, // Only true if newly completed
+        isCompleted: isNewCompletion, // True if tile was just completed
         completionType: isNewCompletion ? 'auto' : null,
-        completedTiers: progressUpdate.metadata?.completed_tiers,
-        totalTiers: progressUpdate.metadata?.total_tiers
+        completedTiers: currentCompletedTiers,
+        totalTiers: progressUpdate.metadata?.total_tiers,
+        newlyCompletedTiers: hasNewTierCompletion ? newTiersCompleted : undefined // New tiers completed in this update
       })
     } catch (error) {
       // Don't throw - notification failures shouldn't break progress tracking
