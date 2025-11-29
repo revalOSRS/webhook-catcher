@@ -72,7 +72,7 @@ router.get('/', async (req, res) => {
             }
         }
         const board = boards[0];
-        // Get all tiles on this board
+        // Get all tiles on this board with progress information
         const tiles = await query(`
 			SELECT 
 				bbt.*,
@@ -82,10 +82,55 @@ router.get('/', async (req, res) => {
 				bt.icon,
 				bt.description,
 				bt.base_points,
-				bt.bonus_tiers
+				bt.bonus_tiers,
+				bt.requirements,
+				COALESCE(
+					json_agg(
+						json_build_object(
+							'id', btp.id,
+							'osrs_account_id', btp.osrs_account_id,
+							'progress_value', btp.progress_value,
+							'progress_metadata', btp.progress_metadata,
+							'completion_type', btp.completion_type,
+							'completed_at', btp.completed_at,
+							'completed_by_osrs_account_id', btp.completed_by_osrs_account_id,
+							'completed_by_member_id', btp.completed_by_member_id,
+							'recorded_at', btp.recorded_at
+						)
+					) FILTER (WHERE btp.id IS NOT NULL),
+					'[]'::json
+				) as progress_entries,
+				-- For EXPERIENCE requirements, calculate team total XP gained
+				CASE 
+					WHEN bt.requirements->>'match_type' IS NOT NULL 
+						AND EXISTS (
+							SELECT 1 FROM jsonb_array_elements(COALESCE(bt.requirements->'requirements', '[]'::jsonb)) req
+							WHERE req->>'type' = 'EXPERIENCE'
+						)
+					THEN (
+						SELECT COALESCE(SUM((progress_metadata->>'gained_xp')::numeric), 0)
+						FROM bingo_tile_progress
+						WHERE board_tile_id = bbt.id
+							AND progress_metadata->>'gained_xp' IS NOT NULL
+					)
+					WHEN bt.requirements->'tiers' IS NOT NULL
+						AND EXISTS (
+							SELECT 1 FROM jsonb_array_elements(bt.requirements->'tiers') tier
+							WHERE tier->'requirement'->>'type' = 'EXPERIENCE'
+						)
+					THEN (
+						SELECT COALESCE(SUM((progress_metadata->>'gained_xp')::numeric), 0)
+						FROM bingo_tile_progress
+						WHERE board_tile_id = bbt.id
+							AND progress_metadata->>'gained_xp' IS NOT NULL
+					)
+					ELSE NULL
+				END as team_total_xp_gained
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+			LEFT JOIN bingo_tile_progress btp ON btp.board_tile_id = bbt.id
 			WHERE bbt.board_id = $1
+			GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.bonus_tiers, bt.requirements
 			ORDER BY bbt.position
 		`, [board.id]);
         // Get tile effects (only active ones, or all if show_tile_buffs is true)
@@ -962,15 +1007,19 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
 			WHERE id = $2
 		`, [teamId, tileId]);
         // Create or update progress entry
-        const existingProgress = await query('SELECT id FROM bingo_tile_progress WHERE board_tile_id = $1 AND osrs_account_id = $2', [tileId, completed_by_osrs_account_id || null]);
+        // Check for ANY existing progress for this board_tile_id (regardless of osrs_account_id)
+        // to prevent duplicates - we should only have one progress entry per board_tile_id
+        const existingProgress = await query('SELECT id, osrs_account_id FROM bingo_tile_progress WHERE board_tile_id = $1 LIMIT 1', [tileId]);
         if (existingProgress.length > 0) {
+            // Update existing progress entry
             await query(`
 				UPDATE bingo_tile_progress
 				SET 
 					completion_type = $1,
 					completed_at = CURRENT_TIMESTAMP,
 					completed_by_osrs_account_id = $2,
-					progress_metadata = COALESCE(progress_metadata, '{}'::jsonb) || $3::jsonb
+					progress_metadata = COALESCE(progress_metadata, '{}'::jsonb) || $3::jsonb,
+					updated_at = CURRENT_TIMESTAMP
 				WHERE id = $4
 			`, [
                 completion_type,
@@ -980,6 +1029,7 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
             ]);
         }
         else {
+            // Insert new progress entry only if none exists
             await query(`
 				INSERT INTO bingo_tile_progress (
 					board_tile_id, osrs_account_id, progress_value, progress_metadata,

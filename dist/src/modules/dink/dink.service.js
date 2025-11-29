@@ -13,6 +13,7 @@ import { createLootEmbed } from './events/loot.js';
 import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './discord-utils.js';
 // Import tile progress service
 import { processDinkEventForTileProgress } from '../events/bingo/tile-progress.service.js';
+import { isPlayerInActiveBingoEvent } from '../events/bingo/bingo-participant-checker.js';
 // Cache for dink hash verification (10 minutes)
 const dinkHashCache = new Map();
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
@@ -315,13 +316,23 @@ export class DinkService {
                         const eventType = payloadData?.type || 'UNKNOWN';
                         const playerName = payloadData?.playerName || 'Unknown Player';
                         // Check if player is in an active bingo event BEFORE filtering
-                        const { isPlayerInActiveBingoEvent } = await import('../events/bingo/bingo-participant-checker.js');
                         const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName);
+                        // Log LOGIN/LOGOUT events prominently
+                        if (eventType === 'LOGIN' || eventType === 'LOGOUT') {
+                            console.log('═══════════════════════════════════════════════════════════');
+                            console.log(`🔐 ${eventType} EVENT: ${playerName}`);
+                            console.log(`   Bingo Participant: ${isBingoParticipant ? 'YES' : 'NO'}`);
+                            console.log(`   Timestamp: ${new Date().toISOString()}`);
+                            console.log('═══════════════════════════════════════════════════════════');
+                        }
                         // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
                         // This must happen before any filtering
-                        processDinkEventForTileProgress(payloadData).catch((error) => {
+                        try {
+                            await processDinkEventForTileProgress(payloadData);
+                        }
+                        catch (error) {
                             console.error('[DinkService] Error processing tile progress:', error);
-                        });
+                        }
                         // If player is in an active bingo event, skip Discord entirely
                         if (isBingoParticipant) {
                             console.log(`[DinkService] Player ${playerName} is in active bingo event, skipping Discord notification`);
@@ -368,13 +379,23 @@ export class DinkService {
             const eventType = req.body?.type || 'UNKNOWN';
             const playerName = req.body?.playerName || 'Unknown Player';
             // Check if player is in an active bingo event BEFORE filtering
-            const { isPlayerInActiveBingoEvent } = await import('../events/bingo/bingo-participant-checker.js');
             const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName);
+            // Log LOGIN/LOGOUT events prominently
+            if (eventType === 'LOGIN' || eventType === 'LOGOUT') {
+                console.log('═══════════════════════════════════════════════════════════');
+                console.log(`🔐 ${eventType} EVENT: ${playerName}`);
+                console.log(`   Bingo Participant: ${isBingoParticipant ? 'YES' : 'NO'}`);
+                console.log(`   Timestamp: ${new Date().toISOString()}`);
+                console.log('═══════════════════════════════════════════════════════════');
+            }
             // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
             // This must happen before any filtering
-            processDinkEventForTileProgress(req.body).catch((error) => {
+            try {
+                await processDinkEventForTileProgress(req.body);
+            }
+            catch (error) {
                 console.error('[DinkService] Error processing tile progress:', error);
-            });
+            }
             // If player is in an active bingo event, skip Discord entirely
             if (isBingoParticipant) {
                 console.log(`[DinkService] Player ${playerName} is in active bingo event, skipping Discord notification`);

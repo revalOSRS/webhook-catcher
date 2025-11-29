@@ -18,6 +18,16 @@ export async function calculateExperienceProgress(
   existing: ExistingProgress | null,
   eventStartDate: Date
 ): Promise<ProgressUpdate> {
+  // Update player in WOM first to ensure we have latest data
+  try {
+    console.log(`[ExperienceCalculator] Updating player ${event.playerName} in WiseOldMan...`)
+    await WiseOldManService.updatePlayer(event.playerName)
+    console.log(`[ExperienceCalculator] Player ${event.playerName} updated successfully`)
+  } catch (error) {
+    console.error(`[ExperienceCalculator] Error updating player ${event.playerName} in WOM:`, error)
+    // Continue anyway - might still have cached data
+  }
+
   // Get current XP from WiseOldMan API
   const currentXp = await fetchXpFromWiseOldMan(event.playerName, requirement.skill)
   if (currentXp === null) {

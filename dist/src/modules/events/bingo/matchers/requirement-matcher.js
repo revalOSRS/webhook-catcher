@@ -50,9 +50,18 @@ function matchesItemDrop(event, requirement) {
     if (event.eventType !== 'LOOT')
         return false;
     const lootData = event.data; // LootEventData
+    // Debug logging
+    console.log(`[RequirementMatcher] Checking ITEM_DROP: requirement.item_id=${requirement.item_id}, requirement.item_amount=${requirement.item_amount || 1}`);
+    console.log(`[RequirementMatcher] Event items:`, JSON.stringify(lootData.items));
     // Single item format
     if (requirement.item_id !== undefined) {
-        return lootData.items.some((item) => item.id === requirement.item_id && item.quantity >= (requirement.item_amount || 1));
+        const matches = lootData.items.some((item) => {
+            const itemMatches = item.id === requirement.item_id && item.quantity >= (requirement.item_amount || 1);
+            console.log(`[RequirementMatcher] Checking item ${item.id} (qty ${item.quantity}): matches=${itemMatches}`);
+            return itemMatches;
+        });
+        console.log(`[RequirementMatcher] ITEM_DROP match result: ${matches}`);
+        return matches;
     }
     // Multiple items format
     if (requirement.items && requirement.total_amount) {

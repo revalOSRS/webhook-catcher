@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { query } from '../../../../db/connection.js';
+import { initializeBoardsForEvent } from '../../../../modules/events/bingo/board-initialization.service.js';
 const router = Router();
 /**
  * GET /api/admin/clan-events/events
@@ -224,14 +225,10 @@ router.patch('/:id', async (req, res) => {
         // If event is being activated and it's a bingo event, initialize boards for all teams
         if (updates.status === 'active' && updatedEvent.event_type === 'bingo') {
             try {
-                const { initializeBoardsForEvent } = await import('../../../../modules/events/bingo/board-initialization.service.js');
-                // Initialize boards asynchronously (don't block response)
-                initializeBoardsForEvent(id).catch((error) => {
-                    console.error('[Events] Error initializing boards for event:', error);
-                });
+                await initializeBoardsForEvent(id);
             }
             catch (error) {
-                console.error('[Events] Error importing board initialization service:', error);
+                console.error('[Events] Error initializing boards for event:', error);
             }
         }
         res.json({

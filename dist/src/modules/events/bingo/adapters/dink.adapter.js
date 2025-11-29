@@ -9,8 +9,7 @@ import { query } from '../../../../db/connection.js';
  * Handles both typed DinkEvent objects and raw payload objects
  */
 export async function adaptDinkEvent(dinkEvent) {
-    // Handle raw payload objects (from webhook) - type is a string
-    const eventType = typeof dinkEvent.type === 'string' ? dinkEvent.type : dinkEvent.type;
+    const eventType = dinkEvent.type;
     // Get OSRS account ID from player name
     const osrsAccountId = await getOsrsAccountIdFromPlayerName(dinkEvent.playerName);
     const timestamp = new Date(); // Dink events don't have explicit timestamp, use current time
@@ -30,6 +29,17 @@ export async function adaptDinkEvent(dinkEvent) {
     if (eventType === 'LOGOUT' || eventType === DinkEventType.LOGOUT) {
         return adaptLogoutEvent(dinkEvent, osrsAccountId, timestamp);
     }
+    // Handle KILL_COUNT events that have a time field (speedrun times)
+    if (eventType === 'KILL_COUNT' || eventType === DinkEventType.KILL_COUNT) {
+        const killCountEvent = dinkEvent;
+        const extra = killCountEvent.extra || {};
+        // If the kill count event has a time field, treat it as a speedrun
+        if (extra.time) {
+            return adaptKillCountAsSpeedrun(killCountEvent, osrsAccountId, timestamp);
+        }
+        // Otherwise, KILL_COUNT events without time are not relevant for bingo tracking
+        return null;
+    }
     // Event type not supported for bingo tracking
     return null;
 }
@@ -38,6 +48,13 @@ function adaptLootEvent(event, osrsAccountId, timestamp) {
     const extra = event.extra || {};
     const items = extra.items || [];
     const totalValue = items.reduce((sum, item) => sum + ((item.priceEach || 0) * (item.quantity || 0)), 0);
+    const unifiedItems = items.map((item) => ({
+        id: item.id,
+        quantity: item.quantity,
+        name: item.name,
+        priceEach: item.priceEach || 0
+    }));
+    console.log(`[DinkAdapter] Adapting LOOT event for ${event.playerName}:`, JSON.stringify(unifiedItems));
     return {
         eventType: 'LOOT',
         playerName: event.playerName,
@@ -45,12 +62,7 @@ function adaptLootEvent(event, osrsAccountId, timestamp) {
         timestamp,
         source: 'dink',
         data: {
-            items: items.map((item) => ({
-                id: item.id,
-                quantity: item.quantity,
-                name: item.name,
-                priceEach: item.priceEach || 0
-            })),
+            items: unifiedItems,
             source: extra.source,
             totalValue
         }
@@ -111,6 +123,27 @@ function adaptLogoutEvent(event, osrsAccountId, timestamp) {
     };
 }
 /**
+ * Convert KILL_COUNT event with time to SPEEDRUN event
+ * Some NPC speedrun times come through as KILL_COUNT events with a time field
+ */
+function adaptKillCountAsSpeedrun(event, osrsAccountId, timestamp) {
+    const extra = event.extra || {};
+    // Parse ISO 8601 duration format (e.g., "PT1M25S" = 1 minute 25 seconds)
+    const timeSeconds = parseIso8601DurationToSeconds(extra.time || '0');
+    return {
+        eventType: 'SPEEDRUN',
+        playerName: event.playerName,
+        osrsAccountId,
+        timestamp,
+        source: 'dink',
+        data: {
+            location: extra.boss || 'Unknown', // Use boss name as location
+            timeSeconds,
+            isPersonalBest: extra.isPersonalBest || false
+        }
+    };
+}
+/**
  * Parse time string to seconds
  * Supports formats: "1:23:45" (hours:minutes:seconds), "23:45" (minutes:seconds), "45" (seconds)
  */
@@ -128,6 +161,32 @@ function parseTimeStringToSeconds(timeStr) {
         // seconds only
         return parts[0];
     }
+}
+/**
+ * Parse ISO 8601 duration format to seconds
+ * Supports formats: "PT1M25S" (1 minute 25 seconds), "PT45S" (45 seconds), "PT1H2M3S" (1 hour 2 minutes 3 seconds)
+ * Format: PT[hours]H[minutes]M[seconds]S
+ */
+function parseIso8601DurationToSeconds(duration) {
+    // Remove PT prefix
+    const timeStr = duration.replace(/^PT/i, '');
+    let totalSeconds = 0;
+    // Match hours: H followed by digits
+    const hoursMatch = timeStr.match(/(\d+)H/i);
+    if (hoursMatch) {
+        totalSeconds += parseInt(hoursMatch[1], 10) * 3600;
+    }
+    // Match minutes: M followed by digits
+    const minutesMatch = timeStr.match(/(\d+)M/i);
+    if (minutesMatch) {
+        totalSeconds += parseInt(minutesMatch[1], 10) * 60;
+    }
+    // Match seconds: S followed by digits
+    const secondsMatch = timeStr.match(/(\d+)S/i);
+    if (secondsMatch) {
+        totalSeconds += parseInt(secondsMatch[1], 10);
+    }
+    return totalSeconds;
 }
 /**
  * Get OSRS account ID from player name

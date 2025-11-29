@@ -113,7 +113,7 @@ app.use('/api/members', membersRoutes)
 app.use('/api/clan', clanRoutes)
 // app.use('/api/battleship', battleshipRoutes)
 app.use('/api/activity-events', activityRoutes)
-app.use('/api/clan-events', clanEventsRoutes)
+app.use('/api/app/clan-events', clanEventsRoutes)
 
 // Admin routes - protected by Discord rank check
 app.use('/api/admin/clan-events', requireDiscordAdmin, adminClanEventsRoutes)

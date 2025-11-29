@@ -593,11 +593,18 @@ Get a team's board with all tiles, tile effects, and line effects. If no board e
             "osrs_account_id": "number | null",
             "progress_value": "number",
             "progress_metadata": {
-              "count": "number",
-              "current_value": "number",
-              "target_value": "number",
+              // For ITEM_DROP requirements:
+              "count": "number", // Current count of items
+              "current_value": "number", // Current progress
+              "target_value": "number", // Target count
               "last_update_at": "ISO8601 string",
               "last_items_obtained": [ /* array of items */ ],
+              // For EXPERIENCE requirements:
+              "gained_xp": "number", // XP gained by this player since event start
+              "target_xp": "number", // Target XP for this tier/requirement
+              "current_xp": "number", // Current total XP
+              "baseline_xp": "number", // XP at event start
+              "last_update_at": "ISO8601 string",
               // For tiered requirements:
               "completed_tiers": [1, 2, 3], // Array of completed tier numbers
               "total_tiers": "number", // Total number of tiers
@@ -618,7 +625,8 @@ Get a team's board with all tiles, tile effects, and line effects. If no board e
             "completed_by_member_id": "number | null",
             "recorded_at": "ISO8601 string"
           }
-        ]
+        ],
+        "team_total_xp_gained": "number | null" // For EXPERIENCE requirements only: Total XP gained by entire team (sum of all players' gained_xp). NULL for non-XP tiles.
       }
     ],
     "tile_effects": [
@@ -1028,21 +1036,33 @@ Get detailed tile progress for team with all progress entries. Includes tier tra
           "osrs_account_id": "number | null",
           "progress_value": "number",
           "progress_metadata": {
-            "count": "number",
-            "current_value": "number",
-            "target_value": "number",
+            // For ITEM_DROP requirements:
+            "count": "number", // Current count of items
+            "current_value": "number", // Current progress
+            "target_value": "number", // Target count
             "last_update_at": "ISO8601 string",
             "last_items_obtained": [ /* array of items */ ],
+            // For EXPERIENCE requirements:
+            "gained_xp": "number", // XP gained by this player since event start
+            "target_xp": "number", // Target XP for this tier/requirement
+            "current_xp": "number", // Current total XP
+            "baseline_xp": "number", // XP at event start
+            "last_update_at": "ISO8601 string",
             // For tiered requirements (when tile.requirements.tiers exists):
             "completed_tiers": [1, 2, 3], // Array of completed tier numbers (e.g., [1] if only tier 1 is done)
             "total_tiers": "number", // Total number of tiers defined in requirements
             "completed_tiers_count": "number", // Number of completed tiers
-            "tier_1_progress": "number", // Progress value for tier 1 (e.g., 1 if Bones obtained)
+            "tier_1_progress": "number", // Progress value for tier 1 (e.g., 1 if Bones obtained, or XP gained)
             "tier_1_metadata": {
-              "count": "number",
+              "count": "number", // For ITEM_DROP
               "current_value": "number",
               "target_value": "number",
-              "last_items_obtained": []
+              "last_items_obtained": [],
+              // OR for EXPERIENCE:
+              "gained_xp": "number",
+              "target_xp": "number",
+              "current_xp": "number",
+              "baseline_xp": "number"
             }, // Full metadata for tier 1
             "tier_1_completed_at": "ISO8601 string | null", // When tier 1 was completed
             "tier_2_progress": "number", // Progress value for tier 2 (e.g., 0 if Wolf Bones not obtained)
@@ -1060,7 +1080,8 @@ Get detailed tile progress for team with all progress entries. Includes tier tra
           "completed_by_osrs_account_id": "number | null",
           "recorded_at": "ISO8601 string"
         }
-      ]
+      ],
+      "team_total_xp_gained": "number | null" // For EXPERIENCE requirements only: Total XP gained by entire team (sum of all players' gained_xp). NULL for non-XP tiles.
     }
   ],
   "pagination": {
@@ -2237,4 +2258,13 @@ Dink webhook events are automatically processed for tile progress tracking. Even
 - Still update the activity cache
 
 Events from non-bingo participants follow the normal flow (Discord filtering, notifications, etc.).
+
+### Experience (XP) Tracking
+For tiles with `EXPERIENCE` requirements:
+- XP is tracked on player logout events
+- The player is automatically updated in WiseOldMan before fetching XP data to ensure accuracy
+- Each player's `gained_xp` is stored in their `progress_metadata`
+- The `team_total_xp_gained` field on the tile shows the sum of all team members' `gained_xp`
+- For tiered XP requirements, each tier tracks XP separately, but `team_total_xp_gained` represents the total team XP across all tiers
+- Example: If Player A gained 1000 XP and Player B gained 2000 XP, `team_total_xp_gained` = 3000
 

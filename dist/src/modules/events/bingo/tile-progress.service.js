@@ -50,13 +50,40 @@ async function processUnifiedEvent(event) {
     let matchedTiles = 0;
     for (const tile of boardTiles) {
         // Check if event matches tile requirements
-        if (!matchesRequirement(event, tile.requirements)) {
+        const matches = matchesRequirement(event, tile.requirements);
+        console.log(`[TileProgressService] Checking tile ${tile.tile_id}: matches=${matches}, hasTiers=${!!tile.requirements.tiers}, tiersCount=${tile.requirements.tiers?.length || 0}`);
+        if (!matches) {
+            console.log(`[TileProgressService] Tile ${tile.tile_id} does not match event requirements, skipping`);
             continue;
         }
         matchedTiles++;
-        // Check if tile is already completed
-        if (tile.is_completed) {
-            console.log(`[TileProgressService] Tile ${tile.tile_id} already completed, skipping`);
+        console.log(`[TileProgressService] Tile ${tile.tile_id} matched! Processing...`);
+        // For tiered requirements, check if all tiers are completed
+        // For non-tiered requirements, check if tile is completed
+        const hasTiers = tile.requirements.tiers && tile.requirements.tiers.length > 0;
+        let shouldSkip = false;
+        if (hasTiers) {
+            // For tiered tiles, check if all tiers are completed
+            const existingProgress = await getExistingProgress(tile.board_tile_id, event.osrsAccountId);
+            const completedTiers = existingProgress?.metadata?.completed_tiers || [];
+            const totalTiers = tile.requirements.tiers.length;
+            const allTiersCompleted = completedTiers.length === totalTiers;
+            if (allTiersCompleted) {
+                console.log(`[TileProgressService] Tile ${tile.tile_id} has all tiers completed, skipping`);
+                shouldSkip = true;
+            }
+            else {
+                console.log(`[TileProgressService] Tile ${tile.tile_id} is marked complete but has incomplete tiers (${completedTiers.length}/${totalTiers}), continuing to track`);
+            }
+        }
+        else {
+            // For non-tiered tiles, skip if already completed
+            if (tile.is_completed) {
+                console.log(`[TileProgressService] Tile ${tile.tile_id} already completed, skipping`);
+                shouldSkip = true;
+            }
+        }
+        if (shouldSkip) {
             continue;
         }
         // Calculate and update progress
@@ -103,6 +130,7 @@ async function getActiveBoardTilesForPlayer(event) {
         return [];
     }
     // Get board tiles for these teams
+    // Exclude completed tiles UNLESS they have tiered requirements (we still track progress for incomplete tiers)
     const teamIds = teamMemberships.map(m => m.team_id);
     const tiles = await query(`
     SELECT
@@ -116,7 +144,16 @@ async function getActiveBoardTilesForPlayer(event) {
     JOIN bingo_boards bb ON bbt.board_id = bb.id
     JOIN bingo_tiles bt ON bbt.tile_id = bt.id
     WHERE bb.team_id = ANY($1::uuid[])
-      AND bbt.is_completed = false
+      AND (
+        -- Include all incomplete tiles
+        bbt.is_completed = false
+        OR (
+          -- Include completed tiles ONLY if they have tiered requirements
+          bbt.is_completed = true
+          AND bt.requirements->'tiers' IS NOT NULL
+          AND jsonb_array_length(bt.requirements->'tiers') > 0
+        )
+      )
   `, [teamIds]);
     // Map to BoardTile format with event info
     return tiles.map((tile) => {
@@ -159,16 +196,104 @@ async function updateTileProgress(event, tile) {
 async function calculateProgress(event, requirements, existing, eventStartDate) {
     // Handle tiered requirements
     if (requirements.tiers && requirements.tiers.length > 0) {
-        // Check each tier and calculate progress
+        // Track completed tiers from existing metadata
+        const completedTiers = existing?.metadata?.completed_tiers || [];
+        let updatedMetadata = { ...existing?.metadata };
+        let highestTierProgress = existing?.progressValue || 0;
+        let tierMatched = false;
+        // Check each tier to see if it matches the current event
         for (const tier of requirements.tiers) {
-            if (matchesRequirement(event, { match_type: 'all', requirements: [], tiers: [tier] })) {
-                return await calculateRequirementProgress(event, tier.requirement, existing, eventStartDate, tier);
+            const tierMatches = matchesRequirement(event, { match_type: 'all', requirements: [], tiers: [tier] });
+            console.log(`[TileProgressService] Checking tier ${tier.tier}: matches=${tierMatches}, requirement=`, JSON.stringify(tier.requirement));
+            if (tierMatches) {
+                // Get tier-specific existing progress
+                // If tier progress exists in metadata, use it; otherwise start fresh (null)
+                const tierExisting = existing?.metadata?.[`tier_${tier.tier}_progress`] !== undefined
+                    ? {
+                        progressValue: existing.metadata[`tier_${tier.tier}_progress`],
+                        metadata: existing.metadata[`tier_${tier.tier}_metadata`] || {}
+                    }
+                    : null; // Start fresh for this tier if no progress exists yet
+                console.log(`[TileProgressService] Tier ${tier.tier} matched! Existing progress:`, tierExisting ? tierExisting.progressValue : 'none (starting fresh)');
+                // Calculate progress for this tier
+                const tierResult = await calculateRequirementProgress(event, tier.requirement, tierExisting, eventStartDate, tier);
+                console.log(`[TileProgressService] Tier ${tier.tier} result:`, {
+                    progressValue: tierResult.progressValue,
+                    isCompleted: tierResult.isCompleted,
+                    metadata: tierResult.metadata
+                });
+                // If this tier is now completed and wasn't before, add it to completed tiers
+                if (tierResult.isCompleted && !completedTiers.includes(tier.tier)) {
+                    completedTiers.push(tier.tier);
+                    updatedMetadata[`tier_${tier.tier}_completed_at`] = event.timestamp.toISOString();
+                    // Auto-complete ALL lower tiers when a higher tier is completed
+                    // This applies regardless of whether requirements are similar or not
+                    const lowerTiers = requirements.tiers.filter(t => t.tier < tier.tier && !completedTiers.includes(t.tier));
+                    for (const lowerTier of lowerTiers) {
+                        // Lower tier is automatically completed when higher tier is completed
+                        if (!completedTiers.includes(lowerTier.tier)) {
+                            completedTiers.push(lowerTier.tier);
+                            updatedMetadata[`tier_${lowerTier.tier}_completed_at`] = event.timestamp.toISOString();
+                            // Set progress to the tier's target value (it's completed)
+                            const lowerTierTarget = getRequirementTarget(lowerTier.requirement);
+                            updatedMetadata[`tier_${lowerTier.tier}_progress`] = lowerTierTarget;
+                            updatedMetadata[`tier_${lowerTier.tier}_metadata`] = {
+                                auto_completed_by_tier: tier.tier,
+                                auto_completed_at: event.timestamp.toISOString()
+                            };
+                            console.log(`[TileProgressService] Auto-completed tier ${lowerTier.tier} because tier ${tier.tier} was completed`);
+                        }
+                    }
+                }
+                // Update metadata with tier-specific progress
+                updatedMetadata[`tier_${tier.tier}_progress`] = tierResult.progressValue;
+                updatedMetadata[`tier_${tier.tier}_metadata`] = tierResult.metadata;
+                // Track highest tier progress value
+                if (tierResult.progressValue > highestTierProgress) {
+                    highestTierProgress = tierResult.progressValue;
+                }
+                tierMatched = true;
+                // Mark tile as complete when ANY tier is completed (so they get points)
+                // But continue tracking all tiers for additional progress
+                const tileIsComplete = completedTiers.length > 0 || tierResult.isCompleted;
+                return {
+                    progressValue: highestTierProgress,
+                    metadata: {
+                        ...updatedMetadata,
+                        ...tierResult.metadata,
+                        completed_tiers: completedTiers.sort((a, b) => a - b),
+                        total_tiers: requirements.tiers.length,
+                        completed_tiers_count: completedTiers.length,
+                        current_tier: tier.tier,
+                        current_tier_progress: tierResult.progressValue
+                    },
+                    isCompleted: tileIsComplete // Mark complete when ANY tier is done
+                };
             }
         }
-        // If no tier matches, return existing progress
+        // If no tier matched but we have existing progress, return it
+        if (existing) {
+            // Tile is complete if any tier was completed
+            const tileIsComplete = completedTiers.length > 0;
+            return {
+                progressValue: existing.progressValue,
+                metadata: {
+                    ...updatedMetadata,
+                    completed_tiers: completedTiers.sort((a, b) => a - b),
+                    total_tiers: requirements.tiers.length,
+                    completed_tiers_count: completedTiers.length
+                },
+                isCompleted: tileIsComplete // Complete if any tier was completed
+            };
+        }
+        // If no tier matches and no existing progress
         return {
-            progressValue: existing?.progressValue || 0,
-            metadata: existing?.metadata || {},
+            progressValue: 0,
+            metadata: {
+                completed_tiers: [],
+                total_tiers: requirements.tiers.length,
+                completed_tiers_count: 0
+            },
             isCompleted: false
         };
     }
@@ -188,6 +313,104 @@ async function calculateProgress(event, requirements, existing, eventStartDate) 
         metadata: existing?.metadata || {},
         isCompleted: false
     };
+}
+/**
+ * Check if two tiers are progressive (same requirement type with increasing/decreasing thresholds)
+ * Progressive means completing a higher tier automatically completes lower tiers
+ */
+function areTiersProgressive(tier1Req, tier2Req) {
+    // Must be same requirement type
+    if (tier1Req.type !== tier2Req.type) {
+        return false;
+    }
+    switch (tier1Req.type) {
+        case 'SPEEDRUN': {
+            const req1 = tier1Req;
+            const req2 = tier2Req;
+            // Progressive if same location and tier1 goal is better (lower) than tier2 goal
+            return (req1.location.toLowerCase() === req2.location.toLowerCase() &&
+                req1.goal_seconds < req2.goal_seconds);
+        }
+        case 'ITEM_DROP': {
+            const req1 = tier1Req;
+            const req2 = tier2Req;
+            // Progressive if same item_id and tier1 amount is higher than tier2 amount
+            if (req1.item_id !== undefined && req2.item_id !== undefined) {
+                return (req1.item_id === req2.item_id &&
+                    (req1.item_amount || 1) > (req2.item_amount || 1));
+            }
+            // For multiple items format, check if same items list
+            if (req1.items && req2.items) {
+                const tier1ItemIds = req1.items.map(i => i.item_id).sort();
+                const tier2ItemIds = req2.items.map(i => i.item_id).sort();
+                if (JSON.stringify(tier1ItemIds) === JSON.stringify(tier2ItemIds)) {
+                    return (req1.total_amount || 0) > (req2.total_amount || 0);
+                }
+            }
+            return false;
+        }
+        case 'VALUE_DROP': {
+            const req1 = tier1Req;
+            const req2 = tier2Req;
+            // Progressive if tier1 value is higher than tier2 value
+            return req1.value > req2.value;
+        }
+        case 'EXPERIENCE': {
+            const req1 = tier1Req;
+            const req2 = tier2Req;
+            // Progressive if same skill and tier1 amount is higher than tier2 amount
+            return (req1.skill.toLowerCase() === req2.skill.toLowerCase() &&
+                req1.experience > req2.experience);
+        }
+        case 'BA_GAMBLES': {
+            const req1 = tier1Req;
+            const req2 = tier2Req;
+            // Progressive if tier1 amount is higher than tier2 amount
+            return req1.amount > req2.amount;
+        }
+        case 'PET': {
+            const req1 = tier1Req;
+            const req2 = tier2Req;
+            // Progressive if same pet and tier1 amount is higher than tier2 amount
+            return (req1.pet_name.toLowerCase() === req2.pet_name.toLowerCase() &&
+                req1.amount > req2.amount);
+        }
+        default:
+            return false;
+    }
+}
+/**
+ * Get the target value for a requirement (used for auto-completing lower tiers)
+ */
+function getRequirementTarget(requirement) {
+    switch (requirement.type) {
+        case 'ITEM_DROP': {
+            const req = requirement;
+            return req.item_amount || req.total_amount || 1;
+        }
+        case 'VALUE_DROP': {
+            const req = requirement;
+            return req.value;
+        }
+        case 'EXPERIENCE': {
+            const req = requirement;
+            return req.experience;
+        }
+        case 'BA_GAMBLES': {
+            const req = requirement;
+            return req.amount;
+        }
+        case 'PET': {
+            const req = requirement;
+            return req.amount;
+        }
+        case 'SPEEDRUN': {
+            const req = requirement;
+            return req.goal_seconds;
+        }
+        default:
+            return 0;
+    }
 }
 /**
  * Calculate progress for a specific requirement
