@@ -322,87 +322,206 @@ async function calculateProgress(
     // Track completed tiers from existing metadata
     const completedTiers: number[] = existing?.metadata?.completed_tiers || []
     let updatedMetadata = { ...existing?.metadata }
-    let highestTierProgress = existing?.progressValue || 0
-    let tierMatched = false
     
-    // Check each tier to see if it matches the current event
-    for (const tier of requirements.tiers) {
-      const tierMatches = matchesRequirement(event, { match_type: 'all', requirements: [], tiers: [tier] })
-      console.log(`[TileProgressService] Checking tier ${tier.tier}: matches=${tierMatches}, requirement=`, JSON.stringify(tier.requirement))
+    // For speedruns, we need to check ALL tiers that the current time qualifies for
+    // For other requirement types, we check each tier individually
+    const isSpeedrun = requirements.tiers[0]?.requirement?.type === 'SPEEDRUN'
+    
+    if (isSpeedrun) {
+      // Speedrun-specific logic: check ALL tiers that the current time qualifies for
+      const speedrunData = event.data as any
+      const currentTime = speedrunData.timeSeconds
+      const eventLocation = speedrunData.location?.toLowerCase()
       
-      if (tierMatches) {
-        // Get tier-specific existing progress
-        // If tier progress exists in metadata, use it; otherwise start fresh (null)
-        const tierExisting = existing?.metadata?.[`tier_${tier.tier}_progress`] !== undefined
-          ? { 
-              progressValue: existing.metadata[`tier_${tier.tier}_progress`], 
-              metadata: existing.metadata[`tier_${tier.tier}_metadata`] || {} 
-            }
-          : null // Start fresh for this tier if no progress exists yet
-        
-        console.log(`[TileProgressService] Tier ${tier.tier} matched! Existing progress:`, tierExisting ? tierExisting.progressValue : 'none (starting fresh)')
-        
-        // Calculate progress for this tier
-        const tierResult = await calculateRequirementProgress(event, tier.requirement, tierExisting, eventStartDate, tier)
-        
-        console.log(`[TileProgressService] Tier ${tier.tier} result:`, {
-          progressValue: tierResult.progressValue,
-          isCompleted: tierResult.isCompleted,
-          metadata: tierResult.metadata
-        })
-        
-        // If this tier is now completed and wasn't before, add it to completed tiers
-        if (tierResult.isCompleted && !completedTiers.includes(tier.tier)) {
-          completedTiers.push(tier.tier)
-          updatedMetadata[`tier_${tier.tier}_completed_at`] = event.timestamp.toISOString()
-          
-          // Auto-complete ALL lower tiers when a higher tier is completed
-          // This applies regardless of whether requirements are similar or not
-          const lowerTiers = requirements.tiers.filter(t => t.tier < tier.tier && !completedTiers.includes(t.tier))
-          for (const lowerTier of lowerTiers) {
-            // Lower tier is automatically completed when higher tier is completed
-            if (!completedTiers.includes(lowerTier.tier)) {
-              completedTiers.push(lowerTier.tier)
-              updatedMetadata[`tier_${lowerTier.tier}_completed_at`] = event.timestamp.toISOString()
-              // Set progress to the tier's target value (it's completed)
-              const lowerTierTarget = getRequirementTarget(lowerTier.requirement)
-              updatedMetadata[`tier_${lowerTier.tier}_progress`] = lowerTierTarget
-              updatedMetadata[`tier_${lowerTier.tier}_metadata`] = {
-                auto_completed_by_tier: tier.tier,
-                auto_completed_at: event.timestamp.toISOString()
-              }
-              console.log(`[TileProgressService] Auto-completed tier ${lowerTier.tier} because tier ${tier.tier} was completed`)
-            }
+      // Verify event location matches at least one tier's location
+      const firstTierLocation = (requirements.tiers[0]?.requirement as SpeedrunRequirement).location?.toLowerCase()
+      if (eventLocation !== firstTierLocation) {
+        console.log(`[TileProgressService] Speedrun location mismatch: event=${eventLocation}, tier=${firstTierLocation}`)
+        // Return existing progress if location doesn't match
+        if (existing) {
+          return {
+            progressValue: existing.progressValue,
+            metadata: existing.metadata,
+            isCompleted: (existing.metadata?.completed_tiers?.length || 0) > 0
           }
         }
-        
-        // Update metadata with tier-specific progress
-        updatedMetadata[`tier_${tier.tier}_progress`] = tierResult.progressValue
-        updatedMetadata[`tier_${tier.tier}_metadata`] = tierResult.metadata
-        
-        // Track highest tier progress value
-        if (tierResult.progressValue > highestTierProgress) {
-          highestTierProgress = tierResult.progressValue
+        return {
+          progressValue: 0,
+          metadata: {},
+          isCompleted: false
         }
+      }
+      
+      // Sort tiers by goal_seconds (ascending - easier tiers first)
+      const sortedTiers = [...requirements.tiers].sort((a, b) => {
+        const aGoal = (a.requirement as SpeedrunRequirement).goal_seconds
+        const bGoal = (b.requirement as SpeedrunRequirement).goal_seconds
+        return aGoal - bGoal // Lower goal_seconds = easier tier
+      })
+      
+      let bestTime = existing?.progressValue ? Math.min(existing.progressValue, currentTime) : currentTime
+      let anyTierMatched = false
+      
+      // Check each tier to see if current time qualifies
+      for (const tier of sortedTiers) {
+        const tierReq = tier.requirement as SpeedrunRequirement
+        const tierQualifies = currentTime <= tierReq.goal_seconds
         
-        tierMatched = true
+        console.log(`[TileProgressService] Speedrun tier ${tier.tier}: time=${currentTime}, goal=${tierReq.goal_seconds}, qualifies=${tierQualifies}`)
         
-        // Mark tile as complete when ANY tier is completed (so they get points)
-        // But continue tracking all tiers for additional progress
-        const tileIsComplete = completedTiers.length > 0 || tierResult.isCompleted
+        if (tierQualifies) {
+          // This tier qualifies - update its progress
+          const tierExisting = existing?.metadata?.[`tier_${tier.tier}_progress`] !== undefined
+            ? { 
+                progressValue: existing.metadata[`tier_${tier.tier}_progress`], 
+                metadata: existing.metadata[`tier_${tier.tier}_metadata`] || {} 
+              }
+            : null
+          
+          // Calculate progress for this tier (use best time)
+          const tierBestTime = tierExisting ? Math.min(tierExisting.progressValue, currentTime) : currentTime
+          const tierIsCompleted = tierBestTime <= tierReq.goal_seconds
+          
+          // Update best overall time (lower is better for speedruns)
+          bestTime = Math.min(bestTime, currentTime)
+          
+          // If this tier is now completed and wasn't before, add it to completed tiers
+          if (tierIsCompleted && !completedTiers.includes(tier.tier)) {
+            completedTiers.push(tier.tier)
+            updatedMetadata[`tier_${tier.tier}_completed_at`] = event.timestamp.toISOString()
+            
+            // Auto-complete ALL lower tiers when a higher tier is completed
+            const lowerTiers = requirements.tiers.filter(t => t.tier < tier.tier && !completedTiers.includes(t.tier))
+            for (const lowerTier of lowerTiers) {
+              if (!completedTiers.includes(lowerTier.tier)) {
+                completedTiers.push(lowerTier.tier)
+                updatedMetadata[`tier_${lowerTier.tier}_completed_at`] = event.timestamp.toISOString()
+                const lowerTierReq = lowerTier.requirement as SpeedrunRequirement
+                updatedMetadata[`tier_${lowerTier.tier}_progress`] = Math.min(bestTime, lowerTierReq.goal_seconds)
+                updatedMetadata[`tier_${lowerTier.tier}_metadata`] = {
+                  auto_completed_by_tier: tier.tier,
+                  auto_completed_at: event.timestamp.toISOString(),
+                  last_time: bestTime,
+                  is_personal_best: speedrunData.isPersonalBest
+                }
+                console.log(`[TileProgressService] Auto-completed tier ${lowerTier.tier} because tier ${tier.tier} was completed`)
+              }
+            }
+          }
+          
+          // Update metadata with tier-specific progress (best time for this tier)
+          updatedMetadata[`tier_${tier.tier}_progress`] = tierBestTime
+          updatedMetadata[`tier_${tier.tier}_metadata`] = {
+            last_time: currentTime,
+            current_value: tierBestTime,
+            target_value: tierReq.goal_seconds,
+            last_update_at: event.timestamp.toISOString(),
+            is_personal_best: speedrunData.isPersonalBest
+          }
+          
+          anyTierMatched = true
+        }
+      }
+      
+      if (anyTierMatched) {
+        // Find highest completed tier
+        const highestCompletedTier = completedTiers.length > 0 ? Math.max(...completedTiers) : undefined
         
         return {
-          progressValue: highestTierProgress,
+          progressValue: bestTime, // Best (lowest) time for speedruns
           metadata: {
             ...updatedMetadata,
-            ...tierResult.metadata,
             completed_tiers: completedTiers.sort((a, b) => a - b),
             total_tiers: requirements.tiers.length,
             completed_tiers_count: completedTiers.length,
-            current_tier: tier.tier,
-            current_tier_progress: tierResult.progressValue
+            current_tier: highestCompletedTier,
+            current_value: bestTime,
+            last_time: currentTime,
+            last_update_at: event.timestamp.toISOString(),
+            is_personal_best: speedrunData.isPersonalBest
           },
-          isCompleted: tileIsComplete // Mark complete when ANY tier is done
+          isCompleted: completedTiers.length > 0 // Complete if any tier is done
+        }
+      }
+    } else {
+      // Non-speedrun tiered requirements: check each tier individually
+      let highestTierProgress = existing?.progressValue || 0
+      let tierMatched = false
+      
+      // Check each tier to see if it matches the current event
+      for (const tier of requirements.tiers) {
+        const tierMatches = matchesRequirement(event, { match_type: 'all', requirements: [], tiers: [tier] })
+        console.log(`[TileProgressService] Checking tier ${tier.tier}: matches=${tierMatches}, requirement=`, JSON.stringify(tier.requirement))
+        
+        if (tierMatches) {
+          // Get tier-specific existing progress
+          const tierExisting = existing?.metadata?.[`tier_${tier.tier}_progress`] !== undefined
+            ? { 
+                progressValue: existing.metadata[`tier_${tier.tier}_progress`], 
+                metadata: existing.metadata[`tier_${tier.tier}_metadata`] || {} 
+              }
+            : null
+          
+          console.log(`[TileProgressService] Tier ${tier.tier} matched! Existing progress:`, tierExisting ? tierExisting.progressValue : 'none (starting fresh)')
+          
+          // Calculate progress for this tier
+          const tierResult = await calculateRequirementProgress(event, tier.requirement, tierExisting, eventStartDate, tier)
+          
+          console.log(`[TileProgressService] Tier ${tier.tier} result:`, {
+            progressValue: tierResult.progressValue,
+            isCompleted: tierResult.isCompleted,
+            metadata: tierResult.metadata
+          })
+          
+          // If this tier is now completed and wasn't before, add it to completed tiers
+          if (tierResult.isCompleted && !completedTiers.includes(tier.tier)) {
+            completedTiers.push(tier.tier)
+            updatedMetadata[`tier_${tier.tier}_completed_at`] = event.timestamp.toISOString()
+            
+            // Auto-complete ALL lower tiers when a higher tier is completed
+            const lowerTiers = requirements.tiers.filter(t => t.tier < tier.tier && !completedTiers.includes(t.tier))
+            for (const lowerTier of lowerTiers) {
+              if (!completedTiers.includes(lowerTier.tier)) {
+                completedTiers.push(lowerTier.tier)
+                updatedMetadata[`tier_${lowerTier.tier}_completed_at`] = event.timestamp.toISOString()
+                const lowerTierTarget = getRequirementTarget(lowerTier.requirement)
+                updatedMetadata[`tier_${lowerTier.tier}_progress`] = lowerTierTarget
+                updatedMetadata[`tier_${lowerTier.tier}_metadata`] = {
+                  auto_completed_by_tier: tier.tier,
+                  auto_completed_at: event.timestamp.toISOString()
+                }
+                console.log(`[TileProgressService] Auto-completed tier ${lowerTier.tier} because tier ${tier.tier} was completed`)
+              }
+            }
+          }
+          
+          // Update metadata with tier-specific progress
+          updatedMetadata[`tier_${tier.tier}_progress`] = tierResult.progressValue
+          updatedMetadata[`tier_${tier.tier}_metadata`] = tierResult.metadata
+          
+          // Track highest tier progress value
+          if (tierResult.progressValue > highestTierProgress) {
+            highestTierProgress = tierResult.progressValue
+          }
+          
+          tierMatched = true
+          
+          // Mark tile as complete when ANY tier is completed (so they get points)
+          const tileIsComplete = completedTiers.length > 0 || tierResult.isCompleted
+          
+          return {
+            progressValue: highestTierProgress,
+            metadata: {
+              ...updatedMetadata,
+              ...tierResult.metadata,
+              completed_tiers: completedTiers.sort((a, b) => a - b),
+              total_tiers: requirements.tiers.length,
+              completed_tiers_count: completedTiers.length,
+              current_tier: tier.tier,
+              current_tier_progress: tierResult.progressValue
+            },
+            isCompleted: tileIsComplete // Mark complete when ANY tier is done
+          }
         }
       }
     }
