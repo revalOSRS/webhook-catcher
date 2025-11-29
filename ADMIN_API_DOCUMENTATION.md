@@ -592,7 +592,26 @@ Get a team's board with all tiles, tile effects, and line effects. If no board e
             "id": "uuid",
             "osrs_account_id": "number | null",
             "progress_value": "number",
-            "progress_metadata": {},
+            "progress_metadata": {
+              "count": "number",
+              "current_value": "number",
+              "target_value": "number",
+              "last_update_at": "ISO8601 string",
+              "last_items_obtained": [ /* array of items */ ],
+              // For tiered requirements:
+              "completed_tiers": [1, 2, 3], // Array of completed tier numbers
+              "total_tiers": "number", // Total number of tiers
+              "completed_tiers_count": "number", // Number of completed tiers
+              "tier_1_progress": "number", // Progress value for tier 1
+              "tier_1_metadata": {}, // Metadata for tier 1
+              "tier_1_completed_at": "ISO8601 string | null", // When tier 1 was completed
+              "tier_2_progress": "number", // Progress value for tier 2
+              "tier_2_metadata": {},
+              "tier_2_completed_at": "ISO8601 string | null",
+              // ... additional tiers as needed
+              "current_tier": "number", // Currently active tier being tracked
+              "current_tier_progress": "number" // Progress for current tier
+            },
             "completion_type": "auto | manual_admin | null",
             "completed_at": "ISO8601 string | null",
             "completed_by_osrs_account_id": "number | null",

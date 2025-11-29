@@ -248,19 +248,53 @@ async function calculateProgress(
     
     // Check each tier to see if it matches the current event
     for (const tier of requirements.tiers) {
-      if (matchesRequirement(event, { match_type: 'all', requirements: [], tiers: [tier] })) {
-        // Get tier-specific existing progress (if stored separately)
+      const tierMatches = matchesRequirement(event, { match_type: 'all', requirements: [], tiers: [tier] })
+      console.log(`[TileProgressService] Checking tier ${tier.tier}: matches=${tierMatches}, requirement=`, JSON.stringify(tier.requirement))
+      
+      if (tierMatches) {
+        // Get tier-specific existing progress
+        // If tier progress exists in metadata, use it; otherwise start fresh (null)
         const tierExisting = existing?.metadata?.[`tier_${tier.tier}_progress`] !== undefined
-          ? { progressValue: existing.metadata[`tier_${tier.tier}_progress`], metadata: existing.metadata[`tier_${tier.tier}_metadata`] || {} }
-          : existing
+          ? { 
+              progressValue: existing.metadata[`tier_${tier.tier}_progress`], 
+              metadata: existing.metadata[`tier_${tier.tier}_metadata`] || {} 
+            }
+          : null // Start fresh for this tier if no progress exists yet
+        
+        console.log(`[TileProgressService] Tier ${tier.tier} matched! Existing progress:`, tierExisting ? tierExisting.progressValue : 'none (starting fresh)')
         
         // Calculate progress for this tier
         const tierResult = await calculateRequirementProgress(event, tier.requirement, tierExisting, eventStartDate, tier)
+        
+        console.log(`[TileProgressService] Tier ${tier.tier} result:`, {
+          progressValue: tierResult.progressValue,
+          isCompleted: tierResult.isCompleted,
+          metadata: tierResult.metadata
+        })
         
         // If this tier is now completed and wasn't before, add it to completed tiers
         if (tierResult.isCompleted && !completedTiers.includes(tier.tier)) {
           completedTiers.push(tier.tier)
           updatedMetadata[`tier_${tier.tier}_completed_at`] = event.timestamp.toISOString()
+          
+          // Auto-complete ALL lower tiers when a higher tier is completed
+          // This applies regardless of whether requirements are similar or not
+          const lowerTiers = requirements.tiers.filter(t => t.tier < tier.tier && !completedTiers.includes(t.tier))
+          for (const lowerTier of lowerTiers) {
+            // Lower tier is automatically completed when higher tier is completed
+            if (!completedTiers.includes(lowerTier.tier)) {
+              completedTiers.push(lowerTier.tier)
+              updatedMetadata[`tier_${lowerTier.tier}_completed_at`] = event.timestamp.toISOString()
+              // Set progress to the tier's target value (it's completed)
+              const lowerTierTarget = getRequirementTarget(lowerTier.requirement)
+              updatedMetadata[`tier_${lowerTier.tier}_progress`] = lowerTierTarget
+              updatedMetadata[`tier_${lowerTier.tier}_metadata`] = {
+                auto_completed_by_tier: tier.tier,
+                auto_completed_at: event.timestamp.toISOString()
+              }
+              console.log(`[TileProgressService] Auto-completed tier ${lowerTier.tier} because tier ${tier.tier} was completed`)
+            }
+          }
         }
         
         // Update metadata with tier-specific progress
@@ -338,6 +372,121 @@ async function calculateProgress(
     progressValue: existing?.progressValue || 0,
     metadata: existing?.metadata || {},
     isCompleted: false
+  }
+}
+
+/**
+ * Check if two tiers are progressive (same requirement type with increasing/decreasing thresholds)
+ * Progressive means completing a higher tier automatically completes lower tiers
+ */
+function areTiersProgressive(tier1Req: SimplifiedRequirement, tier2Req: SimplifiedRequirement): boolean {
+  // Must be same requirement type
+  if (tier1Req.type !== tier2Req.type) {
+    return false
+  }
+
+  switch (tier1Req.type) {
+    case 'SPEEDRUN': {
+      const req1 = tier1Req as SpeedrunRequirement
+      const req2 = tier2Req as SpeedrunRequirement
+      // Progressive if same location and tier1 goal is better (lower) than tier2 goal
+      return (
+        req1.location.toLowerCase() === req2.location.toLowerCase() &&
+        req1.goal_seconds < req2.goal_seconds
+      )
+    }
+    
+    case 'ITEM_DROP': {
+      const req1 = tier1Req as ItemDropRequirement
+      const req2 = tier2Req as ItemDropRequirement
+      // Progressive if same item_id and tier1 amount is higher than tier2 amount
+      if (req1.item_id !== undefined && req2.item_id !== undefined) {
+        return (
+          req1.item_id === req2.item_id &&
+          (req1.item_amount || 1) > (req2.item_amount || 1)
+        )
+      }
+      // For multiple items format, check if same items list
+      if (req1.items && req2.items) {
+        const tier1ItemIds = req1.items.map(i => i.item_id).sort()
+        const tier2ItemIds = req2.items.map(i => i.item_id).sort()
+        if (JSON.stringify(tier1ItemIds) === JSON.stringify(tier2ItemIds)) {
+          return (req1.total_amount || 0) > (req2.total_amount || 0)
+        }
+      }
+      return false
+    }
+    
+    case 'VALUE_DROP': {
+      const req1 = tier1Req as ValueDropRequirement
+      const req2 = tier2Req as ValueDropRequirement
+      // Progressive if tier1 value is higher than tier2 value
+      return req1.value > req2.value
+    }
+    
+    case 'EXPERIENCE': {
+      const req1 = tier1Req as ExperienceRequirement
+      const req2 = tier2Req as ExperienceRequirement
+      // Progressive if same skill and tier1 amount is higher than tier2 amount
+      return (
+        req1.skill.toLowerCase() === req2.skill.toLowerCase() &&
+        req1.experience > req2.experience
+      )
+    }
+    
+    case 'BA_GAMBLES': {
+      const req1 = tier1Req as BaGamblesRequirement
+      const req2 = tier2Req as BaGamblesRequirement
+      // Progressive if tier1 amount is higher than tier2 amount
+      return req1.amount > req2.amount
+    }
+    
+    case 'PET': {
+      const req1 = tier1Req as PetRequirement
+      const req2 = tier2Req as PetRequirement
+      // Progressive if same pet and tier1 amount is higher than tier2 amount
+      return (
+        req1.pet_name.toLowerCase() === req2.pet_name.toLowerCase() &&
+        req1.amount > req2.amount
+      )
+    }
+    
+    default:
+      return false
+  }
+}
+
+/**
+ * Get the target value for a requirement (used for auto-completing lower tiers)
+ */
+function getRequirementTarget(requirement: SimplifiedRequirement): number {
+  switch (requirement.type) {
+    case 'ITEM_DROP': {
+      const req = requirement as ItemDropRequirement
+      return req.item_amount || req.total_amount || 1
+    }
+    case 'VALUE_DROP': {
+      const req = requirement as ValueDropRequirement
+      return req.value
+    }
+    case 'EXPERIENCE': {
+      const req = requirement as ExperienceRequirement
+      return req.experience
+    }
+    case 'BA_GAMBLES': {
+      const req = requirement as BaGamblesRequirement
+      return req.amount
+    }
+    case 'PET': {
+      const req = requirement as PetRequirement
+      return req.amount
+    }
+    case 'SPEEDRUN': {
+      const req = requirement as SpeedrunRequirement
+      return req.goal_seconds
+    }
+    default:
+      return 0
   }
 }
 
