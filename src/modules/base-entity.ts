@@ -253,8 +253,10 @@ export abstract class BaseEntity<T extends BaseEntityData = BaseEntityData> {
     const formatted: any = {}
 
     for (const [key, value] of Object.entries(row)) {
-      if (this.camelCaseFields.includes(key)) {
-        formatted[this.toCamelCase(key)] = value
+      // Convert snake_case key to camelCase to check if it's in camelCaseFields
+      const camelKey = this.toCamelCase(key)
+      if (this.camelCaseFields.includes(camelKey)) {
+        formatted[camelKey] = value
       } else {
         formatted[key] = value
       }
