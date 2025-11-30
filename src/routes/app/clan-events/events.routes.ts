@@ -322,14 +322,13 @@ router.get('/:eventId', async (req, res: Response) => {
 						json_agg(
 							json_build_object(
 								'id', btp.id,
-								'osrsAccountId', btp.osrs_account_id,
 								'progressValue', btp.progress_value,
 								'progressMetadata', btp.progress_metadata,
 								'completionType', btp.completion_type,
 								'completedAt', btp.completed_at,
 								'completedByOsrsAccountId', btp.completed_by_osrs_account_id,
-								'completedByMemberId', btp.completed_by_member_id,
-								'recordedAt', btp.created_at
+								'createdAt', btp.created_at,
+								'updatedAt', btp.updated_at
 							)
 						) FILTER (WHERE btp.id IS NOT NULL),
 						'[]'::json
