@@ -60,7 +60,13 @@ export async function requireDiscordAdmin(req: Request, res: Response, next: Nex
     }
     
     // Get member from database and verify credentials
-    const members = await db.query<any>(`
+    const members = await db.query<{
+      id: number;
+      discordId: string;
+      discordTag: string;
+      memberCode: number;
+      isActive: boolean;
+    }>(`
       SELECT id, discord_id, discord_tag, member_code, is_active
       FROM members
       WHERE discord_id = $1
@@ -76,7 +82,7 @@ export async function requireDiscordAdmin(req: Request, res: Response, next: Nex
     const member = members[0]
     
     // Verify member code matches and member is active
-    if (code !== member.member_code || !member.is_active) {
+    if (code !== member.memberCode || !member.isActive) {
       return res.status(403).json({
         status: 'error',
         message: 'Access denied'
@@ -142,7 +148,12 @@ export async function requireMemberAuth(req: Request, res: Response, next: NextF
     }
     
     // Get member from database
-    const members = await db.query<any>(`
+    const members = await db.query<{
+      id: number;
+      discordId: string;
+      memberCode: number;
+      isActive: boolean;
+    }>(`
       SELECT id, discord_id, member_code, is_active
       FROM members
       WHERE id = $1
@@ -158,8 +169,8 @@ export async function requireMemberAuth(req: Request, res: Response, next: NextF
     const member = members[0]
     
     // Verify both authentication methods match
-    const memberCodeMatches = code === member.member_code
-    const discordIdMatches = discordId === member.discord_id
+    const memberCodeMatches = code === member.memberCode
+    const discordIdMatches = discordId === member.discordId
     
     if (!memberCodeMatches || !discordIdMatches) {
       return res.status(403).json({
@@ -169,7 +180,7 @@ export async function requireMemberAuth(req: Request, res: Response, next: NextF
     }
     
     // Check if member is active
-    if (!member.is_active) {
+    if (!member.isActive) {
       return res.status(403).json({
         status: 'error',
         message: 'Member account is inactive'
