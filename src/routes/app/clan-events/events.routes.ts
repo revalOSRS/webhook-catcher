@@ -6,7 +6,11 @@ import {
 	EventListItem,
 	EventDetail,
 	TeamMember,
-	BoardTileWithProgress
+	BoardTileWithProgress,
+	TileProgressEntry,
+	TileEffect,
+	LineEffect,
+	BoardTileEffect
 } from './types.js';
 
 const router = Router();
@@ -59,9 +63,9 @@ router.get('/', async (req, res: Response) => {
 
 		const participatingMap = new Map(
 			participating.map((p: any) => [p.event_id, {
-				team_id: p.team_id,
-				team_name: p.team_name,
-				team_score: p.team_score
+				teamId: p.team_id,
+				teamName: p.team_name,
+				teamScore: p.team_score
 			}])
 		);
 
@@ -70,15 +74,15 @@ router.get('/', async (req, res: Response) => {
 			return {
 				id: event.id,
 				name: event.name,
-				event_type: event.event_type,
+				eventType: event.event_type,
 				status: event.status,
-				start_date: event.start_date,
-				end_date: event.end_date,
-				team_count: parseInt(event.total_teams),
-				is_participating: !!participation,
-				team_id: participation?.team_id,
-				team_name: participation?.team_name,
-				team_score: participation?.team_score
+				startDate: event.start_date,
+				endDate: event.end_date,
+				teamCount: parseInt(event.total_teams),
+				isParticipating: !!participation,
+				teamId: participation?.teamId,
+				teamName: participation?.teamName,
+				teamScore: participation?.teamScore
 			};
 		});
 
@@ -171,6 +175,66 @@ router.get('/my-events', async (req, res: Response) => {
 });
 
 /**
+ * Helper to map progress entry from DB to camelCase
+ */
+const mapProgressEntry = (p: any): TileProgressEntry => ({
+	id: p.id,
+	osrsAccountId: p.osrs_account_id,
+	progressValue: p.progress_value,
+	progressMetadata: p.progress_metadata,
+	completionType: p.completion_type,
+	completedAt: p.completed_at,
+	completedByOsrsAccountId: p.completed_by_osrs_account_id,
+	completedByMemberId: p.completed_by_member_id,
+	recordedAt: p.recorded_at
+});
+
+/**
+ * Helper to map tile effect from DB to camelCase
+ */
+const mapTileEffect = (e: any): TileEffect => ({
+	id: e.id,
+	buffName: e.buff_name,
+	buffType: e.buff_type,
+	effectType: e.effect_type,
+	effectValue: e.effect_value,
+	buffIcon: e.buff_icon,
+	isActive: e.is_active,
+	expiresAt: e.expires_at
+});
+
+/**
+ * Helper to map line effect from DB to camelCase
+ */
+const mapLineEffect = (e: any): LineEffect => ({
+	id: e.id,
+	lineType: e.line_type,
+	lineIdentifier: e.line_identifier,
+	buffName: e.buff_name,
+	buffType: e.buff_type,
+	effectType: e.effect_type,
+	effectValue: e.effect_value,
+	buffIcon: e.buff_icon,
+	isActive: e.is_active,
+	expiresAt: e.expires_at
+});
+
+/**
+ * Helper to map board tile effect from DB to camelCase
+ */
+const mapBoardTileEffect = (e: any): BoardTileEffect => ({
+	id: e.id,
+	boardTileId: e.board_tile_id,
+	buffName: e.buff_name,
+	buffType: e.buff_type,
+	effectType: e.effect_type,
+	effectValue: e.effect_value,
+	buffIcon: e.buff_icon,
+	isActive: e.is_active,
+	expiresAt: e.expires_at
+});
+
+/**
  * GET /api/app/clan-events/events/:eventId
  * Get event details for user's team (only if participating)
  * Includes board, tiles with full progress, team members, buffs/debuffs
@@ -222,21 +286,21 @@ router.get('/:eventId', async (req, res: Response) => {
 			LEFT JOIN osrs_accounts oa ON etm.osrs_account_id = oa.id
 			WHERE etm.team_id = $1
 			ORDER BY etm.role, m.discord_tag
-		`, [participation.team_id]);
+		`, [participation.teamId]);
 
 		const members: TeamMember[] = teamMembers.map((tm: any) => ({
 			id: tm.id,
-			member_id: tm.member_id,
-			discord_tag: tm.discord_tag,
+			memberId: tm.member_id,
+			discordTag: tm.discord_tag,
 			role: tm.role,
-			osrs_account_id: tm.osrs_account_id,
-			osrs_account_name: tm.osrs_account_name
+			osrsAccountId: tm.osrs_account_id,
+			osrsAccountName: tm.osrs_account_name
 		}));
 
 		// Get team's board
 		const boards = await query(
 			'SELECT * FROM bingo_boards WHERE event_id = $1 AND team_id = $2',
-			[eventId, participation.team_id]
+			[eventId, participation.teamId]
 		);
 
 		let board = null;
@@ -322,22 +386,13 @@ router.get('/:eventId', async (req, res: Response) => {
 			`, [teamBoard.id, showTileBuffs]);
 
 			// Group tile effects by board_tile_id
-			const tileEffectsByTile: Record<string, any[]> = {};
+			const tileEffectsByTile: Record<string, TileEffect[]> = {};
 			tileEffects.forEach((effect: any) => {
 				if (!tileEffectsByTile[effect.board_tile_id]) {
 					tileEffectsByTile[effect.board_tile_id] = [];
 				}
 				if (showTileBuffs || effect.is_active) {
-					tileEffectsByTile[effect.board_tile_id].push({
-						id: effect.id,
-						buff_name: effect.buff_name,
-						buff_type: effect.buff_type,
-						effect_type: effect.effect_type,
-						effect_value: effect.effect_value,
-						buff_icon: effect.buff_icon,
-						is_active: effect.is_active,
-						expires_at: effect.expires_at
-					});
+					tileEffectsByTile[effect.board_tile_id].push(mapTileEffect(effect));
 				}
 			});
 
@@ -356,77 +411,50 @@ router.get('/:eventId', async (req, res: Response) => {
 				ORDER BY bble.line_type, bble.line_identifier
 			`, [teamBoard.id]);
 
-			const rowEffects = lineEffects
+			const rowEffects: LineEffect[] = lineEffects
 				.filter((e: any) => e.line_type === 'row')
-				.map((e: any) => ({
-					id: e.id,
-					line_type: 'row' as const,
-					line_identifier: e.line_identifier,
-					buff_name: e.buff_name,
-					buff_type: e.buff_type,
-					effect_type: e.effect_type,
-					effect_value: e.effect_value,
-					buff_icon: e.buff_icon,
-					is_active: e.is_active,
-					expires_at: e.expires_at
-				}));
+				.map(mapLineEffect);
 
-			const columnEffects = lineEffects
+			const columnEffects: LineEffect[] = lineEffects
 				.filter((e: any) => e.line_type === 'column')
-				.map((e: any) => ({
-					id: e.id,
-					line_type: 'column' as const,
-					line_identifier: e.line_identifier,
-					buff_name: e.buff_name,
-					buff_type: e.buff_type,
-					effect_type: e.effect_type,
-					effect_value: e.effect_value,
-					buff_icon: e.buff_icon,
-					is_active: e.is_active,
-					expires_at: e.expires_at
-				}));
+				.map(mapLineEffect);
 
 			// Map tiles with progress entries and tile effects
-			const tilesWithProgress: BoardTileWithProgress[] = tiles.map((tile: any) => ({
-				id: tile.id,
-				board_id: tile.board_id,
-				tile_id: tile.tile_id,
-				position: tile.position,
-				is_completed: tile.is_completed,
-				completed_at: tile.completed_at,
-				task: tile.task,
-				category: tile.category,
-				difficulty: tile.difficulty,
-				icon: tile.icon,
-				description: tile.description,
-				base_points: tile.base_points,
-				requirements: tile.requirements,
-				progress_entries: tile.progress_entries || [],
-				team_total_xp_gained: tile.team_total_xp_gained,
-				tile_effects: tileEffectsByTile[tile.id] || undefined
-			}));
+			const tilesWithProgress: BoardTileWithProgress[] = tiles.map((tile: any) => {
+				// Map progress entries from snake_case to camelCase
+				const progressEntries: TileProgressEntry[] = (tile.progress_entries || []).map(mapProgressEntry);
+
+				return {
+					id: tile.id,
+					boardId: tile.board_id,
+					tileId: tile.tile_id,
+					position: tile.position,
+					isCompleted: tile.is_completed,
+					completedAt: tile.completed_at,
+					task: tile.task,
+					category: tile.category,
+					difficulty: tile.difficulty,
+					icon: tile.icon,
+					description: tile.description,
+					basePoints: tile.base_points,
+					requirements: tile.requirements,
+					progressEntries,
+					teamTotalXpGained: tile.team_total_xp_gained,
+					tileEffects: tileEffectsByTile[tile.id] || undefined
+				};
+			});
 
 			board = {
 				id: teamBoard.id,
-				name: teamBoard.name,
-				description: teamBoard.description,
 				columns: teamBoard.columns,
 				rows: teamBoard.rows,
 				metadata: teamBoard.metadata,
 				tiles: tilesWithProgress,
-				tile_effects: tileEffects.filter((e: any) => showTileBuffs || e.is_active).map((e: any) => ({
-					id: e.id,
-					board_tile_id: e.board_tile_id,
-					buff_name: e.buff_name,
-					buff_type: e.buff_type,
-					effect_type: e.effect_type,
-					effect_value: e.effect_value,
-					buff_icon: e.buff_icon,
-					is_active: e.is_active,
-					expires_at: e.expires_at
-				})),
-				row_effects: rowEffects,
-				column_effects: columnEffects
+				tileEffects: tileEffects
+					.filter((e: any) => showTileBuffs || e.is_active)
+					.map(mapBoardTileEffect),
+				rowEffects,
+				columnEffects
 			};
 		}
 
@@ -434,14 +462,14 @@ router.get('/:eventId', async (req, res: Response) => {
 			id: event.id,
 			name: event.name,
 			description: event.description,
-			event_type: event.event_type,
+			eventType: event.event_type,
 			status: event.status,
-			start_date: event.start_date,
-			end_date: event.end_date,
+			startDate: event.start_date,
+			endDate: event.end_date,
 			config: event.config,
 			team: {
-				id: participation.team_id,
-				name: participation.team_name,
+				id: participation.teamId,
+				name: participation.teamName,
 				color: participation.color,
 				icon: participation.icon,
 				score: participation.score,
@@ -465,4 +493,3 @@ router.get('/:eventId', async (req, res: Response) => {
 });
 
 export default router;
-

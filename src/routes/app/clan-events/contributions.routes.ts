@@ -32,7 +32,7 @@ router.get('/', async (req, res: Response) => {
 		// Get user's OSRS accounts
 		const osrsAccounts = await query(
 			'SELECT id FROM osrs_accounts WHERE discord_id = $1',
-			[member.discord_id]
+			[member.discordId]
 		);
 		const osrsAccountIds = osrsAccounts.map((acc: any) => acc.id);
 
@@ -64,11 +64,22 @@ router.get('/', async (req, res: Response) => {
 				AND bb.team_id = $2
 				AND btp.osrs_account_id = ANY($3::int[])
 			ORDER BY btp.recorded_at DESC
-		`, [eventId, participation.team_id, osrsAccountIds]);
+		`, [eventId, participation.teamId, osrsAccountIds]);
 
 		res.json({
 			success: true,
-			data: contributions
+			data: contributions.map((c: any) => ({
+				boardTileId: c.board_tile_id,
+				position: c.position,
+				task: c.task,
+				category: c.category,
+				icon: c.icon,
+				progressValue: c.progress_value,
+				progressMetadata: c.progress_metadata,
+				completionType: c.completion_type,
+				completedAt: c.completed_at,
+				recordedAt: c.recorded_at
+			}))
 		});
 	} catch (error: any) {
 		console.error('Error fetching user contributions:', error);
@@ -81,4 +92,3 @@ router.get('/', async (req, res: Response) => {
 });
 
 export default router;
-

@@ -4,81 +4,150 @@ import { query } from '../../../../../db/connection.js';
 const router = Router({ mergeParams: true }); // mergeParams to access :eventId and :teamId
 
 /**
- * Types for board responses
+ * Types for board responses (camelCase for API consistency)
  */
 interface TileProgressEntry {
 	id: string;
-	osrs_account_id: number | null;
-	progress_value: number;
-	progress_metadata: Record<string, any>;
-	completion_type: 'auto' | 'manual_admin' | null;
-	completed_at: string | null;
-	completed_by_osrs_account_id: number | null;
-	completed_by_member_id: number | null;
-	recorded_at: string;
+	osrsAccountId: number | null;
+	progressValue: number;
+	progressMetadata: Record<string, any>;
+	completionType: 'auto' | 'manual_admin' | null;
+	completedAt: string | null;
+	completedByOsrsAccountId: number | null;
+	completedByMemberId: number | null;
+	recordedAt: string;
 }
 
 interface BoardTile {
 	id: string;
-	board_id: string;
-	tile_id: string;
+	boardId: string;
+	tileId: string;
 	position: string;
-	is_completed: boolean;
-	completed_at: string | null;
+	isCompleted: boolean;
+	completedAt: string | null;
 	metadata: any;
 	task: string;
 	category: string;
 	difficulty: string;
 	icon: string | null;
 	description: string | null;
-	base_points: number;
+	basePoints: number;
 	requirements: any;
-	progress_entries: TileProgressEntry[];
-	team_total_xp_gained?: number | null; // For EXPERIENCE requirements, total XP gained by team
+	progressEntries: TileProgressEntry[];
+	teamTotalXpGained?: number | null;
 }
 
 interface TileEffect {
 	id: string;
-	board_tile_id: string;
-	buff_debuff_id: string;
-	is_active: boolean;
-	expires_at: string | null;
-	buff_name: string;
-	buff_type: 'buff' | 'debuff';
-	effect_type: string;
-	effect_value: number;
-	buff_icon: string | null;
+	boardTileId: string;
+	buffDebuffId: string;
+	isActive: boolean;
+	expiresAt: string | null;
+	buffName: string;
+	buffType: 'buff' | 'debuff';
+	effectType: string;
+	effectValue: number;
+	buffIcon: string | null;
 }
 
 interface LineEffect {
 	id: string;
-	board_id: string;
-	line_type: 'row' | 'column';
-	line_identifier: string;
-	buff_debuff_id: string;
-	is_active: boolean;
-	expires_at: string | null;
-	buff_name: string;
-	buff_type: 'buff' | 'debuff';
-	effect_type: string;
-	effect_value: number;
-	buff_icon: string | null;
+	boardId: string;
+	lineType: 'row' | 'column';
+	lineIdentifier: string;
+	buffDebuffId: string;
+	isActive: boolean;
+	expiresAt: string | null;
+	buffName: string;
+	buffType: 'buff' | 'debuff';
+	effectType: string;
+	effectValue: number;
+	buffIcon: string | null;
 }
 
 interface BoardResponse {
 	id: string;
-	event_id: string;
-	team_id: string;
-	name: string;
-	description: string | null;
+	eventId: string;
+	teamId: string;
 	columns: number;
 	rows: number;
-	metadata: any; // Contains showRowColumnBuffs, showTileEffects, etc.
+	metadata: any;
 	tiles: BoardTile[];
-	tile_effects: TileEffect[];
-	row_effects: LineEffect[];
-	column_effects: LineEffect[];
+	tileEffects: TileEffect[];
+	rowEffects: LineEffect[];
+	columnEffects: LineEffect[];
 }
+
+/**
+ * Map DB progress entry to camelCase
+ */
+const mapProgressEntry = (p: any): TileProgressEntry => ({
+	id: p.id,
+	osrsAccountId: p.osrs_account_id,
+	progressValue: p.progress_value,
+	progressMetadata: p.progress_metadata,
+	completionType: p.completion_type,
+	completedAt: p.completed_at,
+	completedByOsrsAccountId: p.completed_by_osrs_account_id,
+	completedByMemberId: p.completed_by_member_id,
+	recordedAt: p.recorded_at
+});
+
+/**
+ * Map DB tile to camelCase
+ */
+const mapBoardTile = (tile: any): BoardTile => ({
+	id: tile.id,
+	boardId: tile.board_id,
+	tileId: tile.tile_id,
+	position: tile.position,
+	isCompleted: tile.is_completed,
+	completedAt: tile.completed_at,
+	metadata: tile.metadata,
+	task: tile.task,
+	category: tile.category,
+	difficulty: tile.difficulty,
+	icon: tile.icon,
+	description: tile.description,
+	basePoints: tile.base_points,
+	requirements: tile.requirements,
+	progressEntries: (tile.progress_entries || []).map(mapProgressEntry),
+	teamTotalXpGained: tile.team_total_xp_gained
+});
+
+/**
+ * Map DB tile effect to camelCase
+ */
+const mapTileEffect = (e: any): TileEffect => ({
+	id: e.id,
+	boardTileId: e.board_tile_id,
+	buffDebuffId: e.buff_debuff_id,
+	isActive: e.is_active,
+	expiresAt: e.expires_at,
+	buffName: e.buff_name,
+	buffType: e.buff_type,
+	effectType: e.effect_type,
+	effectValue: e.effect_value,
+	buffIcon: e.buff_icon
+});
+
+/**
+ * Map DB line effect to camelCase
+ */
+const mapLineEffect = (e: any): LineEffect => ({
+	id: e.id,
+	boardId: e.board_id,
+	lineType: e.line_type,
+	lineIdentifier: e.line_identifier,
+	buffDebuffId: e.buff_debuff_id,
+	isActive: e.is_active,
+	expiresAt: e.expires_at,
+	buffName: e.buff_name,
+	buffType: e.buff_type,
+	effectType: e.effect_type,
+	effectValue: e.effect_value,
+	buffIcon: e.buff_icon
+});
 
 /**
  * GET /api/admin/clan-events/:eventId/teams/:teamId/board
@@ -258,16 +327,21 @@ router.get('/', async (req: Request, res: Response) => {
 			ORDER BY bble.line_type, bble.line_identifier
 		`, [board.id]);
 
-		// Separate row and column effects
-		const rowEffects = lineEffects.filter((e: any) => e.line_type === 'row');
-		const columnEffects = lineEffects.filter((e: any) => e.line_type === 'column');
+		// Separate row and column effects and map to camelCase
+		const rowEffects = lineEffects.filter((e: any) => e.line_type === 'row').map(mapLineEffect);
+		const columnEffects = lineEffects.filter((e: any) => e.line_type === 'column').map(mapLineEffect);
 
 		const response: BoardResponse = {
-			...board,
-			tiles: tiles as BoardTile[],
-			tile_effects: tileEffects as TileEffect[],
-			row_effects: rowEffects as LineEffect[],
-			column_effects: columnEffects as LineEffect[]
+			id: board.id,
+			eventId: board.event_id,
+			teamId: board.team_id,
+			columns: board.columns,
+			rows: board.rows,
+			metadata: board.metadata,
+			tiles: tiles.map(mapBoardTile),
+			tileEffects: tileEffects.map(mapTileEffect),
+			rowEffects,
+			columnEffects
 		};
 
 		res.json({
@@ -419,13 +493,13 @@ router.patch('/', async (req: Request, res: Response) => {
 router.post('/tiles', async (req: Request, res: Response) => {
 	try {
 		const { eventId, teamId } = req.params;
-		const { tile_id, position, metadata = {} } = req.body;
+		const { tileId, position, metadata = {} } = req.body;
 
-		if (!tile_id || !position) {
+		if (!tileId || !position) {
 			return res.status(400).json({
 				success: false,
 				error: 'Missing required fields',
-				required: ['tile_id', 'position']
+				required: ['tileId', 'position']
 			});
 		}
 
@@ -457,7 +531,7 @@ router.post('/tiles', async (req: Request, res: Response) => {
 		const boardId = boards[0].id;
 
 		// Check if tile exists in library
-		const tileCheck = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile_id]);
+		const tileCheck = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tileId]);
 		if (tileCheck.length === 0) {
 			return res.status(404).json({
 				success: false,
@@ -484,7 +558,7 @@ router.post('/tiles', async (req: Request, res: Response) => {
 			)
 			VALUES ($1, $2, $3, $4)
 			RETURNING *
-		`, [boardId, tile_id, position, JSON.stringify(metadata)]);
+		`, [boardId, tileId, position, JSON.stringify(metadata)]);
 
 		res.status(201).json({
 			success: true,
@@ -667,7 +741,7 @@ router.delete('/tiles/:tileId', async (req: Request, res: Response) => {
 		res.json({
 			success: true,
 			message: 'Tile removed from board successfully',
-			deleted_id: result[0].id
+			deletedId: result[0].id
 		});
 	} catch (error: any) {
 		console.error('Error removing tile from board:', error);
@@ -689,13 +763,13 @@ router.delete('/tiles/:tileId', async (req: Request, res: Response) => {
 router.post('/tile-buffs', async (req: Request, res: Response) => {
 	try {
 		const { eventId, teamId } = req.params;
-		const { board_tile_id, buff_debuff_id, applied_by, expires_at, metadata = {} } = req.body;
+		const { boardTileId, buffDebuffId, appliedBy, expiresAt, metadata = {} } = req.body;
 
-		if (!board_tile_id || !buff_debuff_id) {
+		if (!boardTileId || !buffDebuffId) {
 			return res.status(400).json({
 				success: false,
 				error: 'Missing required fields',
-				required: ['board_tile_id', 'buff_debuff_id']
+				required: ['boardTileId', 'buffDebuffId']
 			});
 		}
 
@@ -725,7 +799,7 @@ router.post('/tile-buffs', async (req: Request, res: Response) => {
 		// Check if board tile belongs to this board
 		const tileCheck = await query(
 			'SELECT id FROM bingo_board_tiles WHERE id = $1 AND board_id = $2',
-			[board_tile_id, boards[0].id]
+			[boardTileId, boards[0].id]
 		);
 		if (tileCheck.length === 0) {
 			return res.status(404).json({
@@ -735,7 +809,7 @@ router.post('/tile-buffs', async (req: Request, res: Response) => {
 		}
 
 		// Check if buff/debuff exists
-		const buffCheck = await query('SELECT id FROM bingo_buffs_debuffs WHERE id = $1', [buff_debuff_id]);
+		const buffCheck = await query('SELECT id FROM bingo_buffs_debuffs WHERE id = $1', [buffDebuffId]);
 		if (buffCheck.length === 0) {
 			return res.status(404).json({
 				success: false,
@@ -746,7 +820,7 @@ router.post('/tile-buffs', async (req: Request, res: Response) => {
 		// Check if already applied
 		const existing = await query(
 			'SELECT id FROM bingo_board_tile_effects WHERE board_tile_id = $1 AND buff_debuff_id = $2',
-			[board_tile_id, buff_debuff_id]
+			[boardTileId, buffDebuffId]
 		);
 		if (existing.length > 0) {
 			return res.status(409).json({
@@ -761,7 +835,7 @@ router.post('/tile-buffs', async (req: Request, res: Response) => {
 			)
 			VALUES ($1, $2, $3, $4, $5)
 			RETURNING *
-		`, [board_tile_id, buff_debuff_id, applied_by, expires_at, JSON.stringify(metadata)]);
+		`, [boardTileId, buffDebuffId, appliedBy, expiresAt, JSON.stringify(metadata)]);
 
 		res.status(201).json({
 			success: true,
@@ -932,7 +1006,7 @@ router.delete('/tile-buffs/:effectId', async (req: Request, res: Response) => {
 		res.json({
 			success: true,
 			message: 'Effect removed from tile successfully',
-			deleted_id: result[0].id
+			deletedId: result[0].id
 		});
 	} catch (error: any) {
 		console.error('Error removing effect from tile:', error);
@@ -955,27 +1029,27 @@ router.post('/line-buffs', async (req: Request, res: Response) => {
 	try {
 		const { eventId, teamId } = req.params;
 		const {
-			line_type,
-			line_identifier,
-			buff_debuff_id,
-			applied_by,
-			expires_at,
+			lineType,
+			lineIdentifier,
+			buffDebuffId,
+			appliedBy,
+			expiresAt,
 			metadata = {}
 		} = req.body;
 
-		if (!line_type || !line_identifier || !buff_debuff_id) {
+		if (!lineType || !lineIdentifier || !buffDebuffId) {
 			return res.status(400).json({
 				success: false,
 				error: 'Missing required fields',
-				required: ['line_type', 'line_identifier', 'buff_debuff_id']
+				required: ['lineType', 'lineIdentifier', 'buffDebuffId']
 			});
 		}
 
-		if (!['row', 'column'].includes(line_type)) {
+		if (!['row', 'column'].includes(lineType)) {
 			return res.status(400).json({
 				success: false,
-				error: 'Invalid line_type',
-				valid_types: ['row', 'column']
+				error: 'Invalid lineType',
+				validTypes: ['row', 'column']
 			});
 		}
 
@@ -1004,9 +1078,9 @@ router.post('/line-buffs', async (req: Request, res: Response) => {
 
 		const board = boards[0];
 
-		// Validate line_identifier
-		if (line_type === 'row') {
-			const rowNum = parseInt(line_identifier);
+		// Validate lineIdentifier
+		if (lineType === 'row') {
+			const rowNum = parseInt(lineIdentifier);
 			if (isNaN(rowNum) || rowNum < 1 || rowNum > board.rows) {
 				return res.status(400).json({
 					success: false,
@@ -1015,7 +1089,7 @@ router.post('/line-buffs', async (req: Request, res: Response) => {
 				});
 			}
 		} else {
-			const columnIndex = line_identifier.toUpperCase().charCodeAt(0) - 65;
+			const columnIndex = lineIdentifier.toUpperCase().charCodeAt(0) - 65;
 			if (columnIndex < 0 || columnIndex >= board.columns) {
 				return res.status(400).json({
 					success: false,
@@ -1026,7 +1100,7 @@ router.post('/line-buffs', async (req: Request, res: Response) => {
 		}
 
 		// Check if buff/debuff exists
-		const buffCheck = await query('SELECT id FROM bingo_buffs_debuffs WHERE id = $1', [buff_debuff_id]);
+		const buffCheck = await query('SELECT id FROM bingo_buffs_debuffs WHERE id = $1', [buffDebuffId]);
 		if (buffCheck.length === 0) {
 			return res.status(404).json({
 				success: false,
@@ -1037,7 +1111,7 @@ router.post('/line-buffs', async (req: Request, res: Response) => {
 		// Check if already applied
 		const existing = await query(
 			'SELECT id FROM bingo_board_line_effects WHERE board_id = $1 AND line_type = $2 AND line_identifier = $3 AND buff_debuff_id = $4',
-			[board.id, line_type, line_type === 'column' ? line_identifier.toUpperCase() : line_identifier, buff_debuff_id]
+			[board.id, lineType, lineType === 'column' ? lineIdentifier.toUpperCase() : lineIdentifier, buffDebuffId]
 		);
 		if (existing.length > 0) {
 			return res.status(409).json({
@@ -1054,11 +1128,11 @@ router.post('/line-buffs', async (req: Request, res: Response) => {
 			RETURNING *
 		`, [
 			board.id,
-			line_type,
-			line_type === 'column' ? line_identifier.toUpperCase() : line_identifier,
-			buff_debuff_id,
-			applied_by,
-			expires_at,
+			lineType,
+			lineType === 'column' ? lineIdentifier.toUpperCase() : lineIdentifier,
+			buffDebuffId,
+			appliedBy,
+			expiresAt,
 			JSON.stringify(metadata)
 		]);
 
@@ -1227,7 +1301,7 @@ router.delete('/line-buffs/:effectId', async (req: Request, res: Response) => {
 		res.json({
 			success: true,
 			message: 'Effect removed from line successfully',
-			deleted_id: result[0].id
+			deletedId: result[0].id
 		});
 	} catch (error: any) {
 		console.error('Error removing effect from line:', error);
@@ -1249,7 +1323,7 @@ router.delete('/line-buffs/:effectId', async (req: Request, res: Response) => {
 router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 	try {
 		const { eventId, teamId, tileId } = req.params;
-		const { completion_type = 'manual_admin', completed_by_osrs_account_id, notes } = req.body;
+		const { completionType = 'manual_admin', completedByOsrsAccountId, notes } = req.body;
 
 		// Validate team and board
 		const teamCheck = await query(
@@ -1324,8 +1398,8 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 					updated_at = CURRENT_TIMESTAMP
 				WHERE id = $4
 			`, [
-				completion_type,
-				completed_by_osrs_account_id || null,
+				completionType,
+				completedByOsrsAccountId || null,
 				JSON.stringify({ manual_completion: true, notes: notes || null }),
 				existingProgress[0].id
 			]);
@@ -1339,10 +1413,10 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 				VALUES ($1, $2, 1, $3, $4, CURRENT_TIMESTAMP, $5)
 			`, [
 				tileId,
-				completed_by_osrs_account_id || null,
+				completedByOsrsAccountId || null,
 				JSON.stringify({ manual_completion: true, notes: notes || null }),
-				completion_type,
-				completed_by_osrs_account_id || null
+				completionType,
+				completedByOsrsAccountId || null
 			]);
 		}
 
@@ -1371,8 +1445,8 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 					: null
 				
 				let playerName = 'Admin'
-				if (completed_by_osrs_account_id) {
-					const accounts = await query('SELECT osrs_nickname FROM osrs_accounts WHERE id = $1 LIMIT 1', [completed_by_osrs_account_id])
+				if (completedByOsrsAccountId) {
+					const accounts = await query('SELECT osrs_nickname FROM osrs_accounts WHERE id = $1 LIMIT 1', [completedByOsrsAccountId])
 					if (accounts.length > 0) {
 						playerName = accounts[0].osrs_nickname || 'Admin'
 					}

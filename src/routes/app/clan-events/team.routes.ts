@@ -42,7 +42,7 @@ router.get('/progress', async (req, res: Response) => {
 			JOIN bingo_board_tiles bbt ON bb.id = bbt.board_id
 			JOIN event_teams et ON bb.team_id = et.id
 			WHERE bb.team_id = $1 AND bb.event_id = $2
-		`, [participation.team_id, eventId]);
+		`, [participation.teamId, eventId]);
 
 		const progress = stats[0] || { total_tiles: 0, completed_tiles: 0, team_score: 0 };
 		const completionPercentage = progress.total_tiles > 0
@@ -52,10 +52,10 @@ router.get('/progress', async (req, res: Response) => {
 		res.json({
 			success: true,
 			data: {
-				total_tiles: parseInt(progress.total_tiles),
-				completed_tiles: parseInt(progress.completed_tiles),
-				completion_percentage: Math.round(completionPercentage * 100) / 100,
-				team_score: parseInt(progress.team_score) || 0
+				totalTiles: parseInt(progress.total_tiles),
+				completedTiles: parseInt(progress.completed_tiles),
+				completionPercentage: Math.round(completionPercentage * 100) / 100,
+				teamScore: parseInt(progress.team_score) || 0
 			}
 		});
 	} catch (error: any) {
@@ -111,14 +111,14 @@ router.get('/leaderboard', async (req, res: Response) => {
 			WHERE etm.team_id = $1
 			GROUP BY etm.id, m.discord_tag, oa.osrs_nickname
 			ORDER BY etm.individual_score DESC, total_progress DESC
-		`, [participation.team_id]);
+		`, [participation.teamId]);
 
 		res.json({
 			success: true,
 			data: {
 				team: {
-					id: participation.team_id,
-					name: participation.team_name,
+					id: participation.teamId,
+					name: participation.teamName,
 					score: participation.score
 				},
 				myMemberId: member.id,
@@ -195,7 +195,7 @@ router.get('/activity', async (req, res: Response) => {
 			WHERE bb.team_id = $1 AND bb.event_id = $2
 			ORDER BY COALESCE(btp.completed_at, btp.updated_at) DESC
 			LIMIT $3
-		`, [participation.team_id, eventId, parseInt(limit as string)]);
+		`, [participation.teamId, eventId, parseInt(limit as string)]);
 
 		res.json({
 			success: true,
@@ -226,4 +226,3 @@ router.get('/activity', async (req, res: Response) => {
 });
 
 export default router;
-

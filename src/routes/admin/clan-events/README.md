@@ -161,15 +161,14 @@ POST /events
 {
   "name": "Summer Bingo 2025",
   "description": "Our summer clan event!",
-  "event_type": "bingo",
+  "eventType": "bingo",
   "status": "draft",
-  "start_date": "2025-06-01T00:00:00Z",
-  "end_date": "2025-06-30T23:59:59Z",
+  "startDate": "2025-06-01T00:00:00Z",
+  "endDate": "2025-06-30T23:59:59Z",
   "config": {
     "board": {
       "columns": 7,
       "rows": 7,
-      "name": "7x7 Bingo Board",
       "metadata": { "showTileEffects": true, "showRowColumnBuffs": false },
       "tiles": [
         { "tileId": "get-fire-cape", "position": "A1" }
@@ -182,11 +181,11 @@ POST /events
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | name | string | Yes | Event name |
-| event_type | string | Yes | `bingo`, `battleship_bingo`, etc. |
+| eventType | string | Yes | `bingo`, `battleship_bingo`, etc. |
 | description | string | No | Event description |
 | status | string | No | Default: `draft` |
-| start_date | string | No | ISO 8601 datetime (defaults to now) |
-| end_date | string | No | ISO 8601 datetime (defaults to +30 days) |
+| startDate | string | No | ISO 8601 datetime (defaults to now) |
+| endDate | string | No | ISO 8601 datetime (defaults to +30 days) |
 | config | object | No | Event-type-specific configuration |
 
 ---
@@ -202,14 +201,14 @@ Creates a copy of an event in draft status.
 ```json
 {
   "name": "Summer Bingo 2025 v2",
-  "include_teams": true
+  "includeTeams": true
 }
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | name | string | "{original} (Copy)" | New event name |
-| include_teams | boolean | false | Also duplicate team structure |
+| includeTeams | boolean | false | Also duplicate team structure |
 
 ---
 
@@ -224,8 +223,8 @@ PATCH /events/:id
   "name": "Updated Event Name",
   "description": "Updated description",
   "status": "active",
-  "start_date": "2025-06-01T00:00:00Z",
-  "end_date": "2025-06-30T23:59:59Z",
+  "startDate": "2025-06-01T00:00:00Z",
+  "endDate": "2025-06-30T23:59:59Z",
   "config": { ... }
 }
 ```
@@ -357,8 +356,8 @@ POST /events/:eventId/registrations
 **Request Body:**
 ```json
 {
-  "member_id": 123,
-  "osrs_account_id": 456,
+  "memberId": 123,
+  "osrsAccountId": 456,
   "status": "registered",
   "metadata": {}
 }
@@ -376,8 +375,8 @@ POST /events/:eventId/registrations/batch
 {
   "status": "registered",
   "registrations": [
-    { "member_id": 123, "osrs_account_id": 456 },
-    { "member_id": 124, "osrs_account_id": 457 }
+    { "memberId": 123, "osrsAccountId": 456 },
+    { "memberId": 124, "osrsAccountId": 457 }
   ]
 }
 ```
@@ -441,7 +440,7 @@ POST /teams
 **Request Body:**
 ```json
 {
-  "event_id": "uuid",
+  "eventId": "uuid",
   "name": "Team Alpha",
   "color": "#FF5733",
   "icon": "🔥",
@@ -459,7 +458,7 @@ POST /teams/batch
 **Request Body:**
 ```json
 {
-  "event_id": "uuid",
+  "eventId": "uuid",
   "teams": [
     { "name": "Team Alpha", "color": "#FF5733" },
     { "name": "Team Beta", "color": "#33FF57" }
@@ -509,8 +508,8 @@ POST /teams/:id/members
 **Request Body:**
 ```json
 {
-  "member_id": 123,
-  "osrs_account_id": 456,
+  "memberId": 123,
+  "osrsAccountId": 456,
   "role": "captain",
   "metadata": {}
 }
@@ -540,7 +539,7 @@ POST /teams/:fromTeamId/members/:memberId/transfer
 **Request Body:**
 ```json
 {
-  "to_team_id": "uuid"
+  "toTeamId": "uuid"
 }
 ```
 
@@ -597,8 +596,8 @@ POST /events/:eventId/teams/:teamId/board/tiles/:tileId/complete
 **Request Body:**
 ```json
 {
-  "completion_type": "manual_admin",
-  "completed_by_osrs_account_id": 456,
+  "completionType": "manual_admin",
+  "completedByOsrsAccountId": 456,
   "notes": "Verified via screenshot"
 }
 ```
@@ -693,7 +692,6 @@ GET /bingo/tiles
 |-----------|------|-------------|
 | category | string | Filter by category |
 | difficulty | string | `easy`, `medium`, `hard`, `extreme` |
-| is_active | boolean | Filter by active status |
 | search | string | Search in task, description, or ID |
 
 ---
@@ -719,7 +717,7 @@ POST /bingo/tiles
   "difficulty": "medium",
   "icon": "🔥",
   "description": "Complete the Fight Caves",
-  "base_points": 50,
+  "points": 50,
   "requirements": {
     "matchType": "ALL",
     "requirements": [
@@ -729,8 +727,7 @@ POST /bingo/tiles
       }
     ],
     "tiers": []
-  },
-  "is_active": true
+  }
 }
 ```
 
@@ -781,7 +778,7 @@ GET /bingo/tiles/categories/list
 │     POST /events                                                         │
 │     {                                                                    │
 │       "name": "Summer Bingo",                                           │
-│       "event_type": "bingo",                                            │
+│       "eventType": "bingo",                                             │
 │       "config": {                                                        │
 │         "board": {                                                       │
 │           "columns": 7, "rows": 7,                                      │
@@ -844,20 +841,20 @@ You should **almost never** need to manually create boards. The only exception:
 │         {                                                                │
 │           "id": "board-tile-uuid",                                      │
 │           "position": "A1",        // Column + Row                      │
-│           "is_completed": false,                                        │
+│           "isCompleted": false,                                         │
 │           "task": "Get Fire Cape",                                      │
 │           "difficulty": "medium",                                       │
-│           "base_points": 50,                                            │
+│           "basePoints": 50,                                             │
 │           "requirements": {...},    // For progress display            │
-│           "progress_entries": [     // Current progress                 │
-│             { "progress_value": 0.5, "progress_metadata": {...} }       │
+│           "progressEntries": [     // Current progress                  │
+│             { "progressValue": 0.5, "progressMetadata": {...} }         │
 │           ]                                                              │
 │         },                                                               │
 │         ...                                                              │
 │       ],                                                                 │
-│       "tile_effects": [...],        // Buffs/debuffs on tiles          │
-│       "row_effects": [...],         // Row-wide effects                 │
-│       "column_effects": [...]       // Column-wide effects              │
+│       "tileEffects": [...],        // Buffs/debuffs on tiles           │
+│       "rowEffects": [...],         // Row-wide effects                  │
+│       "columnEffects": [...]       // Column-wide effects               │
 │     }                                                                    │
 │                                                                          │
 │  3. Render grid based on columns/rows:                                  │
@@ -938,9 +935,9 @@ When rendering tile progress, check `requirements.type`:
 | `PET` | "✓ / ✗" | `obtained`, `petName` |
 | `BA_GAMBLES` | "50/100 gambles" | `currentCount`, `targetCount` |
 
-For **tiered requirements**, check `progress_metadata.completedTiers`:
+For **tiered requirements**, check `progressMetadata.completedTiers`:
 ```javascript
-const completedTiers = tile.progress_entries[0]?.progress_metadata?.completedTiers || [];
+const completedTiers = tile.progressEntries[0]?.progressMetadata?.completedTiers || [];
 const highestTier = Math.max(...completedTiers.map(t => t.tier), 0);
 ```
 

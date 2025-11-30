@@ -380,10 +380,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.post('/:id/tiles', async (req: Request, res: Response) => {
 	try {
 		const { id } = req.params;
-		const { tile_id, position, metadata = {} } = req.body;
+		const { tileId, position, metadata = {} } = req.body;
 
 		// Validation
-		if (!tile_id || !position) {
+		if (!tileId || !position) {
 			return res.status(400).json({
 				success: false,
 				error: 'Missing required fields',
@@ -401,7 +401,7 @@ router.post('/:id/tiles', async (req: Request, res: Response) => {
 		}
 
 		// Check if tile exists
-		const tileCheck = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile_id]);
+		const tileCheck = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tileId]);
 		if (tileCheck.length === 0) {
 			return res.status(404).json({
 				success: false,
@@ -428,7 +428,7 @@ router.post('/:id/tiles', async (req: Request, res: Response) => {
 			)
 			VALUES ($1, $2, $3, $4)
 			RETURNING *
-		`, [id, tile_id, position, JSON.stringify(metadata)]);
+		`, [id, tileId, position, JSON.stringify(metadata)]);
 
 		res.status(201).json({
 			success: true,

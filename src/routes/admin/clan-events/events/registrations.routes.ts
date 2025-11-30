@@ -210,13 +210,13 @@ router.get('/statistics', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const { member_id, osrs_account_id, status = 'pending', metadata = {} } = req.body;
+    const { memberId, osrsAccountId, status = 'pending', metadata = {} } = req.body;
 
-    if (!member_id || !osrs_account_id) {
+    if (!memberId || !osrsAccountId) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields',
-        required: ['member_id', 'osrs_account_id']
+        required: ['memberId', 'osrsAccountId']
       });
     }
 
@@ -229,7 +229,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Check if member exists
-    const memberCheck = await query('SELECT id FROM members WHERE id = $1', [member_id]);
+    const memberCheck = await query('SELECT id FROM members WHERE id = $1', [memberId]);
     if (memberCheck.length === 0) {
       return res.status(404).json({
         success: false,
@@ -240,7 +240,7 @@ router.post('/', async (req: Request, res: Response) => {
     // Check if OSRS account belongs to member
     const accountCheck = await query(
       'SELECT id FROM osrs_accounts WHERE id = $1 AND discord_id = (SELECT discord_id FROM members WHERE id = $2)',
-      [osrs_account_id, member_id]
+      [osrsAccountId, memberId]
     );
     if (accountCheck.length === 0) {
       return res.status(400).json({
@@ -250,7 +250,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Check if already registered
-    const existing = await registrationsEntity.findByEventAndMember(eventId, member_id);
+    const existing = await registrationsEntity.findByEventAndMember(eventId, memberId);
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -260,8 +260,8 @@ router.post('/', async (req: Request, res: Response) => {
 
     const registration = await registrationsEntity.create({
       eventId,
-      memberId: member_id,
-      osrsAccountId: osrs_account_id,
+      memberId,
+      osrsAccountId,
       status: status as EventRegistrationStatus,
       metadata
     });
@@ -307,32 +307,32 @@ router.post('/batch', async (req: Request, res: Response) => {
     }
 
     const created: unknown[] = [];
-    const errors: Array<{ member_id: number; error: string }> = [];
+    const errors: Array<{ memberId: number; error: string }> = [];
 
     for (const reg of registrations) {
-      if (!reg.member_id || !reg.osrs_account_id) {
-        errors.push({ member_id: reg.member_id || 0, error: 'Missing member_id or osrs_account_id' });
+      if (!reg.memberId || !reg.osrsAccountId) {
+        errors.push({ memberId: reg.memberId || 0, error: 'Missing memberId or osrsAccountId' });
         continue;
       }
 
       try {
-        const existing = await registrationsEntity.findByEventAndMember(eventId, reg.member_id);
+        const existing = await registrationsEntity.findByEventAndMember(eventId, reg.memberId);
         if (existing) {
-          errors.push({ member_id: reg.member_id, error: 'Already registered' });
+          errors.push({ memberId: reg.memberId, error: 'Already registered' });
           continue;
         }
 
         const registration = await registrationsEntity.create({
           eventId,
-          memberId: reg.member_id,
-          osrsAccountId: reg.osrs_account_id,
+          memberId: reg.memberId,
+          osrsAccountId: reg.osrsAccountId,
           status: (reg.status || status) as EventRegistrationStatus,
           metadata: reg.metadata || {}
         });
         created.push(registration);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Unknown error';
-        errors.push({ member_id: reg.member_id, error: errMsg });
+        errors.push({ memberId: reg.memberId, error: errMsg });
       }
     }
 

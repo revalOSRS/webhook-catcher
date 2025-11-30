@@ -6,9 +6,9 @@ import { query } from '../../../db/connection.js';
  */
 export interface AuthenticatedMember {
 	id: number;
-	discord_id: string;
-	member_code: number;
-	discord_tag: string;
+	discordId: string;
+	memberCode: number;
+	discordTag: string;
 }
 
 /**
@@ -19,118 +19,118 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
- * Event participation info
+ * Event participation info (internal - maps from DB)
  */
 export interface EventParticipation {
-	team_id: string;
-	team_name: string;
+	teamId: string;
+	teamName: string;
 	color: string | null;
 	icon: string | null;
 	score: number;
-	event_id: string;
+	eventId: string;
 }
 
 /**
- * Response types
+ * Response types - all camelCase for API responses
  */
 export interface EventListItem {
 	id: string;
 	name: string;
-	event_type: string;
+	eventType: string;
 	status: string;
-	start_date: string | null;
-	end_date: string | null;
-	team_count?: number;
-	is_participating?: boolean;
-	team_id?: string;
-	team_name?: string;
-	team_score?: number;
+	startDate: string | null;
+	endDate: string | null;
+	teamCount?: number;
+	isParticipating?: boolean;
+	teamId?: string;
+	teamName?: string;
+	teamScore?: number;
 }
 
 export interface TeamMember {
 	id: string;
-	member_id: number;
-	discord_tag: string;
+	memberId: number;
+	discordTag: string;
 	role: string;
-	osrs_account_id: number | null;
-	osrs_account_name: string | null;
+	osrsAccountId: number | null;
+	osrsAccountName: string | null;
 }
 
 export interface TileProgressEntry {
 	id: string;
-	osrs_account_id: number | null;
-	progress_value: number;
-	progress_metadata: Record<string, unknown>;
-	completion_type: 'auto' | 'manual_admin' | null;
-	completed_at: string | null;
-	completed_by_osrs_account_id: number | null;
-	completed_by_member_id: number | null;
-	recorded_at: string;
+	osrsAccountId: number | null;
+	progressValue: number;
+	progressMetadata: Record<string, unknown>;
+	completionType: 'auto' | 'manual_admin' | null;
+	completedAt: string | null;
+	completedByOsrsAccountId: number | null;
+	completedByMemberId: number | null;
+	recordedAt: string;
 }
 
 export interface TileEffect {
 	id: string;
-	buff_name: string;
-	buff_type: 'buff' | 'debuff';
-	effect_type: string;
-	effect_value: number;
-	buff_icon: string | null;
-	is_active: boolean;
-	expires_at: string | null;
+	buffName: string;
+	buffType: 'buff' | 'debuff';
+	effectType: string;
+	effectValue: number;
+	buffIcon: string | null;
+	isActive: boolean;
+	expiresAt: string | null;
 }
 
 export interface BoardTileWithProgress {
 	id: string;
-	board_id: string;
-	tile_id: string;
+	boardId: string;
+	tileId: string;
 	position: string;
-	is_completed: boolean;
-	completed_at: string | null;
+	isCompleted: boolean;
+	completedAt: string | null;
 	task: string;
 	category: string;
 	difficulty: string;
 	icon: string | null;
 	description: string | null;
-	base_points: number;
+	basePoints: number;
 	requirements: unknown;
-	progress_entries: TileProgressEntry[];
-	team_total_xp_gained?: number | null;
-	tile_effects?: TileEffect[];
+	progressEntries: TileProgressEntry[];
+	teamTotalXpGained?: number | null;
+	tileEffects?: TileEffect[];
 }
 
 export interface LineEffect {
 	id: string;
-	line_type: 'row' | 'column';
-	line_identifier: string;
-	buff_name: string;
-	buff_type: 'buff' | 'debuff';
-	effect_type: string;
-	effect_value: number;
-	buff_icon: string | null;
-	is_active: boolean;
-	expires_at: string | null;
+	lineType: 'row' | 'column';
+	lineIdentifier: string;
+	buffName: string;
+	buffType: 'buff' | 'debuff';
+	effectType: string;
+	effectValue: number;
+	buffIcon: string | null;
+	isActive: boolean;
+	expiresAt: string | null;
 }
 
 export interface BoardTileEffect {
 	id: string;
-	board_tile_id: string;
-	buff_name: string;
-	buff_type: 'buff' | 'debuff';
-	effect_type: string;
-	effect_value: number;
-	buff_icon: string | null;
-	is_active: boolean;
-	expires_at: string | null;
+	boardTileId: string;
+	buffName: string;
+	buffType: 'buff' | 'debuff';
+	effectType: string;
+	effectValue: number;
+	buffIcon: string | null;
+	isActive: boolean;
+	expiresAt: string | null;
 }
 
 export interface EventDetail {
 	id: string;
 	name: string;
 	description: string | null;
-	event_type: string;
+	eventType: string;
 	status: string;
-	start_date: string | null;
-	end_date: string | null;
+	startDate: string | null;
+	endDate: string | null;
 	config: unknown;
 	team: {
 		id: string;
@@ -142,15 +142,13 @@ export interface EventDetail {
 	};
 	board?: {
 		id: string;
-		name: string;
-		description: string | null;
 		columns: number;
 		rows: number;
 		metadata: unknown;
 		tiles: BoardTileWithProgress[];
-		tile_effects: BoardTileEffect[];
-		row_effects: LineEffect[];
-		column_effects: LineEffect[];
+		tileEffects: BoardTileEffect[];
+		rowEffects: LineEffect[];
+		columnEffects: LineEffect[];
 	};
 }
 
@@ -170,19 +168,27 @@ export const getMemberFromHeaders = async (req: Request): Promise<AuthenticatedM
 		return null;
 	}
 
-	const members = await query<AuthenticatedMember>(
+	const members = await query(
 		'SELECT id, discord_id, member_code, discord_tag FROM members WHERE discord_id = $1 AND member_code = $2 AND is_active = true',
 		[discordId, code]
 	);
 
-	return members.length > 0 ? members[0] : null;
+	if (members.length === 0) return null;
+
+	const m = members[0];
+	return {
+		id: m.id,
+		discordId: m.discord_id,
+		memberCode: m.member_code,
+		discordTag: m.discord_tag
+	};
 };
 
 /**
  * Helper to check if member is participating in an event
  */
 export const getEventParticipation = async (memberId: number, eventId: string): Promise<EventParticipation | null> => {
-	const participation = await query<EventParticipation>(`
+	const participation = await query(`
 		SELECT 
 			et.id as team_id,
 			et.name as team_name,
@@ -197,6 +203,15 @@ export const getEventParticipation = async (memberId: number, eventId: string): 
 		LIMIT 1
 	`, [memberId, eventId]);
 
-	return participation.length > 0 ? participation[0] : null;
-};
+	if (participation.length === 0) return null;
 
+	const p = participation[0];
+	return {
+		teamId: p.team_id,
+		teamName: p.team_name,
+		color: p.color,
+		icon: p.icon,
+		score: p.score,
+		eventId: p.event_id
+	};
+};

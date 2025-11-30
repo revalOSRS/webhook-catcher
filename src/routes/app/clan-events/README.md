@@ -119,28 +119,28 @@ Returns all active events. Shows participation info for events the user is in.
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "name": "Summer Bingo 2025",
-      "event_type": "bingo",
+      "eventType": "bingo",
       "status": "active",
-      "start_date": "2025-06-01T00:00:00.000Z",
-      "end_date": "2025-06-30T23:59:59.000Z",
-      "team_count": 8,
-      "is_participating": true,
-      "team_id": "team-uuid",
-      "team_name": "Team Alpha",
-      "team_score": 450
+      "startDate": "2025-06-01T00:00:00.000Z",
+      "endDate": "2025-06-30T23:59:59.000Z",
+      "teamCount": 8,
+      "isParticipating": true,
+      "teamId": "team-uuid",
+      "teamName": "Team Alpha",
+      "teamScore": 450
     },
     {
       "id": "another-event-uuid",
       "name": "Mini Bingo Challenge",
-      "event_type": "bingo",
+      "eventType": "bingo",
       "status": "active",
-      "start_date": "2025-06-15T00:00:00.000Z",
-      "end_date": "2025-06-20T23:59:59.000Z",
-      "team_count": 4,
-      "is_participating": false,
-      "team_id": null,
-      "team_name": null,
-      "team_score": null
+      "startDate": "2025-06-15T00:00:00.000Z",
+      "endDate": "2025-06-20T23:59:59.000Z",
+      "teamCount": 4,
+      "isParticipating": false,
+      "teamId": null,
+      "teamName": null,
+      "teamScore": null
     }
   ]
 }
@@ -149,11 +149,11 @@ Returns all active events. Shows participation info for events the user is in.
 **Response Fields:**
 | Field | Type | Description |
 |-------|------|-------------|
-| team_count | number | Total number of teams in event |
-| is_participating | boolean | Whether user is on a team |
-| team_id | string? | User's team ID (if participating) |
-| team_name | string? | User's team name (if participating) |
-| team_score | number? | User's team score (if participating) |
+| teamCount | number | Total number of teams in event |
+| isParticipating | boolean | Whether user is on a team |
+| teamId | string? | User's team ID (if participating) |
+| teamName | string? | User's team name (if participating) |
+| teamScore | number? | User's team score (if participating) |
 
 ---
 
@@ -174,10 +174,10 @@ Returns full event details including the bingo board. **Only available if user i
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "Summer Bingo 2025",
     "description": "Our summer clan event!",
-    "event_type": "bingo",
+    "eventType": "bingo",
     "status": "active",
-    "start_date": "2025-06-01T00:00:00.000Z",
-    "end_date": "2025-06-30T23:59:59.000Z",
+    "startDate": "2025-06-01T00:00:00.000Z",
+    "endDate": "2025-06-30T23:59:59.000Z",
     "config": {
       "board": { "columns": 7, "rows": 7 }
     },
@@ -190,18 +190,16 @@ Returns full event details including the bingo board. **Only available if user i
       "members": [
         {
           "id": "member-uuid",
-          "member_id": 123,
-          "discord_tag": "Player#1234",
+          "memberId": 123,
+          "discordTag": "Player#1234",
           "role": "captain",
-          "osrs_account_id": 456,
-          "osrs_account_name": "PlayerRSN"
+          "osrsAccountId": 456,
+          "osrsAccountName": "PlayerRSN"
         }
       ]
     },
     "board": {
       "id": "board-uuid",
-      "name": "7x7 Bingo Board",
-      "description": "Complete tiles to earn points!",
       "columns": 7,
       "rows": 7,
       "metadata": {
@@ -211,17 +209,17 @@ Returns full event details including the bingo board. **Only available if user i
       "tiles": [
         {
           "id": "board-tile-uuid",
-          "board_id": "board-uuid",
-          "tile_id": "get-fire-cape",
+          "boardId": "board-uuid",
+          "tileId": "get-fire-cape",
           "position": "A1",
-          "is_completed": true,
-          "completed_at": "2025-06-05T15:30:00.000Z",
+          "isCompleted": true,
+          "completedAt": "2025-06-05T15:30:00.000Z",
           "task": "Obtain a Fire Cape",
           "category": "combat",
           "difficulty": "medium",
           "icon": "🔥",
           "description": "Complete the Fight Caves",
-          "base_points": 50,
+          "basePoints": 50,
           "requirements": {
             "matchType": "ALL",
             "requirements": [
@@ -232,12 +230,12 @@ Returns full event details including the bingo board. **Only available if user i
             ],
             "tiers": []
           },
-          "progress_entries": [
+          "progressEntries": [
             {
               "id": "progress-uuid",
-              "osrs_account_id": 456,
-              "progress_value": 1,
-              "progress_metadata": {
+              "osrsAccountId": 456,
+              "progressValue": 1,
+              "progressMetadata": {
                 "requirementType": "ITEM_DROP",
                 "currentCount": 1,
                 "targetCount": 1,
@@ -246,30 +244,30 @@ Returns full event details including the bingo board. **Only available if user i
                   { "osrsAccountId": 456, "osrsNickname": "PlayerRSN", "count": 1 }
                 ]
               },
-              "completion_type": "auto",
-              "completed_at": "2025-06-05T15:30:00.000Z",
-              "completed_by_osrs_account_id": 456,
-              "recorded_at": "2025-06-05T15:30:00.000Z"
+              "completionType": "auto",
+              "completedAt": "2025-06-05T15:30:00.000Z",
+              "completedByOsrsAccountId": 456,
+              "recordedAt": "2025-06-05T15:30:00.000Z"
             }
           ],
-          "team_total_xp_gained": null,
-          "tile_effects": [
+          "teamTotalXpGained": null,
+          "tileEffects": [
             {
               "id": "effect-uuid",
-              "buff_name": "Double Points",
-              "buff_type": "buff",
-              "effect_type": "points_multiplier",
-              "effect_value": 2,
-              "buff_icon": "⭐",
-              "is_active": true,
-              "expires_at": null
+              "buffName": "Double Points",
+              "buffType": "buff",
+              "effectType": "points_multiplier",
+              "effectValue": 2,
+              "buffIcon": "⭐",
+              "isActive": true,
+              "expiresAt": null
             }
           ]
         }
       ],
-      "tile_effects": [...],
-      "row_effects": [...],
-      "column_effects": [...]
+      "tileEffects": [...],
+      "rowEffects": [...],
+      "columnEffects": [...]
     }
   }
 }
@@ -282,10 +280,10 @@ Returns full event details including the bingo board. **Only available if user i
 | `team.members[]` | array | All team members with their OSRS accounts |
 | `board.tiles[]` | array | All board tiles with positions |
 | `board.tiles[].position` | string | Grid position (e.g., "A1", "B3") |
-| `board.tiles[].is_completed` | boolean | Whether tile is complete |
-| `board.tiles[].progress_entries[]` | array | Progress records for this tile |
+| `board.tiles[].isCompleted` | boolean | Whether tile is complete |
+| `board.tiles[].progressEntries[]` | array | Progress records for this tile |
 | `board.tiles[].requirements` | object | What's needed to complete the tile |
-| `board.tiles[].tile_effects[]` | array | Active buffs/debuffs on this tile |
+| `board.tiles[].tileEffects[]` | array | Active buffs/debuffs on this tile |
 | `board.metadata.showTileEffects` | boolean | Whether to display tile effects |
 | `board.metadata.showRowColumnBuffs` | boolean | Whether to display row/column effects |
 
@@ -366,10 +364,10 @@ Returns summary of team's progress. **Only for participants.**
 {
   "success": true,
   "data": {
-    "total_tiles": 49,
-    "completed_tiles": 28,
-    "completion_percentage": 57.14,
-    "team_score": 450
+    "totalTiles": 49,
+    "completedTiles": 28,
+    "completionPercentage": 57.14,
+    "teamScore": 450
   }
 }
 ```
@@ -504,16 +502,16 @@ Returns tiles the current user has contributed to. **Only for participants.**
   "success": true,
   "data": [
     {
-      "board_tile_id": "board-tile-uuid",
+      "boardTileId": "board-tile-uuid",
       "position": "A1",
       "task": "Obtain a Fire Cape",
       "category": "combat",
       "icon": "🔥",
-      "progress_value": 1,
-      "progress_metadata": {...},
-      "completion_type": "auto",
-      "completed_at": "2025-06-05T15:30:00.000Z",
-      "recorded_at": "2025-06-05T15:30:00.000Z"
+      "progressValue": 1,
+      "progressMetadata": {...},
+      "completionType": "auto",
+      "completedAt": "2025-06-05T15:30:00.000Z",
+      "recordedAt": "2025-06-05T15:30:00.000Z"
     }
   ]
 }
@@ -536,17 +534,17 @@ Returns detailed information about a specific tile including full progress histo
   "success": true,
   "data": {
     "id": "board-tile-uuid",
-    "board_id": "board-uuid",
-    "tile_id": "get-fire-cape",
+    "boardId": "board-uuid",
+    "tileId": "get-fire-cape",
     "position": "A1",
-    "is_completed": true,
-    "completed_at": "2025-06-05T15:30:00.000Z",
+    "isCompleted": true,
+    "completedAt": "2025-06-05T15:30:00.000Z",
     "task": "Obtain a Fire Cape",
     "category": "combat",
     "difficulty": "medium",
     "icon": "🔥",
     "description": "Complete the Fight Caves and obtain a Fire Cape",
-    "base_points": 50,
+    "basePoints": 50,
     "requirements": {
       "matchType": "ALL",
       "requirements": [

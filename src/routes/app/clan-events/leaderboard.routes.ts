@@ -56,7 +56,7 @@ router.get('/', async (req, res: Response) => {
 
 		// Check if user is participating
 		const participation = await getEventParticipation(member.id, eventId);
-		const myTeamId = participation?.team_id || null;
+		const myTeamId = participation?.teamId || null;
 
 		res.json({
 			success: true,
@@ -88,4 +88,3 @@ router.get('/', async (req, res: Response) => {
 });
 
 export default router;
-

@@ -248,28 +248,28 @@ router.post('/', async (req: Request, res: Response) => {
     const {
       name,
       description,
-      event_type,
+      eventType,
       status = 'draft',
-      start_date,
-      end_date,
+      startDate,
+      endDate,
       config = {}
     } = req.body;
 
     // Validation
-    if (!name || !event_type) {
+    if (!name || !eventType) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields',
-        required: ['name', 'event_type']
+        required: ['name', 'eventType']
       });
     }
 
     const validEventTypes = Object.values(EventType);
-    if (!validEventTypes.includes(event_type)) {
+    if (!validEventTypes.includes(eventType)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid event_type',
-        valid_types: validEventTypes
+        error: 'Invalid eventType',
+        validTypes: validEventTypes
       });
     }
 
@@ -278,12 +278,12 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         error: 'Invalid status',
-        valid_statuses: validStatuses
+        validStatuses: validStatuses
       });
     }
 
     // Validate bingo config if provided
-    if (event_type === EventType.BINGO && config.board) {
+    if (eventType === EventType.BINGO && config.board) {
       const board = config.board;
       if (board.columns && (board.columns < 1 || board.columns > 20)) {
         return res.status(400).json({
@@ -302,10 +302,10 @@ router.post('/', async (req: Request, res: Response) => {
     const event = await eventsEntity.create({
       name,
       description,
-      eventType: event_type as EventType,
+      eventType: eventType as EventType,
       status: status as EventStatus,
-      startDate: start_date ? new Date(start_date) : new Date(),
-      endDate: end_date ? new Date(end_date) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      startDate: startDate ? new Date(startDate) : new Date(),
+      endDate: endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       config
     });
 
@@ -332,7 +332,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.post('/:id/duplicate', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, include_teams = false } = req.body;
+    const { name, includeTeams = false } = req.body;
 
     const original = await eventsEntity.findById(id);
     if (!original) {
@@ -356,7 +356,7 @@ router.post('/:id/duplicate', async (req: Request, res: Response) => {
     let teamsCreated = 0;
 
     // Optionally duplicate teams
-    if (include_teams) {
+    if (includeTeams) {
       const teams = await teamsEntity.findByEventId(id);
       for (const team of teams) {
         await teamsEntity.create({
@@ -394,7 +394,7 @@ router.post('/:id/duplicate', async (req: Request, res: Response) => {
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, status, start_date, end_date, config } = req.body;
+    const { name, description, status, startDate, endDate, config } = req.body;
 
     const existing = await eventsEntity.findById(id);
     if (!existing) {
@@ -408,8 +408,8 @@ router.patch('/:id', async (req: Request, res: Response) => {
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (status !== undefined) updateData.status = status;
-    if (start_date !== undefined) updateData.startDate = new Date(start_date);
-    if (end_date !== undefined) updateData.endDate = new Date(end_date);
+    if (startDate !== undefined) updateData.startDate = new Date(startDate);
+    if (endDate !== undefined) updateData.endDate = new Date(endDate);
     if (config !== undefined) updateData.config = config;
 
     const updatedEvent = await eventsEntity.update(id, updateData);

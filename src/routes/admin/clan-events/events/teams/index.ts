@@ -145,19 +145,19 @@ router.get('/:id', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { event_id, name, color, icon, metadata = {} } = req.body;
+    const { eventId, name, color, icon, metadata = {} } = req.body;
 
     // Validation
-    if (!event_id || !name) {
+    if (!eventId || !name) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields',
-        required: ['event_id', 'name']
+        required: ['eventId', 'name']
       });
     }
 
     // Check if event exists
-    const event = await eventsEntity.findById(event_id);
+    const event = await eventsEntity.findById(eventId);
     if (!event) {
       return res.status(404).json({
         success: false,
@@ -166,7 +166,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Check for duplicate name
-    const existing = await teamsEntity.findByEventAndName(event_id, name);
+    const existing = await teamsEntity.findByEventAndName(eventId, name);
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -175,7 +175,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const team = await teamsEntity.create({
-      eventId: event_id,
+      eventId,
       name,
       color,
       icon,
@@ -204,17 +204,17 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.post('/batch', async (req: Request, res: Response) => {
   try {
-    const { event_id, teams } = req.body;
+    const { eventId, teams } = req.body;
 
-    if (!event_id || !Array.isArray(teams) || teams.length === 0) {
+    if (!eventId || !Array.isArray(teams) || teams.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields',
-        required: ['event_id', 'teams (array)']
+        required: ['eventId', 'teams (array)']
       });
     }
 
-    const event = await eventsEntity.findById(event_id);
+    const event = await eventsEntity.findById(eventId);
     if (!event) {
       return res.status(404).json({
         success: false,
@@ -232,14 +232,14 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
 
       try {
-        const existing = await teamsEntity.findByEventAndName(event_id, teamData.name);
+        const existing = await teamsEntity.findByEventAndName(eventId, teamData.name);
         if (existing) {
           errors.push({ name: teamData.name, error: 'Team name already exists' });
           continue;
         }
 
         const team = await teamsEntity.create({
-          eventId: event_id,
+          eventId,
           name: teamData.name,
           color: teamData.color,
           icon: teamData.icon,
@@ -471,13 +471,13 @@ router.get('/:id/leaderboard', async (req: Request, res: Response) => {
 router.post('/:id/members', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { member_id, osrs_account_id, role = 'member', metadata = {} } = req.body;
+    const { memberId, osrsAccountId, role = 'member', metadata = {} } = req.body;
 
-    if (!member_id || !osrs_account_id) {
+    if (!memberId || !osrsAccountId) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields',
-        required: ['member_id', 'osrs_account_id']
+        required: ['memberId', 'osrsAccountId']
       });
     }
 
@@ -490,7 +490,7 @@ router.post('/:id/members', async (req: Request, res: Response) => {
     }
 
     // Check if member exists
-    const memberCheck = await query('SELECT id FROM members WHERE id = $1', [member_id]);
+    const memberCheck = await query('SELECT id FROM members WHERE id = $1', [memberId]);
     if (memberCheck.length === 0) {
       return res.status(404).json({
         success: false,
@@ -501,7 +501,7 @@ router.post('/:id/members', async (req: Request, res: Response) => {
     // Check if OSRS account belongs to member
     const accountCheck = await query(
       'SELECT id FROM osrs_accounts WHERE id = $1 AND discord_id = (SELECT discord_id FROM members WHERE id = $2)',
-      [osrs_account_id, member_id]
+      [osrsAccountId, memberId]
     );
     if (accountCheck.length === 0) {
       return res.status(400).json({
@@ -511,7 +511,7 @@ router.post('/:id/members', async (req: Request, res: Response) => {
     }
 
     // Check if already on team
-    const existing = await teamMembersEntity.findByTeamAndMember(id, member_id);
+    const existing = await teamMembersEntity.findByTeamAndMember(id, memberId);
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -521,8 +521,8 @@ router.post('/:id/members', async (req: Request, res: Response) => {
 
     const teamMember = await teamMembersEntity.create({
       teamId: id,
-      memberId: member_id,
-      osrsAccountId: osrs_account_id,
+      memberId,
+      osrsAccountId,
       role,
       metadata
     });
@@ -550,7 +550,7 @@ router.post('/:id/members', async (req: Request, res: Response) => {
 router.patch('/:teamId/members/:memberId', async (req: Request, res: Response) => {
   try {
     const { teamId, memberId } = req.params;
-    const { role, individual_score, metadata } = req.body;
+    const { role, individualScore, metadata } = req.body;
 
     const existing = await teamMembersEntity.findById(memberId);
     if (!existing || existing.teamId !== teamId) {
@@ -562,7 +562,7 @@ router.patch('/:teamId/members/:memberId', async (req: Request, res: Response) =
 
     const updateData: Partial<Pick<EventTeamMember, 'role' | 'individualScore' | 'metadata'>> = {};
     if (role !== undefined) updateData.role = role;
-    if (individual_score !== undefined) updateData.individualScore = individual_score;
+    if (individualScore !== undefined) updateData.individualScore = individualScore;
     if (metadata !== undefined) updateData.metadata = metadata;
 
     const updated = await teamMembersEntity.update(memberId, updateData);
@@ -624,12 +624,12 @@ router.delete('/:teamId/members/:memberId', async (req: Request, res: Response) 
 router.post('/:fromTeamId/members/:memberId/transfer', async (req: Request, res: Response) => {
   try {
     const { fromTeamId, memberId } = req.params;
-    const { to_team_id } = req.body;
+    const { toTeamId } = req.body;
 
-    if (!to_team_id) {
+    if (!toTeamId) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required field: to_team_id'
+        error: 'Missing required field: toTeamId'
       });
     }
 
@@ -643,7 +643,7 @@ router.post('/:fromTeamId/members/:memberId/transfer', async (req: Request, res:
     }
 
     // Check destination team exists
-    const destTeam = await teamsEntity.findById(to_team_id);
+    const destTeam = await teamsEntity.findById(toTeamId);
     if (!destTeam) {
       return res.status(404).json({
         success: false,
@@ -652,7 +652,7 @@ router.post('/:fromTeamId/members/:memberId/transfer', async (req: Request, res:
     }
 
     // Check not already on destination team
-    const existingDest = await teamMembersEntity.findByTeamAndMember(to_team_id, sourceMember.memberId);
+    const existingDest = await teamMembersEntity.findByTeamAndMember(toTeamId, sourceMember.memberId);
     if (existingDest) {
       return res.status(409).json({
         success: false,
@@ -663,7 +663,7 @@ router.post('/:fromTeamId/members/:memberId/transfer', async (req: Request, res:
     // Delete from source, create in destination
     await teamMembersEntity.delete(memberId);
     const newMember = await teamMembersEntity.create({
-      teamId: to_team_id,
+      teamId: toTeamId,
       memberId: sourceMember.memberId,
       osrsAccountId: sourceMember.osrsAccountId,
       role: sourceMember.role,
@@ -675,7 +675,7 @@ router.post('/:fromTeamId/members/:memberId/transfer', async (req: Request, res:
       success: true,
       data: {
         fromTeam: fromTeamId,
-        toTeam: to_team_id,
+        toTeam: toTeamId,
         member: newMember
       },
       message: 'Member transferred successfully'

@@ -49,7 +49,7 @@ router.get('/:tileId', async (req, res: Response) => {
 			JOIN bingo_boards bb ON bbt.board_id = bb.id
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			WHERE bbt.id = $1 AND bb.team_id = $2 AND bb.event_id = $3
-		`, [tileId, participation.team_id, eventId]);
+		`, [tileId, participation.teamId, eventId]);
 
 		if (tiles.length === 0) {
 			return res.status(404).json({
@@ -88,7 +88,19 @@ router.get('/:tileId', async (req, res: Response) => {
 		res.json({
 			success: true,
 			data: {
-				...tile,
+				id: tile.id,
+				boardId: tile.board_id,
+				tileId: tile.tile_id,
+				position: tile.position,
+				isCompleted: tile.is_completed,
+				completedAt: tile.completed_at,
+				task: tile.task,
+				category: tile.category,
+				difficulty: tile.difficulty,
+				icon: tile.icon,
+				description: tile.description,
+				basePoints: tile.base_points,
+				requirements: tile.requirements,
 				progress: progress.map((p: any) => ({
 					id: p.id,
 					progressValue: p.progress_value,
@@ -121,4 +133,3 @@ router.get('/:tileId', async (req, res: Response) => {
 });
 
 export default router;
-
