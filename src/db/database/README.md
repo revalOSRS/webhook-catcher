@@ -1,6 +1,6 @@
 # Database Connection
 
-Neon Postgres serverless database connection and models for the RevalOSRS Discord bot.
+Neon Postgres serverless database connection for the webhook-catcher service.
 
 ## Setup
 
@@ -27,277 +27,199 @@ NEON_DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=requi
 
 ### 4. Initialize Database
 
-The database initializes automatically when your bot starts. To manually create tables:
+Run the setup script to create tables and run migrations:
 
-```javascript
-const { initializeDatabase } = require('./src/connections/database');
-const Member = require('./src/connections/database/models/Member');
-
-// In your bot's startup code (already in src/events/ready.js)
-await initializeDatabase();
-await Member.createTable();
+```bash
+node src/db/database/setup.js
 ```
 
-## Member Model
+Or run migrations directly:
 
-The `Member` model represents a clan member with both Discord and OSRS information.
+```bash
+node src/db/database/migrate.js up
+```
 
-### Schema
+## Architecture
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | SERIAL | Auto-generated primary key |
-| `discordId` | VARCHAR(20) | Discord user ID (unique) |
-| `discordTag` | VARCHAR(37) | Discord username |
-| `dinkHash` | VARCHAR(255) | Dink webhook hash for notifications |
-| `osrsNickname` | VARCHAR(12) | OSRS username |
-| `osrsRank` | VARCHAR(50) | Rank in OSRS clan |
-| `discordRank` | VARCHAR(50) | Role in Discord server |
-| `womPlayerId` | INTEGER | Wise Old Man player ID |
-| `isActive` | BOOLEAN | Whether member is currently active |
-| `notes` | TEXT | Admin notes about the member |
-| `createdAt` | TIMESTAMP | When the member was added |
-| `updatedAt` | TIMESTAMP | Last time the record was updated (auto-updated) |
-| `lastSeen` | TIMESTAMP | Last time the member was seen/active |
+Database operations are organized into TypeScript entity and service files within the `src/modules/` directory.
 
-### Usage Examples
+### Module Structure
 
-#### Create a Member
+```
+src/modules/
+├── members/
+│   ├── members.entity.ts         # Member CRUD operations
+│   ├── member-movements.entity.ts # Join/leave tracking
+│   └── members.service.ts        # Business logic
+├── osrs-accounts/
+│   ├── osrs-accounts.entity.ts   # OSRS account CRUD
+│   ├── osrs-accounts.service.ts  # Account lookup & management
+│   └── entities/
+│       ├── collection-log.entity.ts
+│       ├── killcounts.entity.ts
+│       └── ...
+├── achievements/
+│   ├── achievements.service.ts
+│   └── entities/
+│       ├── achievement-diary-tiers.entity.ts
+│       ├── combat-achievements.entity.ts
+│       └── collection-log-items.entity.ts
+├── coffer/
+│   ├── coffer-balance.entity.ts
+│   ├── coffer-movements.entity.ts
+│   └── coffer.service.ts
+├── donations/
+│   ├── donations.entity.ts
+│   └── donations.service.ts
+├── points/
+│   ├── points.entity.ts
+│   └── points.service.ts
+└── events/
+    ├── events.service.ts
+    ├── entities/
+    │   ├── events.entity.ts
+    │   ├── event-teams.entity.ts
+    │   ├── event-team-members.entity.ts
+    │   └── event-registrations.entity.ts
+    └── bingo/
+        ├── bingo.service.ts
+        └── entities/
+            ├── bingo-tiles.entity.ts
+            ├── bingo-boards.entity.ts
+            └── ...
+```
 
-```javascript
-const Member = require('./src/connections/database/models/Member');
+### Entity Pattern
 
-const memberId = await Member.create({
+Each entity extends `BaseEntity` and provides:
+- Type-safe CRUD operations
+- Automatic camelCase ↔ snake_case conversion
+- Static `createTable()` method for migrations
+
+Example:
+
+```typescript
+import { MembersEntity } from './modules/members/members.entity.js';
+
+const membersEntity = new MembersEntity();
+
+// Create
+const member = await membersEntity.create({
   discordId: '123456789012345678',
-  discordTag: 'username',
-  osrsNickname: 'Zezima',
-  osrsRank: 'General',
-  discordRank: 'Officer',
-  womPlayerId: 1135,
-  notes: 'Veteran member, very active'
+  discordTag: 'username'
 });
 
-console.log('Member created with ID:', memberId);
+// Find
+const found = await membersEntity.findByDiscordId('123456789012345678');
+
+// Update
+await membersEntity.update(found.id, { discordTag: 'newname' });
+
+// Delete
+await membersEntity.delete(found.id);
 ```
 
-#### Find Members
+### Service Pattern
 
-```javascript
-// By Discord ID
-const member = await Member.findByDiscordId('123456789012345678');
+Services provide business logic and complex operations:
 
-// By Discord Tag
-const member = await Member.findByDiscordTag('username');
+```typescript
+import { MembersService } from './modules/members/members.service.js';
 
-// By OSRS nickname
-const member = await Member.findByOSRSNickname('Zezima');
+// Get member profile with related data
+const profile = await MembersService.getMemberProfile('123456789012345678');
 
-// By Dink Hash
-const member = await Member.findByDinkHash('abc123');
-
-// By WOM Player ID
-const member = await Member.findByWOMPlayerId(1135);
-
-// Get all members
-const allMembers = await Member.findAll();
-
-// Get only active members
-const activeMembers = await Member.findAll({ activeOnly: true });
-
-// Search by partial OSRS nickname
-const matches = await Member.searchByOSRSNickname('zez', 10);
-```
-
-#### Update a Member
-
-```javascript
-// Update by ID
-await Member.updateById(1, {
-  osrsRank: 'Admin',
-  discordRank: 'Administrator'
-});
-
-// Update by Discord ID
-await Member.updateByDiscordId('123456789012345678', {
-  osrsNickname: 'NewName',
-  dinkHash: 'abc123xyz'
-});
-
-// Update last seen
-await Member.updateLastSeen('123456789012345678');
-```
-
-#### Delete a Member
-
-```javascript
-// Delete by ID
-await Member.deleteById(1);
-
-// Delete by Discord ID
-await Member.deleteByDiscordId('123456789012345678');
-```
-
-#### Count Members
-
-```javascript
-// Total members
-const total = await Member.count();
-
-// Active members only
-const active = await Member.count(true);
-```
-
-## Integration Examples
-
-### Discord Bot Integration
-
-```javascript
-const { Client, GatewayIntentBits } = require('discord.js');
-const { initializeDatabase } = require('./src/connections/database');
-const Member = require('./src/connections/database/models/Member');
-
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
-});
-
-client.once('ready', async () => {
-  // Initialize database
-  await initializeDatabase();
-  await Member.createTable();
-  
-  console.log('✅ Bot and database ready!');
-});
-
-// Track when members are active
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  
-  // Update last seen
-  await Member.updateLastSeen(message.author.id);
-});
-
-// Register new member command
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  
-  if (interaction.commandName === 'register') {
-    const osrsName = interaction.options.getString('osrs-name');
-    
-    try {
-      // Check if already registered
-      const existing = await Member.findByDiscordId(interaction.user.id);
-      
-      if (existing) {
-        await interaction.reply('You are already registered!');
-        return;
-      }
-      
-      // Create new member
-      await Member.create({
-        discordId: interaction.user.id,
-        osrsNickname: osrsName,
-        discordRank: interaction.member.roles.highest.name
-      });
-      
-      await interaction.reply(`✅ Registered as ${osrsName}!`);
-    } catch (error) {
-      console.error('Registration error:', error);
-      await interaction.reply('❌ Registration failed!');
-    }
-  }
+// Add tokens with movement tracking
+await MembersService.addTokens('123456789012345678', 100, {
+  type: 'earned',
+  description: 'Event reward',
+  createdBy: 'admin'
 });
 ```
 
-### Wise Old Man Integration
+## Direct Query Access
 
-```javascript
-const { WOMClient } = require('@wise-old-man/utils');
-const Member = require('./src/connections/database/models/Member');
+For custom queries, use the connection module:
 
-const womClient = new WOMClient();
+```typescript
+import { query, queryOne } from './db/connection.js';
 
-async function syncMemberWithWOM(discordId) {
-  const member = await Member.findByDiscordId(discordId);
-  
-  if (!member || !member.osrsNickname) {
-    throw new Error('Member not found or no OSRS nickname set');
-  }
-  
-  // Get player details from WOM
-  const player = await womClient.players.getPlayerDetails(member.osrsNickname);
-  
-  // Update member with WOM player ID
-  await Member.updateByDiscordId(discordId, {
-    womPlayerId: player.id
-  });
-  
-  return player;
-}
+// Multiple rows
+const results = await query('SELECT * FROM members WHERE is_active = $1', [true]);
 
-async function updateAllMembers() {
-  const members = await Member.findAll({ activeOnly: true });
-  
-  for (const member of members) {
-    if (!member.osrsNickname) continue;
-    
-    try {
-      // Update player in WOM
-      await womClient.players.updatePlayer(member.osrsNickname);
-      console.log(`✅ Updated ${member.osrsNickname}`);
-    } catch (error) {
-      console.error(`❌ Failed to update ${member.osrsNickname}:`, error.message);
-    }
-    
-    // Rate limit: wait 1 second between updates
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-}
+// Single row
+const member = await queryOne('SELECT * FROM members WHERE discord_id = $1', [discordId]);
 ```
 
-### Rank Syncing
+## Migrations
 
-```javascript
-async function syncRanks(guild) {
-  const members = await Member.findAll({ activeOnly: true });
-  
-  for (const member of members) {
-    try {
-      const guildMember = await guild.members.fetch(member.discordId);
-      const highestRole = guildMember.roles.highest.name;
-      
-      // Update Discord rank if changed
-      if (member.discordRank !== highestRole) {
-        await Member.updateByDiscordId(member.discordId, {
-          discordRank: highestRole
-        });
-        console.log(`Updated ${member.osrsNickname}'s Discord rank to ${highestRole}`);
-      }
-    } catch (error) {
-      console.error(`Failed to sync ranks for ${member.osrsNickname}:`, error.message);
-    }
-  }
-}
+Migrations are stored in `src/db/database/migrations/` and run in order:
+
+```bash
+# Run pending migrations
+node src/db/database/migrate.js up
+
+# Rollback last migration
+node src/db/database/migrate.js down
 ```
+
+See `MIGRATIONS.md` for migration conventions and guidelines.
+
+## Database Tables
+
+### Core Tables
+- `members` - Discord member data
+- `member_movements` - Join/leave tracking
+- `osrs_accounts` - OSRS account linking
+- `token_movements` - Token balance changes
+
+### Achievement Tables
+- `achievement_diary_tiers` - Diary tier definitions
+- `combat_achievements` - CA definitions
+- `collection_log_items` - Collection log item definitions
+- `osrs_account_diary_completions` - Player diary completions
+- `osrs_account_combat_achievements` - Player CA completions
+- `osrs_account_collection_log` - Player collection log entries
+- `osrs_account_killcounts` - Player killcounts
+
+### Coffer Tables
+- `coffer_balance` - Current treasury balance
+- `coffer_movements` - Treasury transaction log
+
+### Points Tables
+- `point_rules` - Point value definitions
+- `osrs_account_points_breakdown` - Player points by category
+
+### Event Tables
+- `events` - Clan events
+- `event_teams` - Teams within events
+- `event_team_members` - Team membership
+- `event_registrations` - Event registration
+
+### Bingo Tables
+- `bingo_tiles` - Tile library
+- `bingo_boards` - Team boards
+- `bingo_board_tiles` - Tiles placed on boards
+- `bingo_tile_progress` - Tile completion tracking
 
 ## Best Practices
 
-1. **Initialize once**: Call `initializeDatabase()` and `Member.createTable()` once when your bot starts
-2. **Serverless advantage**: Neon automatically handles connection pooling and scales to zero when idle
-3. **Error handling**: Always wrap database calls in try-catch blocks
-4. **Rate limiting**: When syncing with external APIs (like WOM), implement rate limiting
-5. **Indexes**: The table includes indexes on frequently queried fields (discord_id, osrs_nickname, wom_player_id)
-6. **Auto-update timestamp**: The `updated_at` field is automatically updated via Postgres trigger
+1. **Use entities for CRUD** - Entity classes handle type safety and field mapping
+2. **Use services for business logic** - Services combine multiple entities and add validation
+3. **Use migrations for schema changes** - Never modify tables directly in production
+4. **Handle errors** - Wrap database calls in try-catch blocks
+5. **Connection pooling** - Neon automatically handles connection pooling
+6. **Serverless-friendly** - Connections scale to zero when idle
 
-## Cleanup
+## Shutdown
 
-To gracefully shutdown the database connection when your bot stops:
+Gracefully close database connections:
 
-```javascript
-const { closeDatabase } = require('./src/connections/database');
+```typescript
+import { closeDatabase } from './db/connection.js';
 
 process.on('SIGINT', async () => {
   await closeDatabase();
   process.exit(0);
 });
 ```
-

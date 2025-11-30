@@ -6,17 +6,22 @@
 import { query, queryOne, pool } from '../db/connection.js'
 
 export interface BaseEntityData {
-  id?: number
+  id?: number | string
   created_at?: Date
   updated_at?: Date
   [key: string]: any
 }
 
 /**
+ * ID type - can be number or string (UUID)
+ */
+export type EntityId = number | string
+
+/**
  * Base Entity Class
  * All entity classes should extend this to get common CRUD methods
  */
-export abstract class BaseEntity<T extends BaseEntityData = BaseEntityData> {
+export abstract class BaseEntity<T extends BaseEntityData = BaseEntityData, ID extends EntityId = number> {
   /**
    * Table name - must be implemented by subclasses
    */
@@ -56,7 +61,7 @@ export abstract class BaseEntity<T extends BaseEntityData = BaseEntityData> {
   /**
    * Find entity by primary key
    */
-  async findById(id: number): Promise<T | null> {
+  async findById(id: ID): Promise<T | null> {
     const sql = `SELECT * FROM ${this.tableName} WHERE ${this.primaryKey} = $1`
     const result = await queryOne(sql, [id])
     return result ? this.formatFromDb(result) : null
@@ -143,7 +148,7 @@ export abstract class BaseEntity<T extends BaseEntityData = BaseEntityData> {
   /**
    * Update entity by primary key
    */
-  async updateById(id: number, data: Partial<Omit<T, 'id' | 'created_at' | 'updated_at'>>): Promise<T> {
+  async updateById(id: ID, data: Partial<Omit<T, 'id' | 'created_at' | 'updated_at'>>): Promise<T> {
     const dbData = this.formatForDb(data)
     const fields = Object.keys(dbData)
     const values: any[] = Object.values(dbData)
@@ -197,7 +202,7 @@ export abstract class BaseEntity<T extends BaseEntityData = BaseEntityData> {
   /**
    * Delete entity by primary key
    */
-  async deleteById(id: number): Promise<boolean> {
+  async deleteById(id: ID): Promise<boolean> {
     const sql = `DELETE FROM ${this.tableName} WHERE ${this.primaryKey} = $1`
     const result = await this.executeQuery(sql, [id])
     return (result.rowCount || 0) > 0

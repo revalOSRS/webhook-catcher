@@ -1,6 +1,6 @@
 /**
  * Dink Event Adapter
- * Converts Dink events to UnifiedGameEvent format
+ * Converts Dink events to UnifiedGameEvent format for bingo tile processing
  */
 
 import type { 
@@ -13,233 +13,235 @@ import type {
   DinkKillCountEvent
 } from '../../../dink/events/event.js'
 import { DinkEventType } from '../../../dink/events/event.js'
-import type { UnifiedGameEvent, LootEventData, PetEventData, SpeedrunEventData, BaGambleEventData, LogoutEventData } from '../types/unified-event.types.js'
-import { query } from '../../../../db/connection.js'
+import type { UnifiedGameEvent } from '../types/unified-event.type.js'
+import { UnifiedEventType, UnifiedEventSource } from '../types/unified-event.type.js'
+import { OsrsAccountsService } from '../../../osrs-accounts/osrs-accounts.service.js'
+
+type SupportedDinkEvent = 
+  | DinkLootEvent 
+  | DinkPetEvent 
+  | DinkSpeedrunEvent 
+  | DinkBarbarianAssaultGambleEvent 
+  | DinkLogoutEvent 
+  | DinkKillCountEvent
 
 /**
- * Convert Dink event to UnifiedGameEvent
- * Handles both typed DinkEvent objects and raw payload objects
+ * Adapter map for converting Dink events to UnifiedGameEvent
+ * Maps event types to their respective adapter functions
  */
-export async function adaptDinkEvent(dinkEvent: DinkEvent | any): Promise<UnifiedGameEvent | null> {
-  const eventType = dinkEvent.type
+const eventAdapters: Partial<Record<DinkEventType, (event: SupportedDinkEvent, osrsAccountId: number | undefined, timestamp: Date) => UnifiedGameEvent | null>> = {
+  [DinkEventType.LOOT]: (event, osrsAccountId, timestamp) => 
+    adaptLootEvent(event as DinkLootEvent, osrsAccountId, timestamp),
   
-  // Get OSRS account ID from player name
-  const osrsAccountId = await getOsrsAccountIdFromPlayerName(dinkEvent.playerName)
+  [DinkEventType.PET]: (event, osrsAccountId, timestamp) => 
+    adaptPetEvent(event as DinkPetEvent, osrsAccountId, timestamp),
   
-  const timestamp = new Date() // Dink events don't have explicit timestamp, use current time
+  [DinkEventType.SPEEDRUN]: (event, osrsAccountId, timestamp) => 
+    adaptSpeedrunEvent(event as DinkSpeedrunEvent, osrsAccountId, timestamp),
+  
+  [DinkEventType.BARBARIAN_ASSAULT_GAMBLE]: (event, osrsAccountId, timestamp) => 
+    adaptBaGambleEvent(event as DinkBarbarianAssaultGambleEvent, osrsAccountId, timestamp),
+  
+  [DinkEventType.LOGOUT]: (event, osrsAccountId, timestamp) => 
+    adaptLogoutEvent(event as DinkLogoutEvent, osrsAccountId, timestamp),
+  
+  [DinkEventType.KILL_COUNT]: (event, osrsAccountId, timestamp) => 
+    adaptKillCountAsSpeedrun(event as DinkKillCountEvent, osrsAccountId, timestamp),
+}
 
-  // Check event type (handle both string and enum)
-  if (eventType === 'LOOT' || eventType === DinkEventType.LOOT) {
-    return adaptLootEvent(dinkEvent as DinkLootEvent, osrsAccountId, timestamp)
+/**
+ * Converts a Dink event to a UnifiedGameEvent.
+ * 
+ * Looks up the OSRS account ID from the player name and routes the event
+ * to the appropriate type-specific adapter. Returns null for unsupported
+ * event types or events that don't qualify for bingo tracking.
+ */
+export const adaptDinkEvent = async (dinkEvent: DinkEvent): Promise<UnifiedGameEvent | null> => {
+  const account = await OsrsAccountsService.getAccountByNickname(dinkEvent.playerName)
+  const timestamp = new Date()
+  
+  const adapter = eventAdapters[dinkEvent.type]
+  if (adapter) {
+    return adapter(dinkEvent as SupportedDinkEvent, account?.id, timestamp)
   }
   
-  if (eventType === 'PET' || eventType === DinkEventType.PET) {
-    return adaptPetEvent(dinkEvent as DinkPetEvent, osrsAccountId, timestamp)
-  }
-  
-  if (eventType === 'SPEEDRUN' || eventType === DinkEventType.SPEEDRUN) {
-    return adaptSpeedrunEvent(dinkEvent as DinkSpeedrunEvent, osrsAccountId, timestamp)
-  }
-  
-  if (eventType === 'BARBARIAN_ASSAULT_GAMBLE' || eventType === DinkEventType.BARBARIAN_ASSAULT_GAMBLE) {
-    return adaptBaGambleEvent(dinkEvent as DinkBarbarianAssaultGambleEvent, osrsAccountId, timestamp)
-  }
-  
-  if (eventType === 'LOGOUT' || eventType === DinkEventType.LOGOUT) {
-    return adaptLogoutEvent(dinkEvent as DinkLogoutEvent, osrsAccountId, timestamp)
-  }
-  
-  // Handle KILL_COUNT events that have a time field (speedrun times)
-  if (eventType === 'KILL_COUNT' || eventType === DinkEventType.KILL_COUNT) {
-    const killCountEvent = dinkEvent as DinkKillCountEvent | any
-    const extra = killCountEvent.extra || {}
-    // If the kill count event has a time field, treat it as a speedrun
-    if (extra.time) {
-      return adaptKillCountAsSpeedrun(killCountEvent, osrsAccountId, timestamp)
-    }
-    // Otherwise, KILL_COUNT events without time are not relevant for bingo tracking
-    return null
-  }
-
-  // Event type not supported for bingo tracking
   return null
 }
 
-function adaptLootEvent(event: DinkLootEvent | any, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent {
-  // Handle both typed events and raw payloads
-  const extra = event.extra || {}
-  const items = extra.items || []
-  const totalValue = items.reduce((sum: number, item: any) => sum + ((item.priceEach || 0) * (item.quantity || 0)), 0)
+/**
+ * Converts a loot event to unified format.
+ * 
+ * Extracts items from the event, calculates total value, and maps each item
+ * to the unified item structure with id, quantity, name, and priceEach.
+ */
+const adaptLootEvent = (event: DinkLootEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => {
+  const { items, source } = event.extra
   
-  const unifiedItems = items.map((item: any) => ({
+  const unifiedItems = items.map(item => ({
     id: item.id,
     quantity: item.quantity,
     name: item.name,
-    priceEach: item.priceEach || 0
+    priceEach: item.priceEach
   }))
   
-  console.log(`[DinkAdapter] Adapting LOOT event for ${event.playerName}:`, JSON.stringify(unifiedItems))
+  const totalValue = items.reduce((sum, item) => sum + (item.priceEach * item.quantity), 0)
   
   return {
-    eventType: 'LOOT',
+    eventType: UnifiedEventType.LOOT,
     playerName: event.playerName,
     osrsAccountId,
     timestamp,
-    source: 'dink',
+    source: UnifiedEventSource.DINK,
     data: {
       items: unifiedItems,
-      source: extra.source,
+      source,
       totalValue
     }
   }
 }
 
-function adaptPetEvent(event: DinkPetEvent | any, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent {
-  const extra = event.extra || {}
-  return {
-    eventType: 'PET',
-    playerName: event.playerName,
-    osrsAccountId,
-    timestamp,
-    source: 'dink',
-    data: {
-      petName: extra.petName,
-      milestone: extra.milestone
-    }
+/**
+ * Converts a pet event to unified format.
+ * 
+ * Extracts pet name and milestone information from the Dink pet event.
+ */
+const adaptPetEvent = (event: DinkPetEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => ({
+  eventType: UnifiedEventType.PET,
+  playerName: event.playerName,
+  osrsAccountId,
+  timestamp,
+  source: UnifiedEventSource.DINK,
+  data: {
+    petName: event.extra.petName,
+    milestone: event.extra.milestone
   }
-}
-
-function adaptSpeedrunEvent(event: DinkSpeedrunEvent | any, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent {
-  const extra = event.extra || {}
-  // Parse time string (e.g., "1:23:45" or "23:45") to seconds
-  const timeSeconds = parseTimeStringToSeconds(extra.currentTime || extra.personalBest || '0')
-  
-  return {
-    eventType: 'SPEEDRUN',
-    playerName: event.playerName,
-    osrsAccountId,
-    timestamp,
-    source: 'dink',
-    data: {
-      location: extra.questName, // Dink uses questName for speedruns
-      timeSeconds,
-      isPersonalBest: extra.isPersonalBest || false
-    }
-  }
-}
-
-function adaptBaGambleEvent(event: DinkBarbarianAssaultGambleEvent | any, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent {
-  const extra = event.extra || {}
-  return {
-    eventType: 'BA_GAMBLE',
-    playerName: event.playerName,
-    osrsAccountId,
-    timestamp,
-    source: 'dink',
-    data: {
-      gambleCount: extra.gambleCount || 1
-    }
-  }
-}
-
-function adaptLogoutEvent(event: DinkLogoutEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent {
-  return {
-    eventType: 'LOGOUT',
-    playerName: event.playerName,
-    osrsAccountId,
-    timestamp,
-    source: 'dink',
-    data: {} // XP data will be fetched from WiseOldMan API
-  }
-}
+})
 
 /**
- * Convert KILL_COUNT event with time to SPEEDRUN event
- * Some NPC speedrun times come through as KILL_COUNT events with a time field
+ * Converts a speedrun event to unified format.
+ * 
+ * Parses the time string (format: "HH:MM:SS", "MM:SS", or "SS") to seconds
+ * and uses questName as the location identifier.
  */
-function adaptKillCountAsSpeedrun(event: DinkKillCountEvent | any, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent {
-  const extra = event.extra || {}
-  // Parse ISO 8601 duration format (e.g., "PT1M25S" = 1 minute 25 seconds)
-  const timeSeconds = parseIso8601DurationToSeconds(extra.time || '0')
+const adaptSpeedrunEvent = (event: DinkSpeedrunEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => {
+  const { questName, currentTime, personalBest, isPersonalBest } = event.extra
+  const timeSeconds = parseTimeStringToSeconds(currentTime || personalBest)
   
   return {
-    eventType: 'SPEEDRUN',
+    eventType: UnifiedEventType.SPEEDRUN,
     playerName: event.playerName,
     osrsAccountId,
     timestamp,
-    source: 'dink',
+    source: UnifiedEventSource.DINK,
     data: {
-      location: extra.boss || 'Unknown', // Use boss name as location
+      location: questName,
       timeSeconds,
-      isPersonalBest: extra.isPersonalBest || false
+      isPersonalBest: isPersonalBest ?? false
     }
   }
 }
 
 /**
- * Parse time string to seconds
- * Supports formats: "1:23:45" (hours:minutes:seconds), "23:45" (minutes:seconds), "45" (seconds)
+ * Converts a Barbarian Assault gamble event to unified format.
+ * 
+ * Extracts the gamble count from the event's extra data.
  */
-function parseTimeStringToSeconds(timeStr: string): number {
+const adaptBaGambleEvent = (event: DinkBarbarianAssaultGambleEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => ({
+  eventType: UnifiedEventType.BA_GAMBLE,
+  playerName: event.playerName,
+  osrsAccountId,
+  timestamp,
+  source: UnifiedEventSource.DINK,
+  data: {
+    gambleCount: event.extra.gambleCount
+  }
+})
+
+/**
+ * Converts a logout event to unified format.
+ * 
+ * Creates a minimal logout event - XP data will be fetched from WiseOldMan API
+ * when processing experience-based tile requirements.
+ */
+const adaptLogoutEvent = (event: DinkLogoutEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => ({
+  eventType: UnifiedEventType.LOGOUT,
+  playerName: event.playerName,
+  osrsAccountId,
+  timestamp,
+  source: UnifiedEventSource.DINK,
+  data: {}
+})
+
+/**
+ * Converts a kill count event to speedrun format (if it has time data).
+ * 
+ * Some boss speedrun times come through as KILL_COUNT events with a time field
+ * in ISO 8601 duration format (e.g., "PT1M25S"). Returns null if no time is present.
+ */
+const adaptKillCountAsSpeedrun = (event: DinkKillCountEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent | null => {
+  const { time, boss, isPersonalBest } = event.extra
+  
+  // Only convert to speedrun if time data is present
+  if (!time) {
+    return null
+  }
+  
+  const timeSeconds = parseIso8601DurationToSeconds(time)
+  
+  return {
+    eventType: UnifiedEventType.SPEEDRUN,
+    playerName: event.playerName,
+    osrsAccountId,
+    timestamp,
+    source: UnifiedEventSource.DINK,
+    data: {
+      location: boss,
+      timeSeconds,
+      isPersonalBest
+    }
+  }
+}
+
+/**
+ * Parses a time string to total seconds.
+ * 
+ * Supports formats:
+ * - "1:23:45" → 5025 seconds (hours:minutes:seconds)
+ * - "23:45" → 1425 seconds (minutes:seconds)
+ * - "45" → 45 seconds
+ */
+const parseTimeStringToSeconds = (timeStr: string): number => {
   const parts = timeStr.split(':').map(Number)
   
   if (parts.length === 3) {
-    // hours:minutes:seconds
     return parts[0] * 3600 + parts[1] * 60 + parts[2]
-  } else if (parts.length === 2) {
-    // minutes:seconds
-    return parts[0] * 60 + parts[1]
-  } else {
-    // seconds only
-    return parts[0]
   }
+  if (parts.length === 2) {
+    return parts[0] * 60 + parts[1]
+  }
+  return parts[0] || 0
 }
 
 /**
- * Parse ISO 8601 duration format to seconds
- * Supports formats: "PT1M25S" (1 minute 25 seconds), "PT45S" (45 seconds), "PT1H2M3S" (1 hour 2 minutes 3 seconds)
- * Format: PT[hours]H[minutes]M[seconds]S
+ * Parses ISO 8601 duration format to total seconds.
+ * 
+ * Supports format: PT[hours]H[minutes]M[seconds]S
+ * Examples:
+ * - "PT1M25S" → 85 seconds
+ * - "PT1H2M3S" → 3723 seconds
+ * - "PT45S" → 45 seconds
  */
-function parseIso8601DurationToSeconds(duration: string): number {
-  // Remove PT prefix
+const parseIso8601DurationToSeconds = (duration: string): number => {
   const timeStr = duration.replace(/^PT/i, '')
   
-  let totalSeconds = 0
+  const hours = timeStr.match(/(\d+)H/i)?.[1]
+  const minutes = timeStr.match(/(\d+)M/i)?.[1]
+  const seconds = timeStr.match(/(\d+(?:\.\d+)?)S/i)?.[1]
   
-  // Match hours: H followed by digits
-  const hoursMatch = timeStr.match(/(\d+)H/i)
-  if (hoursMatch) {
-    totalSeconds += parseInt(hoursMatch[1], 10) * 3600
-  }
-  
-  // Match minutes: M followed by digits
-  const minutesMatch = timeStr.match(/(\d+)M/i)
-  if (minutesMatch) {
-    totalSeconds += parseInt(minutesMatch[1], 10) * 60
-  }
-  
-  // Match seconds: S followed by digits
-  const secondsMatch = timeStr.match(/(\d+)S/i)
-  if (secondsMatch) {
-    totalSeconds += parseInt(secondsMatch[1], 10)
-  }
-  
-  return totalSeconds
-}
-
-/**
- * Get OSRS account ID from player name
- */
-async function getOsrsAccountIdFromPlayerName(playerName: string): Promise<number | undefined> {
-  try {
-    const result = await query(
-      'SELECT id FROM osrs_accounts WHERE osrs_nickname = $1 LIMIT 1',
-      [playerName]
-    )
-    return result.length > 0 ? result[0].id : undefined
-  } catch (error) {
-    console.error(`Error looking up OSRS account for player ${playerName}:`, error)
-    return undefined
-  }
+  return (
+    (hours ? parseInt(hours, 10) * 3600 : 0) +
+    (minutes ? parseInt(minutes, 10) * 60 : 0) +
+    (seconds ? parseFloat(seconds) : 0)
+  )
 }
 

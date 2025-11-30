@@ -13,7 +13,7 @@ import membersRoutes from './routes/app/members/index.js'
 import clanRoutes from './routes/app/clan/index.js'
 import activityRoutes from './routes/app/activity.routes.js'
 import eventFiltersRoutes from './routes/app/event-filters.routes.js'
-import clanEventsRoutes from './routes/app/clan-events.routes.js'
+import clanEventsRoutes from './routes/app/clan-events/index.js'
 import adminClanEventsRoutes from './routes/admin/clan-events/index.js'
 
 // Import middleware

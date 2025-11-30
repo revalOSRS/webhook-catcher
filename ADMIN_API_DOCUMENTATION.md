@@ -611,7 +611,6 @@ Get a team's board with all tiles, tile effects, and line effects. If no board e
         "icon": "string | null",
         "description": "string | null",
         "base_points": "number",
-        "bonus_tiers": [],
         "requirements": { /* tile requirements object */ },
         "progress_entries": [
           {
@@ -1053,8 +1052,7 @@ Get detailed tile progress for team with all progress entries. Includes tier tra
       "difficulty": "string",
       "icon": "string | null",
       "description": "string | null",
-      "base_points": "number",
-      "bonus_tiers": [],
+      "base_points": "number (required)",
       "requirements": { /* tile requirements object */ },
       "progress_entries": [
         {
@@ -1175,7 +1173,7 @@ Get all tiles from the library with optional filtering.
         "match_type": "all | any",
         "requirements": [
           {
-            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
+            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES",
             // ... requirement fields based on type
           }
         ],
@@ -1183,21 +1181,12 @@ Get all tiles from the library with optional filtering.
           {
             "tier": "number",
             "requirement": {
-              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
+              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES",
               // ... requirement fields based on type
             }
           }
         ]
       },
-      "bonus_tiers": [
-      // ONLY for value-based thresholds (e.g., "get 10 items", "get 100k xp")
-      // For tiered requirements, use points directly in requirements.tiers[].points
-      {
-        "threshold": "10_items",
-        "requirementValue": 10,
-        "points": 5
-      }
-    ],
       "metadata": {},
       "is_active": "boolean",
       "created_at": "ISO8601 string",
@@ -1238,7 +1227,7 @@ Get a single tile by ID.
       "match_type": "all | any",
       "requirements": [
         {
-          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
+              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES",
           // ... requirement fields based on type
         }
       ],
@@ -1246,21 +1235,12 @@ Get a single tile by ID.
         {
           "tier": "number",
           "requirement": {
-            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION",
+            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES",
             // ... requirement fields based on type
           }
         }
       ]
     },
-    "bonus_tiers": [
-      // ONLY for value-based thresholds (e.g., "get 10 items", "get 100k xp")
-      // For tiered requirements, use points directly in requirements.tiers[].points
-      {
-        "threshold": "10_items",
-        "requirementValue": 10,
-        "points": 5
-      }
-    ],
     "metadata": {},
     "is_active": "boolean",
     "created_at": "ISO8601 string",
@@ -1286,19 +1266,15 @@ Create a new tile in the library.
   "difficulty": "easy | medium | hard | extreme (required)",
   "icon": "string | null",
   "description": "string | null",
-  "base_points": "number (default: 0)",
+  "base_points": "number (required)",
   "requirements": {
     "match_type": "all | any (required)",
     "requirements": [
       {
-        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
-        // For ITEM_DROP (single item format):
-        "item_name": "string (required for single item)",
-        "item_id": "number (required for single item)",
-        "item_amount": "number (required for single item)",
-        // OR for ITEM_DROP (multiple items format):
-        "items": "array of { item_name: string, item_id: number } (required for multiple items)",
-        "total_amount": "number (required for multiple items)",
+        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES (required)",
+        // For ITEM_DROP:
+        "items": "array of { item_name: string, item_id: number, item_amount?: number } (required)",
+        "total_amount": "number (optional - if provided, uses total amount mode; if omitted, uses per-item mode)",
         // For PET:
         "pet_name": "string",
         "amount": "number",
@@ -1318,14 +1294,13 @@ Create a new tile in the library.
       {
         "tier": "number (required, 1, 2, 3, etc.)",
         "requirement": {
-          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
+          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES (required)",
           // ... same structure as above
         },
         "points": "number (required) - Points awarded when this tier is completed"
       }
     ]
   },
-  "bonus_tiers": [],
   "metadata": {},
   "is_active": "boolean (default: true)"
 }
@@ -1333,19 +1308,9 @@ Create a new tile in the library.
 
 **Requirement Types:**
 
-1. **ITEM_DROP**: Track when a specific item is dropped/obtained
+1. **ITEM_DROP**: Track when specific items are dropped/obtained
    
-   **Single item format:**
-   ```json
-   {
-     "type": "ITEM_DROP",
-     "item_name": "Dragon Warhammer",
-     "item_id": 13576,
-     "item_amount": 1
-   }
-   ```
-   
-   **Multiple items format (get X amount of any combination):**
+   **Mode 1: Total amount (any combination) - use `total_amount`:**
    ```json
    {
      "type": "ITEM_DROP",
@@ -1360,6 +1325,30 @@ Create a new tile in the library.
    }
    ```
    This example requires getting 2 items total, which can be any combination of the 5 listed items (e.g., 2 Dragon Warhammers, or 1 Dragon Warhammer + 1 Dragon Claws, etc.).
+   
+   **Mode 2: Per-item requirements (specific amounts) - omit `total_amount`, use `item_amount` per item:**
+   ```json
+   {
+     "type": "ITEM_DROP",
+     "items": [
+       { "item_name": "Dragon Warhammer", "item_id": 13576, "item_amount": 5 },
+       { "item_name": "Dragon Claws", "item_id": 13652, "item_amount": 3 },
+       { "item_name": "Dragon Crossbow", "item_id": 21902, "item_amount": 2 }
+     ]
+   }
+   ```
+   This example requires getting 5 Dragon Warhammers AND 3 Dragon Claws AND 2 Dragon Crossbows. Each item must meet its specific `item_amount` requirement (defaults to 1 if not specified).
+   
+   **Single item example (total amount mode):**
+   ```json
+   {
+     "type": "ITEM_DROP",
+     "items": [
+       { "item_name": "Dragon Warhammer", "item_id": 13576 }
+     ],
+     "total_amount": 1
+   }
+   ```
 
 2. **PET**: Track when a pet is obtained
    ```json
@@ -1410,187 +1399,6 @@ Create a new tile in the library.
    ```
    - `amount`: Number of gambles required (positive number)
 
-7. **UNIQUE_COLLECTION**: Track unique items with two collection modes:
-   
-   **MULTI_SOURCE mode** (default): Get unique items from different sources (e.g., unique drops from different bosses)
-   
-   **Example 1: Simple (1 item per boss, different boss per tier)**
-   ```json
-   {
-     "type": "UNIQUE_COLLECTION",
-     "collection_mode": "MULTI_SOURCE",
-     "sources": [
-       {
-         "source_name": "Boss A",
-         "items": [
-           { "item_name": "Unique A1", "item_id": 12345 }
-         ]
-       },
-       {
-         "source_name": "Boss B",
-         "items": [
-           { "item_name": "Unique B1", "item_id": 23456 }
-         ]
-       },
-       {
-         "source_name": "Boss C",
-         "items": [
-           { "item_name": "Unique C1", "item_id": 34567 }
-         ]
-       },
-       {
-         "source_name": "Boss D",
-         "items": [
-           { "item_name": "Unique D1", "item_id": 45678 }
-         ]
-       }
-     ],
-     "base_requirement": 1,
-     "tier_increment": 1
-   }
-   ```
-   - **Tier 1**: Get 1 item from any boss (A, B, C, or D)
-   - **Tier 2**: Get 1 item from a different boss (not the one used in Tier 1)
-   - **Tier 3**: Get 1 item from another different boss (not used in Tier 1 or 2)
-   - **Tier 4**: Get 1 item from the last remaining boss
-   
-   **Note**: With `base_requirement: 1` and `allow_same_source_across_tiers: false` (default), each tier requires 1 item from a different source. The `tier_increment` is ignored in this mode.
-   
-   **Example 2: Progressive items per boss (4 bosses, 4 items each, different boss per tier)**
-   ```json
-   {
-     "type": "UNIQUE_COLLECTION",
-     "collection_mode": "MULTI_SOURCE",
-     "sources": [
-       {
-         "source_name": "Boss A",
-         "items": [
-           { "item_name": "Item A1", "item_id": 11111 },
-           { "item_name": "Item A2", "item_id": 11112 },
-           { "item_name": "Item A3", "item_id": 11113 },
-           { "item_name": "Item A4", "item_id": 11114 }
-         ]
-       },
-       {
-         "source_name": "Boss B",
-         "items": [
-           { "item_name": "Item B1", "item_id": 22221 },
-           { "item_name": "Item B2", "item_id": 22222 },
-           { "item_name": "Item B3", "item_id": 22223 },
-           { "item_name": "Item B4", "item_id": 22224 }
-         ]
-       },
-       {
-         "source_name": "Boss C",
-         "items": [
-           { "item_name": "Item C1", "item_id": 33331 },
-           { "item_name": "Item C2", "item_id": 33332 },
-           { "item_name": "Item C3", "item_id": 33333 },
-           { "item_name": "Item C4", "item_id": 33334 }
-         ]
-       },
-       {
-         "source_name": "Boss D",
-         "items": [
-           { "item_name": "Item D1", "item_id": 44441 },
-           { "item_name": "Item D2", "item_id": 44442 },
-           { "item_name": "Item D3", "item_id": 44443 },
-           { "item_name": "Item D4", "item_id": 44444 }
-         ]
-       }
-     ],
-     "base_requirement": 1,
-     "tier_increment": 1,
-     "require_all_for_final_source": true
-   }
-   ```
-   - **Base**: Get 1 item from any boss (any of Boss A's 4 items)
-   - **Tier 2**: Get 2 items from a different boss (any 2 of Boss B's 4 items)
-   - **Tier 3**: Get 3 items from another different boss (any 3 of Boss C's 4 items)
-   - **Tier 4**: Get all 4 items from the last remaining boss (all 4 of Boss D's items)
-   
-   Each tier requires getting items from a source you haven't completed yet.
-   
-   **Example 3: Progressive items from any boss (same boss allowed across tiers)**
-   ```json
-   {
-     "type": "UNIQUE_COLLECTION",
-     "collection_mode": "MULTI_SOURCE",
-     "sources": [
-       {
-         "source_name": "Boss A",
-         "items": [
-           { "item_name": "Item A1", "item_id": 11111 },
-           { "item_name": "Item A2", "item_id": 11112 },
-           { "item_name": "Item A3", "item_id": 11113 },
-           { "item_name": "Item A4", "item_id": 11114 }
-         ]
-       },
-       {
-         "source_name": "Boss B",
-         "items": [
-           { "item_name": "Item B1", "item_id": 22221 },
-           { "item_name": "Item B2", "item_id": 22222 },
-           { "item_name": "Item B3", "item_id": 22223 },
-           { "item_name": "Item B4", "item_id": 22224 }
-         ]
-       },
-       {
-         "source_name": "Boss C",
-         "items": [
-           { "item_name": "Item C1", "item_id": 33331 },
-           { "item_name": "Item C2", "item_id": 33332 },
-           { "item_name": "Item C3", "item_id": 33333 },
-           { "item_name": "Item C4", "item_id": 33334 }
-         ]
-       },
-       {
-         "source_name": "Boss D",
-         "items": [
-           { "item_name": "Item D1", "item_id": 44441 },
-           { "item_name": "Item D2", "item_id": 44442 },
-           { "item_name": "Item D3", "item_id": 44443 },
-           { "item_name": "Item D4", "item_id": 44444 }
-         ]
-       }
-     ],
-     "base_requirement": 1,
-     "tier_increment": 1,
-     "allow_same_source_across_tiers": true
-   }
-   ```
-   - **Base**: Get 1 item from any boss (any of the 16 items total)
-   - **Tier 2**: Get 2 items total from any boss(es) (could be 2 from Boss A, or 1 from A and 1 from B, etc.)
-   - **Tier 3**: Get 4 items total from any boss(es) (could be all 4 from Boss A, or mix from different bosses)
-   
-   With `allow_same_source_across_tiers: true`, items can come from the same boss across tiers. The system tracks total unique items collected across all sources.
-   
-   **PROGRESSIVE mode**: Get progressively more unique items from the same source/set (e.g., Moons of Peril)
-   ```json
-   {
-     "type": "UNIQUE_COLLECTION",
-     "collection_mode": "PROGRESSIVE",
-     "sources": [
-       {
-         "source_name": "Moons of Peril",
-         "items": [
-           { "item_name": "Moon 1", "item_id": 11111 },
-           { "item_name": "Moon 2", "item_id": 22222 },
-           { "item_name": "Moon 3", "item_id": 33333 },
-           { "item_name": "Moon 4", "item_id": 44444 }
-         ]
-       }
-     ],
-     "base_requirement": 1,
-     "tier_increment": 1,
-     "require_all_for_final_tier": true
-   }
-   ```
-   - **Base requirement**: Get 1 unique item from the set
-   - **Tier 2**: Get 2 unique items from the set (total, can be any 2 different items)
-   - **Tier 3**: Get ALL items from the set (all 4 moons)
-   
-   With `require_all_for_final_tier: true`, the final tier requires collecting all items. Without it, tier 3 would require `base_requirement + (2 * tier_increment)` = 3 items.
 
 **Examples:**
 
@@ -1601,9 +1409,10 @@ Create a new tile in the library.
   "requirements": [
     {
       "type": "ITEM_DROP",
-      "item_name": "Dragon Warhammer",
-      "item_id": 13576,
-      "item_amount": 1
+      "items": [
+        { "item_name": "Dragon Warhammer", "item_id": 13576 }
+      ],
+      "total_amount": 1
     }
   ]
 }
@@ -1616,9 +1425,10 @@ Create a new tile in the library.
   "requirements": [
     {
       "type": "ITEM_DROP",
-      "item_name": "Dragon Warhammer",
-      "item_id": 13576,
-      "item_amount": 1
+      "items": [
+        { "item_name": "Dragon Warhammer", "item_id": 13576 }
+      ],
+      "total_amount": 1
     },
     {
       "type": "PET",
@@ -1647,142 +1457,6 @@ Create a new tile in the library.
 }
 ```
 This requires getting 2 items total, which can be any combination of the 3 listed items.
-
-**Unique collection requirement - MULTI_SOURCE mode (different sources per tier):**
-
-**Simple example (1 item per boss):**
-```json
-{
-  "match_type": "all",
-  "requirements": [
-    {
-      "type": "UNIQUE_COLLECTION",
-      "collection_mode": "MULTI_SOURCE",
-      "sources": [
-        {
-          "source_name": "Boss A",
-          "items": [
-            { "item_name": "Unique A", "item_id": 12345 }
-          ]
-        },
-        {
-          "source_name": "Boss B",
-          "items": [
-            { "item_name": "Unique B", "item_id": 23456 }
-          ]
-        },
-        {
-          "source_name": "Boss C",
-          "items": [
-            { "item_name": "Unique C", "item_id": 34567 }
-          ]
-        },
-        {
-          "source_name": "Boss D",
-          "items": [
-            { "item_name": "Unique D", "item_id": 45678 }
-          ]
-        }
-      ],
-      "base_requirement": 1,
-      "tier_increment": 1
-    }
-  ]
-}
-```
-- **Base**: Get 1 unique from any boss (A, B, C, or D)
-- **Tier 2**: Get 1 unique from a different boss
-- **Tier 3**: Get 1 unique from another different boss
-- **Tier 4**: Get 1 unique from the last remaining boss
-
-**Progressive example (4 bosses, 4 items each - progressive items per tier):**
-```json
-{
-  "match_type": "all",
-  "requirements": [
-    {
-      "type": "UNIQUE_COLLECTION",
-      "collection_mode": "MULTI_SOURCE",
-      "sources": [
-        {
-          "source_name": "Boss A",
-          "items": [
-            { "item_name": "Item A1", "item_id": 11111 },
-            { "item_name": "Item A2", "item_id": 11112 },
-            { "item_name": "Item A3", "item_id": 11113 },
-            { "item_name": "Item A4", "item_id": 11114 }
-          ]
-        },
-        {
-          "source_name": "Boss B",
-          "items": [
-            { "item_name": "Item B1", "item_id": 22221 },
-            { "item_name": "Item B2", "item_id": 22222 },
-            { "item_name": "Item B3", "item_id": 22223 },
-            { "item_name": "Item B4", "item_id": 22224 }
-          ]
-        },
-        {
-          "source_name": "Boss C",
-          "items": [
-            { "item_name": "Item C1", "item_id": 33331 },
-            { "item_name": "Item C2", "item_id": 33332 },
-            { "item_name": "Item C3", "item_id": 33333 },
-            { "item_name": "Item C4", "item_id": 33334 }
-          ]
-        },
-        {
-          "source_name": "Boss D",
-          "items": [
-            { "item_name": "Item D1", "item_id": 44441 },
-            { "item_name": "Item D2", "item_id": 44442 },
-            { "item_name": "Item D3", "item_id": 44443 },
-            { "item_name": "Item D4", "item_id": 44444 }
-          ]
-        }
-      ],
-      "base_requirement": 1,
-      "tier_increment": 1,
-      "require_all_for_final_source": true
-    }
-  ]
-}
-```
-- **Base**: Get 1 item from any boss (any of Boss A's 4 items)
-- **Tier 2**: Get 2 items from a different boss (any 2 of Boss B's 4 items)
-- **Tier 3**: Get 3 items from another different boss (any 3 of Boss C's 4 items)
-- **Tier 4**: Get all 4 items from the last remaining boss (all 4 of Boss D's items)
-
-**Unique collection requirement - PROGRESSIVE mode (progressive collection from same set):**
-```json
-{
-  "match_type": "all",
-  "requirements": [
-    {
-      "type": "UNIQUE_COLLECTION",
-      "collection_mode": "PROGRESSIVE",
-      "sources": [
-        {
-          "source_name": "Moons of Peril",
-          "items": [
-            { "item_name": "Moon 1", "item_id": 11111 },
-            { "item_name": "Moon 2", "item_id": 22222 },
-            { "item_name": "Moon 3", "item_id": 33333 },
-            { "item_name": "Moon 4", "item_id": 44444 }
-          ]
-        }
-      ],
-      "base_requirement": 1,
-      "tier_increment": 1,
-      "require_all_for_final_tier": true
-    }
-  ]
-}
-```
-This creates automatic tiers:
-- **Base**: Get 1 unique item from the set (any moon)
-- **Tier 2**: Get 2 unique items from the set (any 2 different moons)
-- **Tier 3**: Get ALL items from the set (all 4 moons)
 
 **Tiered requirements (manual tiers with points):**
 ```json
@@ -1831,7 +1505,7 @@ This creates automatic tiers:
   - They beat tier 1 (7200s) → Award 10 points
   - **Total: 25 points** (tiers 1 and 2 achieved)
 
-**Note:** When using `tiers`, the `requirements` array should be empty. Points are defined directly in each tier. The `bonus_tiers` array is NOT used for tiered requirements - it's only for value-based thresholds (e.g., "get 10 items").
+**Note:** When using `tiers`, the `requirements` array should be empty. Points are defined directly in each tier.
 
 **Response:**
 ```json
@@ -1861,14 +1535,10 @@ Create multiple tiles at once.
         "match_type": "all | any (required)",
         "requirements": [
           {
-            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
-            // For ITEM_DROP (single item format):
-            "item_name": "string (required for single item)",
-            "item_id": "number (required for single item)",
-            "item_amount": "number (required for single item)",
-            // OR for ITEM_DROP (multiple items format):
-            "items": "array of { item_name: string, item_id: number } (required for multiple items)",
-            "total_amount": "number (required for multiple items)",
+            "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES (required)",
+            // For ITEM_DROP:
+            "items": "array of { item_name: string, item_id: number } (required)",
+            "total_amount": "number (required)",
             // For PET:
             "pet_name": "string",
             "amount": "number",
@@ -1888,22 +1558,13 @@ Create multiple tiles at once.
           {
             "tier": "number (required, 1, 2, 3, etc.)",
             "requirement": {
-              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
+              "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES (required)",
               // ... same structure as above
             },
             "points": "number (required) - Points awarded when this tier is completed"
           }
         ]
       },
-      "bonus_tiers": [
-      // ONLY for value-based thresholds (e.g., "get 10 items", "get 100k xp")
-      // For tiered requirements, use points directly in requirements.tiers[].points
-      {
-        "threshold": "10_items",
-        "requirementValue": 10,
-        "points": 5
-      }
-    ],
       "metadata": {},
       "is_active": "boolean"
     }
@@ -1950,14 +1611,10 @@ Update a tile in the library.
     "match_type": "all | any (required if requirements provided)",
     "requirements": [
       {
-        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
-        // For ITEM_DROP (single item format):
-        "item_name": "string (required for single item)",
-        "item_id": "number (required for single item)",
-        "item_amount": "number (required for single item)",
-        // OR for ITEM_DROP (multiple items format):
-        "items": "array of { item_name: string, item_id: number } (required for multiple items)",
-        "total_amount": "number (required for multiple items)",
+        "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES (required)",
+        // For ITEM_DROP:
+        "items": "array of { item_name: string, item_id: number, item_amount?: number } (required)",
+        "total_amount": "number (optional - if provided, uses total amount mode; if omitted, uses per-item mode)",
         // For PET:
         "pet_name": "string",
         "amount": "number",
@@ -1977,14 +1634,13 @@ Update a tile in the library.
       {
         "tier": "number (required, 1, 2, 3, etc.)",
         "requirement": {
-          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES | UNIQUE_COLLECTION (required)",
+          "type": "ITEM_DROP | PET | VALUE_DROP | SPEEDRUN | EXPERIENCE | BA_GAMBLES (required)",
           // ... same structure as above
         },
         "points": "number (required) - Points awarded when this tier is completed"
       }
     ]
   },
-  "bonus_tiers": [],
   "metadata": {},
   "is_active": "boolean"
 }
@@ -2222,13 +1878,11 @@ All endpoints may return the following error responses:
 5. The `show_tile_buffs` setting in board metadata controls whether tile buffs are visible to app users. If `false`, only active buffs are shown.
 6. Position format for tiles: Typically "A1", "B2", etc. (column letter + row number).
 7. Line identifiers: Rows use numbers (1, 2, 3...), columns use letters (A, B, C...).
-8. **Requirements vs Tiers vs Bonus Tiers:**
+8. **Requirements vs Tiers:**
    - Use `requirements` array for simple, non-tiered requirements (e.g., "get 1 Dragon Warhammer").
    - Use `tiers` array for tiered requirements where each tier has different criteria (e.g., speedrun tiers with different time goals). Each tier MUST include `points`.
-   - Use `bonus_tiers` ONLY for value-based thresholds on non-tiered requirements (e.g., "get 10 items" awards bonus points at milestones).
    - When using `tiers`, the `requirements` array should typically be empty (unless you want a base requirement in addition to tiers).
-9. **UNIQUE_COLLECTION** requirements create dynamic tiers based on the number of sources. Points for these tiers should be defined in `bonus_tiers` using the `tier` field (e.g., `{ "tier": 1, "points": 4 }`).
-10. **Tiered Requirements Progress Tracking:**
+9. **Tiered Requirements Progress Tracking:**
     - For tiles with `requirements.tiers`, progress is tracked per tier
     - Each tier's progress is stored in `progress_metadata.tier_N_progress` and `progress_metadata.tier_N_metadata`
     - Completed tiers are tracked in `progress_metadata.completed_tiers` array

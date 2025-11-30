@@ -1,14 +1,12 @@
 /**
  * Database Setup Script
- * Run this to initialize the Neon Postgres database and create tables
+ * Run this to initialize the Neon Postgres database and run migrations
  * 
- * Usage: node src/connections/database/setup.js
+ * Usage: node src/db/database/setup.js
  */
 
 require('dotenv').config();
 const { initializeDatabase, closeDatabase } = require('./index');
-const Member = require('./models/Member');
-const MemberMovement = require('./models/MemberMovement');
 const { runMigrations } = require('./migrations');
 
 async function setup() {
@@ -20,66 +18,55 @@ async function setup() {
 		await initializeDatabase();
 		console.log('   ✅ Connected successfully\n');
 		
-		// Create base tables (if first time)
-		console.log('2. Creating database tables...');
-		console.log('   - Creating Member table');
-		console.log('   - Adding indexes (discord_id, osrs_nickname, wom_player_id)');
-		console.log('   - Setting up auto-update trigger');
-		await Member.createTable();
-		console.log('   ✅ Members table ready');
-		
-		console.log('   - Creating MemberMovement table');
-		console.log('   - Adding indexes (member_id, discord_id, timestamp, event_type)');
-		await MemberMovement.createTable();
-		console.log('   ✅ Member movements table ready\n');
-		
-		// Run any pending migrations
-		console.log('3. Running database migrations...');
+		// Run all pending migrations (this creates/updates all tables)
+		console.log('2. Running database migrations...');
 		const migrationsApplied = await runMigrations();
 		if (migrationsApplied === 0) {
 			console.log('   ✅ Database schema is up to date\n');
 		}
 		
-		// Display table info
-		console.log('📊 Database Schema:');
-		console.log('\n   Table: members (Discord user data)');
-		console.log('   ├─ id (SERIAL PRIMARY KEY)');
-		console.log('   ├─ discord_id (VARCHAR(20) UNIQUE)');
-		console.log('   ├─ discord_tag (VARCHAR(37))');
-		console.log('   ├─ is_active (BOOLEAN)');
-		console.log('   ├─ in_discord (BOOLEAN)');
-		console.log('   ├─ notes (TEXT)');
-		console.log('   ├─ created_at (TIMESTAMP)');
-		console.log('   ├─ updated_at (TIMESTAMP - auto-updated)');
-		console.log('   └─ last_seen (TIMESTAMP)');
+		// Display schema info
+		console.log('📊 Database Schema (managed by migrations):');
+		console.log('\n   Core Tables:');
+		console.log('   ├─ members (Discord user data)');
+		console.log('   ├─ member_movements (join/leave tracking)');
+		console.log('   ├─ osrs_accounts (OSRS account data)');
+		console.log('   ├─ donations (donation tracking)');
+		console.log('   └─ token_movements (token balance changes)');
 		
-		console.log('\n   Table: osrs_accounts (OSRS account data)');
-		console.log('   ├─ id (SERIAL PRIMARY KEY)');
-		console.log('   ├─ discord_id (VARCHAR(255) FK → members.discord_id)');
-		console.log('   ├─ osrs_nickname (VARCHAR(12) UNIQUE)');
-		console.log('   ├─ dink_hash (VARCHAR(255))');
-		console.log('   ├─ wom_player_id (INTEGER)');
-		console.log('   ├─ wom_rank (VARCHAR(50))');
-		console.log('   ├─ ehp (DECIMAL)');
-		console.log('   ├─ ehb (DECIMAL)');
-		console.log('   ├─ is_primary (BOOLEAN)');
-		console.log('   ├─ last_synced_at (TIMESTAMP)');
-		console.log('   ├─ created_at (TIMESTAMP)');
-		console.log('   └─ updated_at (TIMESTAMP)');
+		console.log('\n   Achievement Tables:');
+		console.log('   ├─ achievement_diary_tiers');
+		console.log('   ├─ combat_achievements');
+		console.log('   ├─ collection_log_items');
+		console.log('   ├─ osrs_account_diary_completions');
+		console.log('   ├─ osrs_account_combat_achievements');
+		console.log('   ├─ osrs_account_collection_log');
+		console.log('   └─ osrs_account_killcounts');
 		
-		console.log('\n   Table: member_movements');
-		console.log('   ├─ id (SERIAL PRIMARY KEY)');
-		console.log('   ├─ member_id (INTEGER)');
-		console.log('   ├─ discord_id (VARCHAR(20))');
-		console.log('   ├─ event_type (VARCHAR(20) - joined/left)');
-		console.log('   ├─ previous_rank (VARCHAR(50))');
-		console.log('   ├─ notes (TEXT)');
-		console.log('   └─ timestamp (TIMESTAMP)');
+		console.log('\n   Coffer Tables:');
+		console.log('   ├─ coffer_balance');
+		console.log('   └─ coffer_movements');
 		
-		console.log('✅ Database setup complete!\n');
-		console.log('🚀 You can now start your Discord bot.');
+		console.log('\n   Points Tables:');
+		console.log('   ├─ point_rules');
+		console.log('   └─ osrs_account_points_breakdown');
+		
+		console.log('\n   Event Tables:');
+		console.log('   ├─ events');
+		console.log('   ├─ event_teams');
+		console.log('   ├─ event_team_members');
+		console.log('   └─ event_registrations');
+		
+		console.log('\n   Bingo Tables:');
+		console.log('   ├─ bingo_tiles');
+		console.log('   ├─ bingo_boards');
+		console.log('   ├─ bingo_board_tiles');
+		console.log('   └─ bingo_tile_progress');
+		
+		console.log('\n✅ Database setup complete!\n');
+		console.log('🚀 You can now start your application.');
 		console.log('\n💡 Tip: To run migrations separately, use:');
-		console.log('   node src/connections/database/migrate.js up');
+		console.log('   node src/db/database/migrate.js up');
 	} catch (error) {
 		console.error('\n❌ Setup failed:', error.message);
 		console.error('\nTroubleshooting:');
@@ -101,4 +88,3 @@ if (require.main === module) {
 }
 
 module.exports = { setup };
-

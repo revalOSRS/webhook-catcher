@@ -1,173 +1,22 @@
-import { Router, Request, Response } from 'express';
-import { query } from '../../db/connection.js';
+import { Router, Response } from 'express';
+import { query } from '../../../db/connection.js';
+import {
+	getMemberFromHeaders,
+	getEventParticipation,
+	EventListItem,
+	EventDetail,
+	TeamMember,
+	BoardTileWithProgress
+} from './types.js';
 
 const router = Router();
 
 /**
- * Helper to get member from headers
- */
-async function getMemberFromHeaders(req: Request): Promise<any | null> {
-	const memberCode = req.headers['x-member-code'] as string;
-	const discordId = req.headers['x-discord-id'] as string;
-
-	if (!memberCode || !discordId) {
-		return null;
-	}
-
-	const code = parseInt(memberCode);
-	if (isNaN(code)) {
-		return null;
-	}
-
-	const members = await query(
-		'SELECT id, discord_id, member_code, discord_tag FROM members WHERE discord_id = $1 AND member_code = $2 AND is_active = true',
-		[discordId, code]
-	);
-
-	return members.length > 0 ? members[0] : null;
-}
-
-/**
- * Types for responses
- */
-interface EventListItem {
-	id: string;
-	name: string;
-	event_type: string;
-	status: string;
-	start_date: string | null;
-	end_date: string | null;
-	team_count?: number;
-	is_participating?: boolean;
-	team_id?: string;
-	team_name?: string;
-	team_score?: number;
-}
-
-interface TeamMember {
-	id: string;
-	member_id: number;
-	discord_tag: string;
-	role: string;
-	osrs_account_id: number | null;
-	osrs_account_name: string | null;
-}
-
-interface TileProgressEntry {
-	id: string;
-	osrs_account_id: number | null;
-	progress_value: number;
-	progress_metadata: Record<string, any>;
-	completion_type: 'auto' | 'manual_admin' | null;
-	completed_at: string | null;
-	completed_by_osrs_account_id: number | null;
-	completed_by_member_id: number | null;
-	recorded_at: string;
-}
-
-interface BoardTileWithProgress {
-	id: string;
-	board_id: string;
-	tile_id: string;
-	position: string;
-	custom_points: number | null;
-	is_completed: boolean;
-	completed_at: string | null;
-	task: string;
-	category: string;
-	difficulty: string;
-	icon: string | null;
-	description: string | null;
-	base_points: number;
-	bonus_tiers: any[];
-	requirements: any;
-	progress_entries: TileProgressEntry[];
-	team_total_xp_gained?: number | null;
-	tile_effects?: Array<{
-		id: string;
-		buff_name: string;
-		buff_type: 'buff' | 'debuff';
-		effect_type: string;
-		effect_value: number;
-		buff_icon: string | null;
-		is_active: boolean;
-		expires_at: string | null;
-	}>;
-}
-
-interface EventDetail {
-	id: string;
-	name: string;
-	description: string | null;
-	event_type: string;
-	status: string;
-	start_date: string | null;
-	end_date: string | null;
-	config: any;
-	team: {
-		id: string;
-		name: string;
-		color: string | null;
-		icon: string | null;
-		score: number;
-		members: TeamMember[];
-	};
-	board?: {
-		id: string;
-		name: string;
-		description: string | null;
-		columns: number;
-		rows: number;
-		show_row_column_buffs: boolean;
-		metadata: any;
-		tiles: BoardTileWithProgress[];
-		tile_effects: Array<{
-			id: string;
-			board_tile_id: string;
-			buff_name: string;
-			buff_type: 'buff' | 'debuff';
-			effect_type: string;
-			effect_value: number;
-			buff_icon: string | null;
-			is_active: boolean;
-			expires_at: string | null;
-		}>;
-		row_effects: Array<{
-			id: string;
-			line_type: 'row';
-			line_identifier: string;
-			buff_name: string;
-			buff_type: 'buff' | 'debuff';
-			effect_type: string;
-			effect_value: number;
-			buff_icon: string | null;
-			is_active: boolean;
-			expires_at: string | null;
-		}>;
-		column_effects: Array<{
-			id: string;
-			line_type: 'column';
-			line_identifier: string;
-			buff_name: string;
-			buff_type: 'buff' | 'debuff';
-			effect_type: string;
-			effect_value: number;
-			buff_icon: string | null;
-			is_active: boolean;
-			expires_at: string | null;
-		}>;
-	};
-}
-
-/**
- * GET /api/app/clan-events
+ * GET /api/app/clan-events/events
  * Get list of all active events
  * Shows team information only for events where the user is participating
- * Requires authentication (x-member-code and x-discord-id headers)
- * 
- * Returns: EventListItem[]
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req, res: Response) => {
 	try {
 		const member = await getMemberFromHeaders(req);
 
@@ -248,13 +97,85 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/app/clan-events/:eventId
+ * GET /api/app/clan-events/events/my-events
+ * Get all events the user is participating in (past and present)
+ */
+router.get('/my-events', async (req, res: Response) => {
+	try {
+		const member = await getMemberFromHeaders(req);
+
+		if (!member) {
+			return res.status(401).json({
+				success: false,
+				error: 'Authentication required'
+			});
+		}
+
+		const events = await query(`
+			SELECT 
+				e.id,
+				e.name,
+				e.event_type,
+				e.status,
+				e.start_date,
+				e.end_date,
+				et.id as team_id,
+				et.name as team_name,
+				et.color as team_color,
+				et.icon as team_icon,
+				et.score as team_score,
+				etm.role,
+				etm.individual_score
+			FROM event_team_members etm
+			JOIN event_teams et ON etm.team_id = et.id
+			JOIN events e ON et.event_id = e.id
+			WHERE etm.member_id = $1
+			ORDER BY 
+				CASE e.status 
+					WHEN 'active' THEN 1 
+					WHEN 'paused' THEN 2 
+					WHEN 'scheduled' THEN 3 
+					ELSE 4 
+				END,
+				e.start_date DESC NULLS LAST
+		`, [member.id]);
+
+		res.json({
+			success: true,
+			data: events.map((e: any) => ({
+				id: e.id,
+				name: e.name,
+				eventType: e.event_type,
+				status: e.status,
+				startDate: e.start_date,
+				endDate: e.end_date,
+				team: {
+					id: e.team_id,
+					name: e.team_name,
+					color: e.team_color,
+					icon: e.team_icon,
+					score: e.team_score
+				},
+				myRole: e.role,
+				myScore: e.individual_score
+			}))
+		});
+	} catch (error: any) {
+		console.error('Error fetching user events:', error);
+		res.status(500).json({
+			success: false,
+			error: 'Failed to fetch user events',
+			message: error.message
+		});
+	}
+});
+
+/**
+ * GET /api/app/clan-events/events/:eventId
  * Get event details for user's team (only if participating)
  * Includes board, tiles with full progress, team members, buffs/debuffs
- * 
- * Returns: EventDetail
  */
-router.get('/:eventId', async (req: Request, res: Response) => {
+router.get('/:eventId', async (req, res: Response) => {
 	try {
 		const { eventId } = req.params;
 		const member = await getMemberFromHeaders(req);
@@ -266,23 +187,10 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			});
 		}
 
-		// Check if member is participating in this event and get their team
-		const participation = await query(`
-			SELECT 
-				et.id as team_id,
-				et.name as team_name,
-				et.color,
-				et.icon,
-				et.score,
-				e.id as event_id
-			FROM event_team_members etm
-			JOIN event_teams et ON etm.team_id = et.id
-			JOIN events e ON et.event_id = e.id
-			WHERE etm.member_id = $1 AND e.id = $2
-			LIMIT 1
-		`, [member.id, eventId]);
+		// Check if member is participating
+		const participation = await getEventParticipation(member.id, eventId);
 
-		if (participation.length === 0) {
+		if (!participation) {
 			return res.status(403).json({
 				success: false,
 				error: 'You are not participating in this event'
@@ -299,7 +207,6 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 		}
 
 		const event = events[0];
-		const team = participation[0];
 
 		// Get team members
 		const teamMembers = await query(`
@@ -315,7 +222,7 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			LEFT JOIN osrs_accounts oa ON etm.osrs_account_id = oa.id
 			WHERE etm.team_id = $1
 			ORDER BY etm.role, m.discord_tag
-		`, [team.team_id]);
+		`, [participation.team_id]);
 
 		const members: TeamMember[] = teamMembers.map((tm: any) => ({
 			id: tm.id,
@@ -329,7 +236,7 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 		// Get team's board
 		const boards = await query(
 			'SELECT * FROM bingo_boards WHERE event_id = $1 AND team_id = $2',
-			[eventId, team.team_id]
+			[eventId, participation.team_id]
 		);
 
 		let board = null;
@@ -346,7 +253,6 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 					bt.icon,
 					bt.description,
 					bt.base_points,
-					bt.bonus_tiers,
 					bt.requirements,
 					COALESCE(
 						json_agg(
@@ -364,7 +270,6 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 						) FILTER (WHERE btp.id IS NOT NULL),
 						'[]'::json
 					) as progress_entries,
-					-- For EXPERIENCE requirements, calculate team total XP gained
 					CASE 
 						WHEN (
 							(bt.requirements->>'match_type' IS NOT NULL 
@@ -395,11 +300,11 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 				LEFT JOIN bingo_tile_progress btp ON btp.board_tile_id = bbt.id
 				WHERE bbt.board_id = $1
-				GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.bonus_tiers, bt.requirements
+				GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.requirements
 				ORDER BY bbt.position
 			`, [teamBoard.id]);
 
-			// Get tile effects for all tiles (filtered by show_tile_buffs setting)
+			// Get tile effects
 			const showTileBuffs = teamBoard.metadata?.show_tile_buffs !== false;
 			const tileEffects = await query(`
 				SELECT 
@@ -422,7 +327,6 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				if (!tileEffectsByTile[effect.board_tile_id]) {
 					tileEffectsByTile[effect.board_tile_id] = [];
 				}
-				// Filter inactive effects if show_tile_buffs is false
 				if (showTileBuffs || effect.is_active) {
 					tileEffectsByTile[effect.board_tile_id].push({
 						id: effect.id,
@@ -488,7 +392,6 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				board_id: tile.board_id,
 				tile_id: tile.tile_id,
 				position: tile.position,
-				custom_points: tile.custom_points,
 				is_completed: tile.is_completed,
 				completed_at: tile.completed_at,
 				task: tile.task,
@@ -497,7 +400,6 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				icon: tile.icon,
 				description: tile.description,
 				base_points: tile.base_points,
-				bonus_tiers: tile.bonus_tiers,
 				requirements: tile.requirements,
 				progress_entries: tile.progress_entries || [],
 				team_total_xp_gained: tile.team_total_xp_gained,
@@ -510,7 +412,6 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				description: teamBoard.description,
 				columns: teamBoard.columns,
 				rows: teamBoard.rows,
-				show_row_column_buffs: teamBoard.show_row_column_buffs,
 				metadata: teamBoard.metadata,
 				tiles: tilesWithProgress,
 				tile_effects: tileEffects.filter((e: any) => showTileBuffs || e.is_active).map((e: any) => ({
@@ -539,11 +440,11 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			end_date: event.end_date,
 			config: event.config,
 			team: {
-				id: team.team_id,
-				name: team.team_name,
-				color: team.color,
-				icon: team.icon,
-				score: team.score,
+				id: participation.team_id,
+				name: participation.team_name,
+				color: participation.color,
+				icon: participation.icon,
+				score: participation.score,
 				members
 			},
 			board
@@ -563,163 +464,5 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 	}
 });
 
-/**
- * GET /api/app/clan-events/:eventId/team/progress
- * Get team progress summary
- * 
- * Returns: Team progress stats
- */
-router.get('/:eventId/team/progress', async (req: Request, res: Response) => {
-	try {
-		const { eventId } = req.params;
-		const member = await getMemberFromHeaders(req);
-
-		if (!member) {
-			return res.status(401).json({
-				success: false,
-				error: 'Authentication required'
-			});
-		}
-
-		// Check if member is participating in this event
-		const participation = await query(`
-			SELECT et.id as team_id
-			FROM event_team_members etm
-			JOIN event_teams et ON etm.team_id = et.id
-			JOIN events e ON et.event_id = e.id
-			WHERE etm.member_id = $1 AND e.id = $2
-			LIMIT 1
-		`, [member.id, eventId]);
-
-		if (participation.length === 0) {
-			return res.status(403).json({
-				success: false,
-				error: 'You are not participating in this event'
-			});
-		}
-
-		const teamId = participation[0].team_id;
-
-		// Get team progress stats
-		const stats = await query(`
-			SELECT 
-				COUNT(DISTINCT bbt.id) as total_tiles,
-				COUNT(DISTINCT bbt.id) FILTER (WHERE bbt.is_completed = true) as completed_tiles,
-				SUM(et.score) as team_score
-			FROM bingo_boards bb
-			JOIN bingo_board_tiles bbt ON bb.id = bbt.board_id
-			JOIN event_teams et ON bb.team_id = et.id
-			WHERE bb.team_id = $1 AND bb.event_id = $2
-		`, [teamId, eventId]);
-
-		const progress = stats[0] || { total_tiles: 0, completed_tiles: 0, team_score: 0 };
-		const completionPercentage = progress.total_tiles > 0 
-			? (parseInt(progress.completed_tiles) / parseInt(progress.total_tiles)) * 100 
-			: 0;
-
-		res.json({
-			success: true,
-			data: {
-				total_tiles: parseInt(progress.total_tiles),
-				completed_tiles: parseInt(progress.completed_tiles),
-				completion_percentage: Math.round(completionPercentage * 100) / 100,
-				team_score: parseInt(progress.team_score) || 0
-			}
-		});
-	} catch (error: any) {
-		console.error('Error fetching team progress:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch team progress',
-			message: error.message
-		});
-	}
-});
-
-/**
- * GET /api/app/clan-events/:eventId/my-contributions
- * Get user's individual contributions to tiles
- * 
- * Returns: Array of tiles user has contributed to
- */
-router.get('/:eventId/my-contributions', async (req: Request, res: Response) => {
-	try {
-		const { eventId } = req.params;
-		const member = await getMemberFromHeaders(req);
-
-		if (!member) {
-			return res.status(401).json({
-				success: false,
-				error: 'Authentication required'
-			});
-		}
-
-		// Check if member is participating in this event
-		const participation = await query(`
-			SELECT et.id as team_id
-			FROM event_team_members etm
-			JOIN event_teams et ON etm.team_id = et.id
-			JOIN events e ON et.event_id = e.id
-			WHERE etm.member_id = $1 AND e.id = $2
-			LIMIT 1
-		`, [member.id, eventId]);
-
-		if (participation.length === 0) {
-			return res.status(403).json({
-				success: false,
-				error: 'You are not participating in this event'
-			});
-		}
-
-		// Get user's OSRS accounts
-		const osrsAccounts = await query(
-			'SELECT id FROM osrs_accounts WHERE discord_id = $1',
-			[member.discord_id]
-		);
-		const osrsAccountIds = osrsAccounts.map((acc: any) => acc.id);
-
-		if (osrsAccountIds.length === 0) {
-			return res.json({
-				success: true,
-				data: []
-			});
-		}
-
-		// Get tiles user has contributed to
-		const contributions = await query(`
-			SELECT 
-				bbt.id as board_tile_id,
-				bbt.position,
-				bt.task,
-				bt.category,
-				bt.icon,
-				btp.progress_value,
-				btp.progress_metadata,
-				btp.completion_type,
-				btp.completed_at,
-				btp.recorded_at
-			FROM bingo_tile_progress btp
-			JOIN bingo_board_tiles bbt ON btp.board_tile_id = bbt.id
-			JOIN bingo_boards bb ON bbt.board_id = bb.id
-			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
-			WHERE bb.event_id = $1
-				AND bb.team_id = $2
-				AND btp.osrs_account_id = ANY($3::int[])
-			ORDER BY btp.recorded_at DESC
-		`, [eventId, participation[0].team_id, osrsAccountIds]);
-
-		res.json({
-			success: true,
-			data: contributions
-		});
-	} catch (error: any) {
-		console.error('Error fetching user contributions:', error);
-		res.status(500).json({
-			success: false,
-			error: 'Failed to fetch user contributions',
-			message: error.message
-		});
-	}
-});
-
 export default router;
+

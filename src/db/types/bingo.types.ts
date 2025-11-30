@@ -95,7 +95,6 @@ export interface BingoTile {
   description: string | null
   base_points: number
   requirements: Record<string, any> // JSONB - tile requirements (see bingo-requirements.ts)
-  bonus_tiers: Array<Record<string, any>> // JSONB - bonus tier definitions
   metadata: Record<string, any> // JSONB
   is_active: boolean
   created_at: Date
@@ -112,8 +111,7 @@ export interface BingoBoard {
   description: string | null
   columns: number // 1-20
   rows: number // 1-20
-  show_row_column_buffs: boolean
-  metadata: Record<string, any> // JSONB - includes show_tile_buffs setting
+  metadata: Record<string, any> // JSONB - includes showRowColumnBuffs, showTileEffects, etc.
   created_at: Date
   updated_at: Date
 }
@@ -123,9 +121,7 @@ export interface BingoBoardTile {
   board_id: string // UUID, FK to bingo_boards(id)
   tile_id: string // VARCHAR(100), FK to bingo_tiles(id)
   position: string // e.g., "A1", "B2"
-  custom_points: number | null // Override tile's base_points
   is_completed: boolean
-  completed_by_team_id: string | null // UUID, FK to event_teams(id)
   completed_at: Date | null
   metadata: Record<string, any> // JSONB
   created_at: Date

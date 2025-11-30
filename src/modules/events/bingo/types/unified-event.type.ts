@@ -5,23 +5,30 @@
  * Allows switching event sources without changing core logic
  */
 
-export type UnifiedEventType = 
-  | 'LOOT'
-  | 'PET'
-  | 'SPEEDRUN'
-  | 'BA_GAMBLE'
-  | 'LOGOUT'
-  | 'EXPERIENCE_UPDATE'
+export enum UnifiedEventType {
+  LOOT = 'LOOT',
+  PET = 'PET',
+  SPEEDRUN = 'SPEEDRUN',
+  BA_GAMBLE = 'BA_GAMBLE',
+  LOGOUT = 'LOGOUT',
+  EXPERIENCE = 'EXPERIENCE'
+}
+
+export enum UnifiedEventSource {
+  DINK = 'dink',
+  RUNELITE = 'runelite',
+  PLUGIN = 'plugin'
+}
 
 export interface UnifiedGameEvent {
   eventType: UnifiedEventType
   playerName: string
   osrsAccountId?: number // May not always be available
   timestamp: Date
-  source: 'dink' | 'runelite' | 'plugin' // Event source identifier
+  source: UnifiedEventSource // Event source identifier
   
   // Event-specific data
-  data: LootEventData | PetEventData | SpeedrunEventData | BaGambleEventData | LogoutEventData | ExperienceUpdateData
+  data: LootEventData | PetEventData | SpeedrunEventData | BaGambleEventData | LogoutEventData | ExperienceEventData
 }
 
 export interface LootEventData {
@@ -55,7 +62,7 @@ export interface LogoutEventData {
   // This event triggers XP calculation
 }
 
-export interface ExperienceUpdateData {
+export interface ExperienceEventData {
   skill: string
   experience: number
   level?: number

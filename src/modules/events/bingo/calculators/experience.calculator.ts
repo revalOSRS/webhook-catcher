@@ -1,198 +1,284 @@
 /**
  * Experience Progress Calculator
- * Fetches XP from WiseOldMan API and calculates progress since event start
+ * 
+ * Tracks team progress toward XP goals in a specific skill.
+ * Uses WiseOldMan API to fetch current XP and calculate XP gained since event start.
+ * 
+ * This calculator:
+ * 1. Updates the player in WOM to ensure latest data
+ * 2. Fetches current XP from WOM API
+ * 3. Retrieves baseline XP from event start (or first tracking)
+ * 4. Calculates XP gained = current - baseline
+ * 5. Sums all player contributions for team total
+ * 
+ * Completion: Team total XP gained >= required experience
  */
 
-import type { UnifiedGameEvent } from '../types/unified-event.types.js'
-import type { ExperienceRequirement } from '../../../../types/bingo-requirements.js'
-import type { ProgressUpdate, ExistingProgress } from './progress-calculator.types.js'
-import { WiseOldManService } from '../../../wiseoldman/index.js'
+import type { UnifiedGameEvent } from '../types/unified-event.type.js';
+import type {
+  ExperienceRequirement,
+  ExperienceProgressMetadata,
+  ExperiencePlayerContribution,
+  ProgressResult,
+  ExistingProgress
+} from '../types/bingo-requirements.type.js';
+import { BingoTileRequirementType } from '../types/bingo-requirements.type.js';
+import { WiseOldManService } from '../../../wiseoldman/index.js';
 
 /**
- * Calculate experience progress
- * Requires fetching XP from WiseOldMan API
+ * WOM snapshot skill data
  */
-export async function calculateExperienceProgress(
+interface WomSkillData {
+  experience?: number;
+}
+
+/**
+ * WOM snapshot data structure
+ */
+interface WomSnapshot {
+  createdAt?: Date | string;
+  data?: {
+    skills?: Record<string, WomSkillData>;
+  };
+}
+
+/**
+ * WOM player data structure
+ */
+interface WomPlayer {
+  latestSnapshot?: WomSnapshot;
+}
+
+/**
+ * Calculate experience progress for a team.
+ * 
+ * Logic:
+ * 1. Update player in WOM to get fresh data
+ * 2. Fetch current XP from WOM API for the target skill
+ * 3. For new players: fetch historical XP at event start as baseline
+ * 4. For existing players: update current XP and recalculate contribution
+ * 5. Sum all player XP contributions for team total
+ * 6. Compare against target to determine completion
+ * 
+ * Note: This is async because it makes external API calls to WOM.
+ * 
+ * @param event - The unified game event (used for player name and timestamp)
+ * @param requirement - The XP requirement (skill and target experience)
+ * @param existing - Existing progress from database, or null if first event
+ * @param eventStartDate - Event start date for baseline XP calculation
+ * @param memberId - Discord member ID (optional)
+ * @param osrsAccountId - OSRS account ID (required for tracking)
+ * @param playerName - Player's OSRS name (required for WOM lookup)
+ * @returns Progress result with new values and completion status
+ */
+export const calculateExperienceProgress = async (
   event: UnifiedGameEvent,
   requirement: ExperienceRequirement,
   existing: ExistingProgress | null,
-  eventStartDate: Date
-): Promise<ProgressUpdate> {
-  // Update player in WOM first to ensure we have latest data
-  try {
-    console.log(`[ExperienceCalculator] Updating player ${event.playerName} in WiseOldMan...`)
-    await WiseOldManService.updatePlayer(event.playerName)
-    console.log(`[ExperienceCalculator] Player ${event.playerName} updated successfully`)
-  } catch (error) {
-    console.error(`[ExperienceCalculator] Error updating player ${event.playerName} in WOM:`, error)
-    // Continue anyway - might still have cached data
-  }
-
-  // Get current XP from WiseOldMan API
-  const currentXp = await fetchXpFromWiseOldMan(event.playerName, requirement.skill)
+  eventStartDate: Date,
+  memberId?: number,
+  osrsAccountId?: number,
+  playerName?: string
+): Promise<ProgressResult> => {
+  // Get existing metadata or create new
+  const existingMetadata = existing?.progressMetadata as ExperienceProgressMetadata | undefined;
+  
+  // Update player in WOM to ensure we have latest data
+  await updatePlayerInWom(event.playerName);
+  
+  // Fetch current XP from WOM
+  const currentXp = await fetchCurrentXp(event.playerName, requirement.skill);
+  
   if (currentXp === null) {
-    // If we can't fetch XP, return existing progress unchanged
+    // Can't fetch XP - return existing progress unchanged
+    if (existingMetadata) {
+      return {
+        progressValue: existing?.progressValue ?? 0,
+        progressMetadata: existingMetadata,
+        isCompleted: false
+      };
+    }
+    
+    // Create empty metadata if none exists
+    const emptyMetadata: ExperienceProgressMetadata = {
+      requirementType: BingoTileRequirementType.EXPERIENCE,
+      targetValue: requirement.experience,
+      lastUpdateAt: event.timestamp.toISOString(),
+      skill: requirement.skill,
+      currentTotalXp: 0,
+      targetXp: requirement.experience,
+      playerContributions: []
+    };
+    
     return {
-      progressValue: existing?.progressValue || 0,
-      metadata: existing?.metadata || {},
+      progressValue: 0,
+      progressMetadata: emptyMetadata,
       isCompleted: false
-    }
+    };
   }
-
-  // Get baseline XP (XP at event start)
-  const baselineXp = existing?.metadata?.baseline_xp
-  if (!baselineXp) {
-    // First time tracking - fetch historical XP from WiseOldMan
-    const historicalXp = await fetchHistoricalXpFromWiseOldMan(event.playerName, requirement.skill, eventStartDate)
-    const baseline = historicalXp || currentXp
+  
+  // Get or initialize player contributions
+  const playerContributions: ExperiencePlayerContribution[] = 
+    existingMetadata?.playerContributions ? [...existingMetadata.playerContributions] : [];
+  
+  // Find or create player's contribution
+  let playerContribution = playerContributions.find(p => p.osrsAccountId === osrsAccountId);
+  
+  if (!playerContribution && osrsAccountId && playerName) {
+    // First time tracking - get historical XP at event start
+    const historicalXp = await fetchHistoricalXp(event.playerName, requirement.skill, eventStartDate);
+    const baseline = historicalXp ?? currentXp;
     
-    const gainedXp = currentXp - baseline
-    const isCompleted = gainedXp >= requirement.experience
-
-    return {
-      progressValue: gainedXp,
-      metadata: {
-        baseline_xp: baseline,
-        current_xp: currentXp,
-        gained_xp: gainedXp,
-        target_xp: requirement.experience,
-        last_update_at: event.timestamp.toISOString()
-      },
-      isCompleted
-    }
+    playerContribution = {
+      osrsAccountId,
+      osrsNickname: playerName,
+      memberId,
+      baselineXp: baseline,
+      currentXp: currentXp,
+      xpContribution: currentXp - baseline
+    };
+    playerContributions.push(playerContribution);
+  } else if (playerContribution) {
+    // Update existing player's contribution
+    playerContribution.currentXp = currentXp;
+    playerContribution.xpContribution = currentXp - playerContribution.baselineXp;
   }
-
-  // Calculate gained XP since baseline
-  const gainedXp = currentXp - baselineXp
-  const isCompleted = gainedXp >= requirement.experience
-
+  
+  // Calculate team total XP gained
+  const currentTotalXp = playerContributions.reduce(
+    (sum, p) => sum + p.xpContribution, 
+    0
+  );
+  
+  const progressMetadata: ExperienceProgressMetadata = {
+    requirementType: BingoTileRequirementType.EXPERIENCE,
+    targetValue: requirement.experience,
+    lastUpdateAt: event.timestamp.toISOString(),
+    skill: requirement.skill,
+    currentTotalXp,
+    targetXp: requirement.experience,
+    playerContributions,
+    completedTiers: existingMetadata?.completedTiers,
+    currentTier: existingMetadata?.currentTier
+  };
+  
   return {
-    progressValue: gainedXp,
-    metadata: {
-      ...existing?.metadata,
-      baseline_xp: baselineXp,
-      current_xp: currentXp,
-      gained_xp: gainedXp,
-      target_xp: requirement.experience,
-      last_update_at: event.timestamp.toISOString()
-    },
-    isCompleted
-  }
-}
+    progressValue: currentTotalXp,
+    progressMetadata,
+    isCompleted: currentTotalXp >= requirement.experience
+  };
+};
 
 /**
- * Fetch current XP from WiseOldMan API
+ * Update player in WiseOldMan to ensure we have latest data.
+ * Fails silently - we may still have cached data.
  */
-async function fetchXpFromWiseOldMan(playerName: string, skill: string): Promise<number | null> {
+const updatePlayerInWom = async (playerName: string): Promise<void> => {
   try {
-    const player = await WiseOldManService.searchPlayer(playerName)
-    if (!player || !player.latestSnapshot) {
-      return null
-    }
-
-    // Map skill name to WOM skill key (case-insensitive)
-    const skillKey = mapSkillNameToWOMKey(skill)
-    if (!skillKey) {
-      console.warn(`[ExperienceCalculator] Unknown skill name: ${skill}`)
-      return null
-    }
-
-    const skills = player.latestSnapshot.data?.skills || {}
-    const skillData = skills[skillKey]
-    
-    if (!skillData || skillData.experience === undefined) {
-      return null
-    }
-
-    return skillData.experience
+    await WiseOldManService.updatePlayer(playerName);
   } catch (error) {
-    console.error(`Error fetching XP from WiseOldMan for ${playerName} - ${skill}:`, error)
-    return null
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[ExperienceCalculator] Error updating ${playerName} in WOM:`, message);
   }
-}
+};
 
 /**
- * Fetch historical XP from WiseOldMan API at a specific date
- * Uses snapshots to find XP at a specific point in time
+ * Fetch current XP from WiseOldMan API for a specific skill.
+ * 
+ * @param playerName - Player's OSRS name
+ * @param skill - Skill name (e.g., "attack", "strength")
+ * @returns Current XP or null if unavailable
  */
-async function fetchHistoricalXpFromWiseOldMan(
+const fetchCurrentXp = async (playerName: string, skill: string): Promise<number | null> => {
+  try {
+    const player = await WiseOldManService.searchPlayer(playerName) as unknown as WomPlayer | null;
+    
+    if (!player?.latestSnapshot?.data?.skills) {
+      return null;
+    }
+    
+    const skillKey = mapSkillName(skill);
+    if (!skillKey) {
+      console.warn(`[ExperienceCalculator] Unknown skill: ${skill}`);
+      return null;
+    }
+    
+    const skillData = player.latestSnapshot.data.skills[skillKey];
+    return skillData?.experience ?? null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[ExperienceCalculator] Error fetching XP for ${playerName}:`, message);
+    return null;
+  }
+};
+
+/**
+ * Fetch historical XP from WiseOldMan at a specific date.
+ * Uses player snapshots to find XP at or before the target date.
+ * 
+ * @param playerName - Player's OSRS name
+ * @param skill - Skill name
+ * @param date - Target date (event start)
+ * @returns Historical XP or null if unavailable
+ */
+const fetchHistoricalXp = async (
   playerName: string, 
   skill: string, 
   date: Date
-): Promise<number | null> {
+): Promise<number | null> => {
   try {
-    // Get player snapshots around the event start date
-    const snapshots = await WiseOldManService.getPlayerSnapshots(playerName, 100)
-    if (!snapshots || snapshots.length === 0) {
-      return null
-    }
-
-    // Find the snapshot closest to (but before or at) the event start date
-    const skillKey = mapSkillNameToWOMKey(skill)
-    if (!skillKey) {
-      return null
-    }
-
-    // Sort snapshots by date (newest first) and find the one closest to event start
-    const sortedSnapshots = snapshots
-      .filter(s => s.createdAt && new Date(s.createdAt) <= date)
-      .sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0).getTime()
-        const dateB = new Date(b.createdAt || 0).getTime()
-        return dateB - dateA // Newest first
-      })
-
-    if (sortedSnapshots.length === 0) {
-      // No snapshot before event start, use oldest available
-      const oldest = snapshots[snapshots.length - 1]
-      const skills = oldest.data?.skills || {}
-      const skillData = skills[skillKey]
-      return skillData?.experience || null
-    }
-
-    // Use the snapshot closest to event start
-    const closestSnapshot = sortedSnapshots[0]
-    const skills = closestSnapshot.data?.skills || {}
-    const skillData = skills[skillKey]
+    const snapshots = await WiseOldManService.getPlayerSnapshots(playerName, 100) as unknown as WomSnapshot[] | null;
     
-    return skillData?.experience || null
+    if (!snapshots?.length) {
+      return null;
+    }
+    
+    const skillKey = mapSkillName(skill);
+    if (!skillKey) {
+      return null;
+    }
+    
+    // Find snapshot closest to (but before or at) the target date
+    const validSnapshots = snapshots
+      .filter(s => {
+        if (!s.createdAt) return false;
+        const snapshotDate = s.createdAt instanceof Date ? s.createdAt : new Date(s.createdAt);
+        return snapshotDate <= date;
+      })
+      .sort((a, b) => {
+        const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt ?? 0).getTime();
+        const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt ?? 0).getTime();
+        return dateB - dateA; // Newest first
+      });
+    
+    if (validSnapshots.length === 0) {
+      // No snapshot before event start - use oldest available
+      const oldest = snapshots[snapshots.length - 1];
+      return oldest.data?.skills?.[skillKey]?.experience ?? null;
+    }
+    
+    const closestSnapshot = validSnapshots[0];
+    return closestSnapshot.data?.skills?.[skillKey]?.experience ?? null;
   } catch (error) {
-    console.error(`Error fetching historical XP from WiseOldMan for ${playerName} - ${skill}:`, error)
-    return null
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[ExperienceCalculator] Error fetching historical XP for ${playerName}:`, message);
+    return null;
   }
-}
+};
 
 /**
- * Map skill name to WiseOldMan skill key
+ * Map skill name to WiseOldMan skill key.
+ * WOM uses lowercase skill names.
  */
-function mapSkillNameToWOMKey(skillName: string): string | null {
-  const skillMap: Record<string, string> = {
-    'attack': 'attack',
-    'strength': 'strength',
-    'defence': 'defence',
-    'ranged': 'ranged',
-    'prayer': 'prayer',
-    'magic': 'magic',
-    'runecraft': 'runecraft',
-    'construction': 'construction',
-    'hitpoints': 'hitpoints',
-    'agility': 'agility',
-    'herblore': 'herblore',
-    'thieving': 'thieving',
-    'crafting': 'crafting',
-    'fletching': 'fletching',
-    'slayer': 'slayer',
-    'hunter': 'hunter',
-    'mining': 'mining',
-    'smithing': 'smithing',
-    'fishing': 'fishing',
-    'cooking': 'cooking',
-    'firemaking': 'firemaking',
-    'woodcutting': 'woodcutting',
-    'farming': 'farming',
-    'overall': 'overall'
-  }
-
-  return skillMap[skillName.toLowerCase()] || null
-}
-
+const mapSkillName = (skillName: string): string | null => {
+  const validSkills = [
+    'attack', 'strength', 'defence', 'ranged', 'prayer', 'magic',
+    'runecraft', 'construction', 'hitpoints', 'agility', 'herblore',
+    'thieving', 'crafting', 'fletching', 'slayer', 'hunter',
+    'mining', 'smithing', 'fishing', 'cooking', 'firemaking',
+    'woodcutting', 'farming', 'overall'
+  ];
+  
+  const normalized = skillName.toLowerCase();
+  return validSkills.includes(normalized) ? normalized : null;
+};

@@ -109,7 +109,6 @@ Get detailed event information for the user's team. Includes board, tiles with p
           "icon": "string | null",
           "description": "string | null",
           "base_points": "number",
-          "bonus_tiers": [],
           "requirements": { /* tile requirements object */ },
           "progress_entries": [
             {

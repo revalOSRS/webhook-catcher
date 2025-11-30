@@ -131,7 +131,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 /**
  * POST /api/admin/clan-events/bingo/tiles
  * Create a new tile in the library
- * Body: { id, task, category, difficulty, icon, description, base_points, requirements, bonus_tiers, metadata }
+ * Body: { id, task, category, difficulty, icon, description, base_points, requirements, metadata }
  */
 router.post('/', async (req: Request, res: Response) => {
 	try {
@@ -142,19 +142,26 @@ router.post('/', async (req: Request, res: Response) => {
 			difficulty,
 			icon,
 			description,
-			base_points = 0,
+			base_points,
 			requirements = [],
-			bonus_tiers = [],
 			metadata = {},
 			is_active = true
 		} = req.body;
 
 		// Validation
-		if (!id || !task || !category || !difficulty) {
+		if (!id || !task || !category || !difficulty || base_points === undefined) {
 			return res.status(400).json({
 				success: false,
 				error: 'Missing required fields',
-				required: ['id', 'task', 'category', 'difficulty']
+				required: ['id', 'task', 'category', 'difficulty', 'base_points']
+			});
+		}
+
+		// Validate base_points is a number
+		if (typeof base_points !== 'number' || base_points < 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'base_points must be a non-negative number'
 			});
 		}
 
@@ -191,15 +198,14 @@ router.post('/', async (req: Request, res: Response) => {
 		const result = await query(`
 			INSERT INTO bingo_tiles (
 				id, task, category, difficulty, icon, description,
-				base_points, requirements, bonus_tiers, metadata, is_active
+				base_points, requirements, metadata, is_active
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			RETURNING *
 		`, [
 			id, task, category, difficulty, icon, description,
 			base_points,
 			JSON.stringify(requirements),
-			JSON.stringify(bonus_tiers),
 			JSON.stringify(metadata),
 			is_active
 		]);
@@ -261,6 +267,16 @@ router.post('/bulk', async (req: Request, res: Response) => {
 				continue;
 			}
 
+			// Validate base_points
+			if (tile.base_points === undefined || typeof tile.base_points !== 'number' || tile.base_points < 0) {
+				errors.push({
+					index: i,
+					tile_id: tile.id,
+					error: 'base_points is required and must be a non-negative number'
+				});
+				continue;
+			}
+
 			// Validate requirements if provided
 			if (tile.requirements) {
 				const validation = validateRequirement(tile.requirements);
@@ -290,9 +306,9 @@ router.post('/bulk', async (req: Request, res: Response) => {
 				const result = await query(`
 					INSERT INTO bingo_tiles (
 						id, task, category, difficulty, icon, description,
-						base_points, requirements, bonus_tiers, metadata, is_active
+						base_points, requirements, metadata, is_active
 					)
-					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 					RETURNING *
 				`, [
 					tile.id,
@@ -301,9 +317,8 @@ router.post('/bulk', async (req: Request, res: Response) => {
 					tile.difficulty,
 					tile.icon || null,
 					tile.description || null,
-					tile.base_points || 0,
+					tile.base_points,
 					JSON.stringify(tile.requirements || []),
-					JSON.stringify(tile.bonus_tiers || []),
 					JSON.stringify(tile.metadata || {}),
 					tile.is_active !== undefined ? tile.is_active : true
 				]);
@@ -359,7 +374,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 		// Build dynamic update query
 		const allowedFields = [
 			'task', 'category', 'difficulty', 'icon', 'description',
-			'base_points', 'requirements', 'bonus_tiers', 'metadata', 'is_active'
+			'base_points', 'requirements', 'metadata', 'is_active'
 		];
 		const updateFields: string[] = [];
 		const values: any[] = [];
@@ -393,7 +408,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 			if (allowedFields.includes(key)) {
 				updateFields.push(`${key} = $${paramIndex}`);
 				// Convert arrays/objects to JSON strings for JSONB fields
-				if (['requirements', 'bonus_tiers', 'metadata'].includes(key)) {
+				if (['requirements', 'metadata'].includes(key)) {
 					values.push(JSON.stringify(value));
 				} else {
 					values.push(value);
