@@ -111,14 +111,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       SELECT 
         etm.id, etm.team_id, etm.member_id, etm.osrs_account_id,
         etm.role, etm.individual_score, etm.metadata,
-        etm.created_at as joined_at,
         m.discord_id, m.discord_tag,
         oa.osrs_nickname as osrs_account_name, oa.account_type as osrs_account_type
       FROM event_team_members etm
       JOIN members m ON etm.member_id = m.id
       LEFT JOIN osrs_accounts oa ON etm.osrs_account_id = oa.id
       WHERE etm.team_id = $1
-      ORDER BY etm.role DESC, etm.individual_score DESC, etm.created_at ASC
+      ORDER BY etm.role DESC, etm.individual_score DESC, etm.id ASC
     `, [id]);
 
     res.json({

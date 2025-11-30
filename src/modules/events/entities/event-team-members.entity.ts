@@ -14,8 +14,7 @@ export interface EventTeamMember {
   role: string;
   individualScore: number;
   metadata: Record<string, unknown>;
-  createdAt: Date;
-  updatedAt: Date;
+  joinedAt: Date;
 }
 
 /**
@@ -25,7 +24,7 @@ export interface EventTeamMember {
 export class EventTeamMembersEntity extends BaseEntity<EventTeamMember, string> {
   protected tableName = 'event_team_members';
   protected primaryKey = 'id';
-  protected camelCaseFields = ['teamId', 'memberId', 'osrsAccountId', 'individualScore', 'createdAt', 'updatedAt'];
+  protected camelCaseFields = ['teamId', 'memberId', 'osrsAccountId', 'individualScore', 'joinedAt'];
 
   /**
    * Create the event_team_members table if it doesn't exist
@@ -40,8 +39,7 @@ export class EventTeamMembersEntity extends BaseEntity<EventTeamMember, string> 
         role VARCHAR(50) DEFAULT 'member',
         individual_score INTEGER DEFAULT 0,
         metadata JSONB DEFAULT '{}',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT unique_team_member UNIQUE (team_id, member_id)
       )
     `);
@@ -160,7 +158,6 @@ export class EventTeamMembersEntity extends BaseEntity<EventTeamMember, string> 
       return this.findById(id);
     }
 
-    updates.push(`updated_at = CURRENT_TIMESTAMP`);
     params.push(id);
 
     const result = await queryOne(`
@@ -208,7 +205,7 @@ export class EventTeamMembersEntity extends BaseEntity<EventTeamMember, string> 
   async incrementScore(id: string, points: number): Promise<EventTeamMember | null> {
     const result = await queryOne(`
       UPDATE event_team_members 
-      SET individual_score = individual_score + $1, updated_at = CURRENT_TIMESTAMP
+      SET individual_score = individual_score + $1
       WHERE id = $2
       RETURNING *
     `, [points, id]);
