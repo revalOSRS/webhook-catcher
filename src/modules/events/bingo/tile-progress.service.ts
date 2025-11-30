@@ -645,8 +645,15 @@ export class TileProgressService {
    * Calculate regular (non-speedrun) tiered progress.
    * 
    * For non-speedrun tiers (item drops, experience, etc.), progress accumulates
-   * and we only process one matching tier per event. Completing a higher tier
-   * auto-completes all lower tiers.
+   * across events. After calculating new progress, we check ALL tiers to see
+   * which ones are now complete based on the final progressValue.
+   * 
+   * This allows scenarios like:
+   * - Tier 1: Get 1 item from list (totalAmount: 1)
+   * - Tier 2: Get 2 items from list (totalAmount: 2)
+   * - Tier 3: Get 4 items from list (totalAmount: 4)
+   * 
+   * If you get 3 items, Tiers 1 and 2 are both completed.
    * 
    * @returns Progress with accumulated values and tier completions
    */
@@ -663,7 +670,9 @@ export class TileProgressService {
     const newCompletedTiers: TierCompletion[] = [...(existing?.progressMetadata?.completedTiers || [])];
     const updatedCompletedNumbers = [...completedTierNumbers];
 
-    // Find the first matching tier
+    // Find the first matching tier to use its calculator for progress tracking
+    let tierResult: ProgressResult | null = null;
+    
     for (const tier of requirements.tiers!) {
       const tierReq: BingoTileRequirements = {
         matchType: BingoTileMatchType.ALL,
@@ -672,7 +681,9 @@ export class TileProgressService {
       };
       if (!matchesRequirement(event, tierReq)) continue;
 
-      const tierResult = await this.calculateRequirementProgress(
+      // Calculate progress using this tier's requirement
+      // This accumulates items/xp/etc. into progressValue
+      tierResult = await this.calculateRequirementProgress(
         event,
         tier.requirement,
         existing,
@@ -682,52 +693,143 @@ export class TileProgressService {
         osrsAccountId,
         playerName
       );
+      
+      // Only need to calculate once - progress is cumulative
+      break;
+    }
 
-      if (tierResult.isCompleted && !updatedCompletedNumbers.includes(tier.tier)) {
+    // If no matching tier found, return existing progress
+    if (!tierResult) {
+      if (existing) {
+        return {
+          progressValue: existing.progressValue,
+          progressMetadata: existing.progressMetadata,
+          isCompleted: (existing.progressMetadata.completedTiers?.length || 0) > 0
+        };
+      }
+      return this.buildEmptyProgress(null, requirements);
+    }
+
+    // Now check ALL tiers to see which are complete based on the new progressValue
+    // Sort tiers by tier number (ascending) to process in order
+    const sortedTiers = [...requirements.tiers!].sort((a, b) => a.tier - b.tier);
+    
+    for (const tier of sortedTiers) {
+      if (updatedCompletedNumbers.includes(tier.tier)) continue;
+
+      // Check if this tier is now complete based on current progress
+      const isThisTierComplete = this.isTierComplete(
+        tier.requirement,
+        tierResult.progressValue,
+        tierResult.progressMetadata
+      );
+
+      if (isThisTierComplete) {
         newCompletedTiers.push({
           tier: tier.tier,
           completedAt: new Date().toISOString(),
           completedByOsrsAccountId: osrsAccountId || 0
         });
         updatedCompletedNumbers.push(tier.tier);
+      }
+    }
 
-        // Auto-complete lower tiers
-        for (const lowerTier of requirements.tiers!.filter(t => t.tier < tier.tier)) {
-          if (!updatedCompletedNumbers.includes(lowerTier.tier)) {
-            newCompletedTiers.push({
-              tier: lowerTier.tier,
-              completedAt: new Date().toISOString(),
-              completedByOsrsAccountId: osrsAccountId || 0
-            });
-            updatedCompletedNumbers.push(lowerTier.tier);
+    // Update metadata with tier info
+    const updatedMetadata: ProgressMetadata = {
+      ...tierResult.progressMetadata,
+      completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
+      currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
+    };
+
+    return {
+      progressValue: tierResult.progressValue,
+      progressMetadata: updatedMetadata,
+      isCompleted: newCompletedTiers.length > 0,
+      completedTiers: newCompletedTiers
+    };
+  };
+
+  /**
+   * Check if a specific tier is complete based on current progress.
+   * 
+   * Compares progressValue against the tier's requirement target:
+   * - ITEM_DROP with totalAmount: progressValue >= totalAmount
+   * - ITEM_DROP per-item: each item has met its individual target
+   * - EXPERIENCE: progressValue >= target experience
+   * - BA_GAMBLES: progressValue >= target gambles
+   * - VALUE_DROP: progressValue >= target value
+   * - PET: progressValue >= target pet count
+   * 
+   * @param requirement - The tier's requirement definition
+   * @param progressValue - Current accumulated progress value
+   * @param metadata - Current progress metadata (for per-item tracking)
+   * @returns true if the tier's requirement is satisfied
+   */
+  private isTierComplete = (
+    requirement: BingoTileRequirementDef,
+    progressValue: number,
+    metadata: ProgressMetadata
+  ): boolean => {
+    switch (requirement.type) {
+      case BingoTileRequirementType.ITEM_DROP: {
+        const itemReq = requirement as ItemDropRequirement;
+        
+        // Total amount mode: compare progressValue against totalAmount
+        if (itemReq.totalAmount !== undefined) {
+          return progressValue >= itemReq.totalAmount;
+        }
+        
+        // Per-item mode: need to check each item has met its target
+        // This requires looking at the metadata's playerContributions
+        const itemMetadata = metadata as import('./types/bingo-requirements.type.js').ItemDropProgressMetadata;
+        if (!itemMetadata.playerContributions) return false;
+        
+        // Aggregate items across all players
+        const itemTotals: Record<number, number> = {};
+        for (const player of itemMetadata.playerContributions) {
+          for (const item of player.items) {
+            itemTotals[item.itemId] = (itemTotals[item.itemId] ?? 0) + item.quantity;
           }
         }
+        
+        // Check each required item meets its target
+        for (const reqItem of itemReq.items) {
+          const requiredAmount = reqItem.itemAmount ?? 1;
+          const currentAmount = itemTotals[reqItem.itemId] ?? 0;
+          if (currentAmount < requiredAmount) {
+            return false;
+          }
+        }
+        return true;
       }
-
-      // Update metadata with tier info
-      const updatedMetadata: ProgressMetadata = {
-        ...tierResult.progressMetadata,
-        completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
-        currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
-      };
-
-      return {
-        progressValue: tierResult.progressValue,
-        progressMetadata: updatedMetadata,
-        isCompleted: newCompletedTiers.length > 0,
-        completedTiers: newCompletedTiers
-      };
+      
+      case BingoTileRequirementType.EXPERIENCE: {
+        const expReq = requirement as ExperienceRequirement;
+        return progressValue >= expReq.experience;
+      }
+      
+      case BingoTileRequirementType.BA_GAMBLES: {
+        const baReq = requirement as BaGamblesRequirement;
+        return progressValue >= baReq.amount;
+      }
+      
+      case BingoTileRequirementType.VALUE_DROP: {
+        const valueReq = requirement as ValueDropRequirement;
+        return progressValue >= valueReq.value;
+      }
+      
+      case BingoTileRequirementType.PET: {
+        const petReq = requirement as PetRequirement;
+        return progressValue >= (petReq.amount ?? 1);
+      }
+      
+      // Speedruns are handled separately in calculateSpeedrunTieredProgress
+      case BingoTileRequirementType.SPEEDRUN:
+        return false;
+      
+      default:
+        return false;
     }
-
-    // No matching tier - return existing
-    if (existing) {
-      return {
-        progressValue: existing.progressValue,
-        progressMetadata: existing.progressMetadata,
-        isCompleted: (existing.progressMetadata.completedTiers?.length || 0) > 0
-      };
-    }
-    return this.buildEmptyProgress(null, requirements);
   };
 
   /**
