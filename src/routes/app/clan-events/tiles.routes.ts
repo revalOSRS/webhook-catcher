@@ -43,7 +43,7 @@ router.get('/:tileId', async (req, res: Response) => {
 				bt.difficulty,
 				bt.icon,
 				bt.description,
-				bt.base_points,
+				bt.points,
 				bt.requirements
 			FROM bingo_board_tiles bbt
 			JOIN bingo_boards bb ON bbt.board_id = bb.id
@@ -89,36 +89,36 @@ router.get('/:tileId', async (req, res: Response) => {
 			success: true,
 			data: {
 				id: tile.id,
-				boardId: tile.board_id,
-				tileId: tile.tile_id,
+				boardId: tile.boardId,
+				tileId: tile.tileId,
 				position: tile.position,
-				isCompleted: tile.is_completed,
-				completedAt: tile.completed_at,
+				isCompleted: tile.isCompleted,
+				completedAt: tile.completedAt,
 				task: tile.task,
 				category: tile.category,
 				difficulty: tile.difficulty,
 				icon: tile.icon,
 				description: tile.description,
-				basePoints: tile.base_points,
+				basePoints: tile.points,
 				requirements: tile.requirements,
 				progress: progress.map((p: any) => ({
 					id: p.id,
-					progressValue: p.progress_value,
-					progressMetadata: p.progress_metadata,
-					completionType: p.completion_type,
-					completedAt: p.completed_at,
-					playerName: p.player_name,
-					updatedAt: p.updated_at
+					progressValue: p.progressValue,
+					progressMetadata: p.progressMetadata,
+					completionType: p.completionType,
+					completedAt: p.completedAt,
+					playerName: p.playerName,
+					updatedAt: p.updatedAt
 				})),
 				effects: effects.map((e: any) => ({
 					id: e.id,
-					buffName: e.buff_name,
-					buffType: e.buff_type,
-					effectType: e.effect_type,
-					effectValue: e.effect_value,
-					buffIcon: e.buff_icon,
-					isActive: e.is_active,
-					expiresAt: e.expires_at
+					buffName: e.buffName,
+					buffType: e.buffType,
+					effectType: e.effectType,
+					effectValue: e.effectValue,
+					buffIcon: e.buffIcon,
+					isActive: e.isActive,
+					expiresAt: e.expiresAt
 				}))
 			}
 		});

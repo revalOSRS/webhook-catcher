@@ -52,7 +52,7 @@ export interface ItemDropRequirementDef {
     itemId: number;
     itemAmount?: number;
   }>;
-  totalAmount?: number;
+  totalAmount?: number; // If this is defined, then we just need this amount of any items in the items array
 }
 
 /**

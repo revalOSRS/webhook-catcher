@@ -316,7 +316,7 @@ router.get('/:eventId', async (req, res: Response) => {
 					bt.difficulty,
 					bt.icon,
 					bt.description,
-					bt.base_points,
+					bt.points,
 					bt.requirements,
 					COALESCE(
 						json_agg(
@@ -329,7 +329,7 @@ router.get('/:eventId', async (req, res: Response) => {
 								'completedAt', btp.completed_at,
 								'completedByOsrsAccountId', btp.completed_by_osrs_account_id,
 								'completedByMemberId', btp.completed_by_member_id,
-								'recordedAt', btp.recorded_at
+								'recordedAt', btp.created_at
 							)
 						) FILTER (WHERE btp.id IS NOT NULL),
 						'[]'::json
@@ -364,7 +364,7 @@ router.get('/:eventId', async (req, res: Response) => {
 				JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 				LEFT JOIN bingo_tile_progress btp ON btp.board_tile_id = bbt.id
 				WHERE bbt.board_id = $1
-				GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.requirements
+				GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.points, bt.requirements
 				ORDER BY bbt.position
 			`, [teamBoard.id]);
 

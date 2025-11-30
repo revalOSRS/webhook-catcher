@@ -119,7 +119,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 				bt.difficulty,
 				bt.icon,
 				bt.description,
-				bt.base_points
+				bt.points
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			WHERE bbt.board_id = $1

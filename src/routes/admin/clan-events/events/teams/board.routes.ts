@@ -109,7 +109,7 @@ const mapBoardTile = (tile: any): BoardTile => ({
 	difficulty: tile.difficulty,
 	icon: tile.icon,
 	description: tile.description,
-	basePoints: tile.basePoints,
+	basePoints: tile.points,
 	requirements: tile.requirements,
 	progressEntries: (tile.progressEntries || []).map(mapProgressEntry),
 	teamTotalXpGained: tile.teamTotalXpGained
@@ -244,20 +244,19 @@ router.get('/', async (req: Request, res: Response) => {
 				bt.difficulty,
 				bt.icon,
 				bt.description,
-				bt.base_points,
+				bt.points,
 				bt.requirements,
 				COALESCE(
 					json_agg(
 						json_build_object(
 							'id', btp.id,
-							'osrsAccountId', btp.osrs_account_id,
 							'progressValue', btp.progress_value,
 							'progressMetadata', btp.progress_metadata,
 							'completionType', btp.completion_type,
 							'completedAt', btp.completed_at,
 							'completedByOsrsAccountId', btp.completed_by_osrs_account_id,
-							'completedByMemberId', btp.completed_by_member_id,
-							'recordedAt', btp.recorded_at
+							'createdAt', btp.created_at,
+							'updatedAt', btp.updated_at
 						)
 					) FILTER (WHERE btp.id IS NOT NULL),
 					'[]'::json
@@ -292,7 +291,7 @@ router.get('/', async (req: Request, res: Response) => {
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			LEFT JOIN bingo_tile_progress btp ON btp.board_tile_id = bbt.id
 			WHERE bbt.board_id = $1
-			GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.requirements
+			GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.points, bt.requirements
 			ORDER BY bbt.position
 		`, [board.id]);
 
@@ -1425,7 +1424,7 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 			SELECT 
 				bbt.*,
 				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
-				bt.base_points, bt.requirements,
+				bt.points, bt.requirements,
 				et.id as team_id, et.name as team_name,
 				e.name as event_name
 			FROM bingo_board_tiles bbt
@@ -1567,7 +1566,7 @@ router.post('/tiles/:tileId/revert', async (req: Request, res: Response) => {
 			SELECT 
 				bbt.*,
 				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
-				bt.base_points, bt.requirements
+				bt.points, bt.requirements
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			WHERE bbt.id = $1

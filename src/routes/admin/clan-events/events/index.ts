@@ -579,7 +579,7 @@ router.post('/:id/recalculate-scores', async (req: Request, res: Response) => {
     for (const team of teams) {
       // Calculate score from completed tiles
       const scoreResult = await query(`
-        SELECT COALESCE(SUM(bt.base_points), 0) as total_points
+        SELECT COALESCE(SUM(bt.points), 0) as total_points
         FROM bingo_board_tiles bbt
         JOIN bingo_boards bb ON bbt.board_id = bb.id
         JOIN bingo_tiles bt ON bbt.tile_id = bt.id
