@@ -7,9 +7,9 @@ import { query, queryOne } from '../../../../db/connection.js';
 import { BaseEntity } from '../../../base-entity.js';
 
 export interface BingoBoardMetadata {
-  showRowColumnBuffs?: boolean;
-  showRowColumnEffects?: boolean;
-  showTileEffects?: boolean;
+  showRowColumnBuffs: boolean;
+  showRowColumnEffects: boolean;
+  showTileEffects: boolean;
   [key: string]: unknown;
 }
 
@@ -106,6 +106,13 @@ export class BingoBoardsEntity extends BaseEntity<BingoBoard, string> {
    * Create a new board
    */
   async create(input: Pick<BingoBoard, 'eventId' | 'teamId'> & Partial<Pick<BingoBoard, 'columns' | 'rows' | 'metadata'>>): Promise<BingoBoard> {
+    const defaultMetadata: BingoBoardMetadata = {
+      showRowColumnBuffs: false,
+      showRowColumnEffects: false,
+      showTileEffects: true
+    };
+    const metadata = { ...defaultMetadata, ...input.metadata };
+
     const result = await queryOne(`
       INSERT INTO bingo_boards (event_id, team_id, columns, rows, metadata)
       VALUES ($1, $2, $3, $4, $5)
@@ -115,7 +122,7 @@ export class BingoBoardsEntity extends BaseEntity<BingoBoard, string> {
       input.teamId,
       input.columns || 7,
       input.rows || 7,
-      JSON.stringify(input.metadata || {})
+      JSON.stringify(metadata)
     ]);
 
     if (!result) {

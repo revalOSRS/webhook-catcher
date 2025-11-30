@@ -1,113 +1,348 @@
 /**
  * Events Service
- * Business logic for event management and account event tracking
+ * Business logic for event management
  */
-import { EventsEntity } from './events.entity.js';
-import { CofferService } from '../coffer/coffer.service.js';
+import { EventsEntity } from './entities/events.entity.js';
+import { EventTeamsEntity } from './entities/event-teams.entity.js';
+import { EventTeamMembersEntity } from './entities/event-team-members.entity.js';
+import { EventRegistrationsEntity } from './entities/event-registrations.entity.js';
+import { EventStatus, EventType, EventRegistrationStatus } from './types/index.js';
 /**
  * Events Service Class
- * Provides business logic for event operations
+ * Provides business logic for all event-related operations
  */
 export class EventsService {
     static eventsEntity = new EventsEntity();
-    // Clan Events Management
+    static teamsEntity = new EventTeamsEntity();
+    static teamMembersEntity = new EventTeamMembersEntity();
+    static registrationsEntity = new EventRegistrationsEntity();
+    // ============================================================================
+    // Events
+    // ============================================================================
     /**
-     * Create a new clan event with coffer expenditure
+     * Create a new event
      */
-    static async createEvent(data) {
-        // Create the event
-        const event = await this.eventsEntity.create({
-            name: data.name,
-            description: data.description,
-            fundsUsed: data.fundsUsed,
-            createdBy: data.createdBy,
-        });
-        // Create coffer movement for the expenditure
-        await CofferService.createMovement({
-            type: 'event_expenditure',
-            amount: -Math.abs(data.fundsUsed), // Ensure negative for expenditure
-            eventId: event.id,
-            description: `Event expenditure: ${data.name}`,
-            note: data.description,
-            createdBy: data.createdBy,
-        });
-        return event;
-    }
+    static create = async (input) => {
+        return this.eventsEntity.create(input);
+    };
     /**
      * Get event by ID
      */
-    static async getEventById(id) {
+    static getById = async (id) => {
         return this.eventsEntity.findById(id);
-    }
+    };
     /**
-     * Get all events
+     * Get all events with optional filters
      */
-    static async getAllEvents(limit = 50) {
-        return this.eventsEntity.findAll({
-            orderBy: 'createdAt',
-            order: 'DESC',
-            limit
-        });
-    }
+    static getAll = async (filters) => {
+        return this.eventsEntity.findAllFiltered(filters);
+    };
     /**
-     * Get events by creator
+     * Get all active events (optionally filtered by type)
      */
-    static async getEventsByCreator(creatorDiscordId, limit = 50) {
-        return this.eventsEntity.findByCreator(creatorDiscordId, limit);
-    }
+    static getActive = async (eventType) => {
+        return this.eventsEntity.findActive(eventType);
+    };
     /**
-     * Update event
+     * Get all active bingo events
      */
-    static async updateEvent(id, updates) {
-        const result = await this.eventsEntity.updateById(id, updates);
-        if (!result) {
-            throw new Error(`Event with id ${id} not found`);
-        }
-        return result;
-    }
+    static getActiveBingoEvents = async () => {
+        return this.eventsEntity.findActive(EventType.BINGO);
+    };
     /**
-     * Delete event
+     * Update an event
      */
-    static async deleteEvent(id) {
-        return this.eventsEntity.deleteById(id);
-    }
+    static update = async (id, input) => {
+        return this.eventsEntity.update(id, input);
+    };
     /**
-     * Get event with related coffer movements
+     * Delete an event (cascades to teams, members, registrations)
      */
-    static async getEventWithMovements(eventId) {
-        return this.eventsEntity.getWithMovements(eventId);
-    }
+    static delete = async (id) => {
+        return this.eventsEntity.delete(id);
+    };
     /**
-     * Get total funds used for events
+     * Update event status with validation
+     *
+     * Valid transitions:
+     * - draft → scheduled, active, cancelled
+     * - scheduled → active, cancelled
+     * - active → paused, completed, cancelled
+     * - paused → active, completed, cancelled
+     * - completed → (no transitions)
+     * - cancelled → (no transitions)
      */
-    static async getTotalFundsUsed() {
-        return EventsEntity.getTotalFundsUsed();
-    }
-    /**
-     * Get events summary for recent period
-     */
-    static async getRecentEventsSummary(days = 30) {
-        return EventsEntity.getRecentSummary(days);
-    }
-    // Account Events Management
-    /**
-     * Get comprehensive event analytics
-     */
-    static async getEventAnalytics(days = 30) {
-        // Get clan events summary
-        const summary = await this.getRecentEventsSummary(days);
-        return {
-            clanEvents: {
-                totalEvents: summary.eventCount,
-                totalFundsUsed: summary.totalFundsUsed,
-                avgFundsPerEvent: summary.avgFundsPerEvent
-            }
+    static updateStatus = async (id, newStatus) => {
+        const event = await this.eventsEntity.findById(id);
+        if (!event)
+            return null;
+        const validTransitions = {
+            [EventStatus.DRAFT]: [EventStatus.SCHEDULED, EventStatus.ACTIVE, EventStatus.CANCELLED],
+            [EventStatus.SCHEDULED]: [EventStatus.ACTIVE, EventStatus.CANCELLED],
+            [EventStatus.ACTIVE]: [EventStatus.PAUSED, EventStatus.COMPLETED, EventStatus.CANCELLED],
+            [EventStatus.PAUSED]: [EventStatus.ACTIVE, EventStatus.COMPLETED, EventStatus.CANCELLED],
+            [EventStatus.COMPLETED]: [],
+            [EventStatus.CANCELLED]: []
         };
-    }
+        const allowed = validTransitions[event.status];
+        if (!allowed.includes(newStatus)) {
+            throw new Error(`Cannot transition from ${event.status} to ${newStatus}`);
+        }
+        return this.eventsEntity.updateStatus(id, newStatus);
+    };
     /**
-     * Create tables for events module
+     * Activate an event
      */
-    static async createTables() {
+    static activate = async (id) => {
+        return this.updateStatus(id, EventStatus.ACTIVE);
+    };
+    /**
+     * Pause an event
+     */
+    static pause = async (id) => {
+        return this.updateStatus(id, EventStatus.PAUSED);
+    };
+    /**
+     * Complete an event
+     */
+    static complete = async (id) => {
+        return this.updateStatus(id, EventStatus.COMPLETED);
+    };
+    /**
+     * Cancel an event
+     */
+    static cancel = async (id) => {
+        return this.updateStatus(id, EventStatus.CANCELLED);
+    };
+    /**
+     * Update event config (merges with existing)
+     */
+    static updateConfig = async (id, configUpdate) => {
+        return this.eventsEntity.updateConfig(id, configUpdate);
+    };
+    // ============================================================================
+    // Teams
+    // ============================================================================
+    /**
+     * Create a team for an event
+     */
+    static createTeam = async (input) => {
+        return this.teamsEntity.create(input);
+    };
+    /**
+     * Get team by ID
+     */
+    static getTeamById = async (id) => {
+        return this.teamsEntity.findById(id);
+    };
+    /**
+     * Get all teams for an event
+     */
+    static getTeamsByEventId = async (eventId) => {
+        return this.teamsEntity.findByEventId(eventId);
+    };
+    /**
+     * Get team by event and name
+     */
+    static getTeamByName = async (eventId, name) => {
+        return this.teamsEntity.findByEventAndName(eventId, name);
+    };
+    /**
+     * Update a team
+     */
+    static updateTeam = async (id, input) => {
+        return this.teamsEntity.update(id, input);
+    };
+    /**
+     * Delete a team (cascades to team members)
+     */
+    static deleteTeam = async (id) => {
+        return this.teamsEntity.delete(id);
+    };
+    /**
+     * Update team score
+     */
+    static updateTeamScore = async (id, score) => {
+        return this.teamsEntity.updateScore(id, score);
+    };
+    /**
+     * Increment team score
+     */
+    static incrementTeamScore = async (id, points) => {
+        return this.teamsEntity.incrementScore(id, points);
+    };
+    /**
+     * Get event leaderboard (teams sorted by score)
+     */
+    static getLeaderboard = async (eventId) => {
+        return this.teamsEntity.getLeaderboard(eventId);
+    };
+    // ============================================================================
+    // Team Members
+    // ============================================================================
+    /**
+     * Add a member to a team
+     */
+    static addTeamMember = async (input) => {
+        return this.teamMembersEntity.create(input);
+    };
+    /**
+     * Get team member by ID
+     */
+    static getTeamMemberById = async (id) => {
+        return this.teamMembersEntity.findById(id);
+    };
+    /**
+     * Get all members of a team
+     */
+    static getTeamMembers = async (teamId) => {
+        return this.teamMembersEntity.findByTeamId(teamId);
+    };
+    /**
+     * Find team member by OSRS account in a specific event
+     */
+    static findTeamMemberByOsrsAccount = async (osrsAccountId, eventId) => {
+        return this.teamMembersEntity.findByOsrsAccountAndEvent(osrsAccountId, eventId);
+    };
+    /**
+     * Update a team member
+     */
+    static updateTeamMember = async (id, input) => {
+        return this.teamMembersEntity.update(id, input);
+    };
+    /**
+     * Remove a member from a team
+     */
+    static removeTeamMember = async (id) => {
+        return this.teamMembersEntity.delete(id);
+    };
+    /**
+     * Update team member's individual score
+     */
+    static updateMemberScore = async (id, score) => {
+        return this.teamMembersEntity.updateScore(id, score);
+    };
+    /**
+     * Increment team member's individual score
+     */
+    static incrementMemberScore = async (id, points) => {
+        return this.teamMembersEntity.incrementScore(id, points);
+    };
+    /**
+     * Get team's internal leaderboard
+     */
+    static getTeamMemberLeaderboard = async (teamId) => {
+        return this.teamMembersEntity.getTeamLeaderboard(teamId);
+    };
+    // ============================================================================
+    // Registrations
+    // ============================================================================
+    /**
+     * Register a member for an event
+     */
+    static register = async (input) => {
+        return this.registrationsEntity.create(input);
+    };
+    /**
+     * Get registration by ID
+     */
+    static getRegistrationById = async (id) => {
+        return this.registrationsEntity.findById(id);
+    };
+    /**
+     * Get all registrations for an event
+     */
+    static getRegistrationsByEventId = async (eventId) => {
+        return this.registrationsEntity.findByEventId(eventId);
+    };
+    /**
+     * Get registration by event and member
+     */
+    static getRegistration = async (eventId, memberId) => {
+        return this.registrationsEntity.findByEventAndMember(eventId, memberId);
+    };
+    /**
+     * Get registrations by status
+     */
+    static getRegistrationsByStatus = async (eventId, status) => {
+        return this.registrationsEntity.findByEventAndStatus(eventId, status);
+    };
+    /**
+     * Update registration status
+     */
+    static updateRegistrationStatus = async (id, status) => {
+        return this.registrationsEntity.updateStatus(id, status);
+    };
+    /**
+     * Approve a registration
+     */
+    static approveRegistration = async (id) => {
+        return this.registrationsEntity.updateStatus(id, EventRegistrationStatus.REGISTERED);
+    };
+    /**
+     * Cancel a registration
+     */
+    static cancelRegistration = async (id) => {
+        return this.registrationsEntity.updateStatus(id, EventRegistrationStatus.CANCELLED);
+    };
+    /**
+     * Delete a registration
+     */
+    static deleteRegistration = async (id) => {
+        return this.registrationsEntity.delete(id);
+    };
+    /**
+     * Check if member is registered for an event
+     */
+    static isRegistered = async (eventId, memberId) => {
+        return this.registrationsEntity.isRegistered(eventId, memberId);
+    };
+    /**
+     * Get registration count for an event
+     */
+    static getRegistrationCount = async (eventId) => {
+        return this.registrationsEntity.countByEventId(eventId);
+    };
+    // ============================================================================
+    // Composite Operations
+    // ============================================================================
+    /**
+     * Get full event details including teams and their members
+     */
+    static getEventWithTeams = async (eventId) => {
+        const event = await this.eventsEntity.findById(eventId);
+        if (!event)
+            return null;
+        const teams = await this.teamsEntity.findByEventId(eventId);
+        const teamsWithMembers = await Promise.all(teams.map(async (team) => ({
+            ...team,
+            members: await this.teamMembersEntity.findByTeamId(team.id)
+        })));
+        return { event, teams: teamsWithMembers };
+    };
+    /**
+     * Get event statistics
+     */
+    static getEventStats = async (eventId) => {
+        const teams = await this.teamsEntity.findByEventId(eventId);
+        const memberCounts = await Promise.all(teams.map(team => this.teamMembersEntity.countByTeamId(team.id)));
+        return {
+            teamCount: teams.length,
+            totalMembers: memberCounts.reduce((sum, count) => sum + count, 0),
+            registrationCount: await this.registrationsEntity.countByEventId(eventId),
+            pendingRegistrations: await this.registrationsEntity.countByEventAndStatus(eventId, EventRegistrationStatus.PENDING)
+        };
+    };
+    // ============================================================================
+    // Table Creation
+    // ============================================================================
+    /**
+     * Create all tables for the events module
+     */
+    static createTables = async () => {
         await EventsEntity.createTable();
-    }
+        await EventTeamsEntity.createTable();
+        await EventTeamMembersEntity.createTable();
+        await EventRegistrationsEntity.createTable();
+    };
 }

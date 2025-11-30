@@ -35,13 +35,14 @@ router.get('/', async (req, res) => {
             // Include show_tile_buffs setting in metadata (defaults to true)
             const boardMetadata = {
                 ...(genericBoard.metadata || {}),
-                show_tile_buffs: genericBoard.metadata?.show_tile_buffs !== false
+                showTileEffects: genericBoard.metadata?.showTileEffects !== false,
+                showRowColumnBuffs: genericBoard.metadata?.showRowColumnBuffs !== false
             };
             const newBoard = await query(`
 				INSERT INTO bingo_boards (
-					event_id, team_id, name, description, columns, rows, show_row_column_buffs, metadata
+					event_id, team_id, name, description, columns, rows, metadata
 				)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				RETURNING *
 			`, [
                 eventId,
@@ -50,7 +51,6 @@ router.get('/', async (req, res) => {
                 genericBoard.description || null,
                 genericBoard.columns || 7,
                 genericBoard.rows || 7,
-                genericBoard.show_row_column_buffs || false,
                 JSON.stringify(boardMetadata)
             ]);
             boards = newBoard;
@@ -58,14 +58,13 @@ router.get('/', async (req, res) => {
             if (genericBoard.tiles && Array.isArray(genericBoard.tiles)) {
                 for (const tile of genericBoard.tiles) {
                     await query(`
-						INSERT INTO bingo_board_tiles (board_id, tile_id, position, custom_points, metadata)
-						VALUES ($1, $2, $3, $4, $5)
+						INSERT INTO bingo_board_tiles (board_id, tile_id, position, metadata)
+						VALUES ($1, $2, $3, $4)
 						ON CONFLICT (board_id, position) DO NOTHING
 					`, [
                         newBoard[0].id,
                         tile.tile_id,
                         tile.position,
-                        tile.custom_points || null,
                         JSON.stringify(tile.metadata || {})
                     ]);
                 }
@@ -82,7 +81,6 @@ router.get('/', async (req, res) => {
 				bt.icon,
 				bt.description,
 				bt.base_points,
-				bt.bonus_tiers,
 				bt.requirements,
 				COALESCE(
 					json_agg(
@@ -130,7 +128,7 @@ router.get('/', async (req, res) => {
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			LEFT JOIN bingo_tile_progress btp ON btp.board_tile_id = bbt.id
 			WHERE bbt.board_id = $1
-			GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.bonus_tiers, bt.requirements
+			GROUP BY bbt.id, bt.task, bt.category, bt.difficulty, bt.icon, bt.description, bt.base_points, bt.requirements
 			ORDER BY bbt.position
 		`, [board.id]);
         // Get tile effects (only active ones, or all if show_tile_buffs is true)
@@ -189,7 +187,8 @@ router.get('/', async (req, res) => {
 /**
  * PATCH /api/admin/clan-events/:eventId/teams/:teamId/board
  * Update board configuration
- * Body: { name, description, columns, rows, show_row_column_buffs, metadata }
+ * Body: { name, description, columns, rows, metadata }
+ * Note: showRowColumnBuffs should be in metadata.showRowColumnBuffs
  *
  * Returns: Updated board
  */
@@ -206,17 +205,23 @@ router.patch('/', async (req, res) => {
             });
         }
         // Get or create board
-        let boards = await query('SELECT id FROM bingo_boards WHERE event_id = $1 AND team_id = $2', [eventId, teamId]);
+        let boards = await query('SELECT id, metadata FROM bingo_boards WHERE event_id = $1 AND team_id = $2', [eventId, teamId]);
         if (boards.length === 0) {
             // Create board if it doesn't exist
             const event = await query('SELECT config FROM events WHERE id = $1', [eventId]);
             const eventConfig = event[0]?.config || {};
             const genericBoard = eventConfig.board || {};
+            const boardMetadata = {
+                ...(genericBoard.metadata || {}),
+                ...(updates.metadata || {}),
+                showTileEffects: updates.metadata?.showTileEffects ?? genericBoard.metadata?.showTileEffects ?? true,
+                showRowColumnBuffs: updates.metadata?.showRowColumnBuffs ?? genericBoard.metadata?.showRowColumnBuffs ?? false
+            };
             const newBoard = await query(`
 				INSERT INTO bingo_boards (
-					event_id, team_id, name, description, columns, rows, show_row_column_buffs, metadata
+					event_id, team_id, name, description, columns, rows, metadata
 				)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				RETURNING id
 			`, [
                 eventId,
@@ -225,15 +230,15 @@ router.patch('/', async (req, res) => {
                 updates.description || genericBoard.description || null,
                 updates.columns || genericBoard.columns || 7,
                 updates.rows || genericBoard.rows || 7,
-                updates.show_row_column_buffs !== undefined ? updates.show_row_column_buffs : (genericBoard.show_row_column_buffs || false),
-                JSON.stringify(updates.metadata || genericBoard.metadata || {})
+                JSON.stringify(boardMetadata)
             ]);
             boards = newBoard;
         }
         const boardId = boards[0].id;
+        const existingMetadata = boards[0].metadata || {};
         // Build dynamic update query
-        // If updating metadata, ensure show_tile_buffs is preserved or set
-        const allowedFields = ['name', 'description', 'columns', 'rows', 'show_row_column_buffs', 'metadata'];
+        // If updating metadata, merge with existing metadata
+        const allowedFields = ['name', 'description', 'columns', 'rows', 'metadata'];
         const updateFields = [];
         const values = [];
         let paramIndex = 1;
@@ -241,12 +246,13 @@ router.patch('/', async (req, res) => {
             if (allowedFields.includes(key)) {
                 updateFields.push(`${key} = $${paramIndex}`);
                 if (key === 'metadata') {
-                    // Ensure show_tile_buffs is included in metadata
-                    // Ensure value is an object before spreading
+                    // Merge with existing metadata and ensure showTileEffects and showRowColumnBuffs are preserved
                     const metadataValue = typeof value === 'object' && value !== null ? value : {};
                     const metadataWithSetting = {
+                        ...existingMetadata,
                         ...metadataValue,
-                        show_tile_buffs: metadataValue.show_tile_buffs !== false
+                        showTileEffects: metadataValue.showTileEffects ?? existingMetadata.showTileEffects ?? true,
+                        showRowColumnBuffs: metadataValue.showRowColumnBuffs ?? existingMetadata.showRowColumnBuffs ?? false
                     };
                     values.push(JSON.stringify(metadataWithSetting));
                 }
@@ -289,14 +295,14 @@ router.patch('/', async (req, res) => {
 /**
  * POST /api/admin/clan-events/:eventId/teams/:teamId/board/tiles
  * Add a tile to the board
- * Body: { tile_id, position, custom_points, metadata }
+ * Body: { tile_id, position, metadata }
  *
  * Returns: Created board tile
  */
 router.post('/tiles', async (req, res) => {
     try {
         const { eventId, teamId } = req.params;
-        const { tile_id, position, custom_points, metadata = {} } = req.body;
+        const { tile_id, position, metadata = {} } = req.body;
         if (!tile_id || !position) {
             return res.status(400).json({
                 success: false,
@@ -340,11 +346,11 @@ router.post('/tiles', async (req, res) => {
         }
         const result = await query(`
 			INSERT INTO bingo_board_tiles (
-				board_id, tile_id, position, custom_points, metadata
+				board_id, tile_id, position, metadata
 			)
-			VALUES ($1, $2, $3, $4, $5)
+			VALUES ($1, $2, $3, $4)
 			RETURNING *
-		`, [boardId, tile_id, position, custom_points, JSON.stringify(metadata)]);
+		`, [boardId, tile_id, position, JSON.stringify(metadata)]);
         res.status(201).json({
             success: true,
             data: result[0],
@@ -363,7 +369,7 @@ router.post('/tiles', async (req, res) => {
 /**
  * PATCH /api/admin/clan-events/:eventId/teams/:teamId/board/tiles/:tileId
  * Update a board tile
- * Body: { position, custom_points, is_completed, completed_by_team_id, completed_at, metadata }
+ * Body: { position, is_completed, completed_at, metadata }
  *
  * Returns: Updated board tile
  */
@@ -407,7 +413,7 @@ router.patch('/tiles/:tileId', async (req, res) => {
             }
         }
         // Build dynamic update query
-        const allowedFields = ['position', 'custom_points', 'is_completed', 'completed_by_team_id', 'completed_at', 'metadata'];
+        const allowedFields = ['position', 'is_completed', 'completed_at', 'metadata'];
         const updateFields = [];
         const values = [];
         let paramIndex = 1;
@@ -1002,10 +1008,9 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
 			UPDATE bingo_board_tiles
 			SET 
 				is_completed = true,
-				completed_at = CURRENT_TIMESTAMP,
-				completed_by_team_id = $1
-			WHERE id = $2
-		`, [teamId, tileId]);
+				completed_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`, [tileId]);
         // Create or update progress entry
         // Check for ANY existing progress for this board_tile_id (regardless of osrs_account_id)
         // to prevent duplicates - we should only have one progress entry per board_tile_id
@@ -1049,7 +1054,7 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
 			SELECT 
 				bbt.*,
 				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
-				bt.base_points, bt.bonus_tiers, bt.requirements,
+				bt.base_points, bt.requirements,
 				et.id as team_id, et.name as team_name,
 				e.name as event_name
 			FROM bingo_board_tiles bbt
@@ -1073,8 +1078,8 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
                         playerName = accounts[0].osrs_nickname || 'Admin';
                     }
                 }
-                const { sendTileProgressNotification } = await import('../../../../../modules/events/bingo/discord-notifications.service.js');
-                await sendTileProgressNotification({
+                const { DiscordNotificationsService } = await import('../../../../../modules/events/bingo/discord-notifications.service.js');
+                await DiscordNotificationsService.sendTileProgressNotification({
                     teamId: tile.team_id,
                     teamName: tile.team_name,
                     eventName: tile.event_name,
@@ -1154,8 +1159,7 @@ router.post('/tiles/:tileId/revert', async (req, res) => {
 			UPDATE bingo_board_tiles
 			SET 
 				is_completed = false,
-				completed_at = NULL,
-				completed_by_team_id = NULL
+				completed_at = NULL
 			WHERE id = $1
 		`, [tileId]);
         // Update progress (remove completion but keep progress)
@@ -1172,7 +1176,7 @@ router.post('/tiles/:tileId/revert', async (req, res) => {
 			SELECT 
 				bbt.*,
 				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
-				bt.base_points, bt.bonus_tiers, bt.requirements
+				bt.base_points, bt.requirements
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			WHERE bbt.id = $1

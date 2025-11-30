@@ -106,13 +106,9 @@ router.get('/:id', async (req, res) => {
 				bt.difficulty,
 				bt.icon,
 				bt.description,
-				bt.base_points,
-				bt.bonus_tiers,
-				et.name as completed_by_team_name,
-				et.color as completed_by_team_color
+				bt.base_points
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
-			LEFT JOIN event_teams et ON bbt.completed_by_team_id = et.id
 			WHERE bbt.board_id = $1
 			ORDER BY bbt.position
 		`, [id]);
@@ -155,11 +151,17 @@ router.get('/:id', async (req, res) => {
 /**
  * POST /api/admin/clan-events/boards
  * Create a new team-specific board
- * Body: { event_id, team_id, name, description, columns, rows, show_row_column_buffs, metadata }
+ * Body: { event_id, team_id, name, description, columns, rows, metadata }
+ * Note: showRowColumnBuffs should be in metadata.showRowColumnBuffs
  */
 router.post('/', async (req, res) => {
     try {
-        const { event_id, team_id, name, description, columns = 7, rows = 7, show_row_column_buffs = false, metadata = {} } = req.body;
+        const { event_id, team_id, name, description, columns = 7, rows = 7, metadata = {} } = req.body;
+        // Ensure showRowColumnBuffs is in metadata
+        const boardMetadata = {
+            ...metadata,
+            showRowColumnBuffs: metadata.showRowColumnBuffs ?? false
+        };
         // Validation
         if (!event_id || !name) {
             return res.status(400).json({
@@ -196,12 +198,11 @@ router.post('/', async (req, res) => {
         }
         const result = await query(`
 			INSERT INTO bingo_boards (
-				event_id, team_id, name, description, columns, rows, 
-				show_row_column_buffs, metadata
+				event_id, team_id, name, description, columns, rows, metadata
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING *
-		`, [event_id, team_id || null, name, description, columns, rows, show_row_column_buffs, JSON.stringify(metadata)]);
+		`, [event_id, team_id || null, name, description, columns, rows, JSON.stringify(boardMetadata)]);
         res.status(201).json({
             success: true,
             data: result[0],
@@ -246,7 +247,7 @@ router.patch('/:id', async (req, res) => {
             }
         }
         // Build dynamic update query
-        const allowedFields = ['name', 'description', 'columns', 'rows', 'show_row_column_buffs', 'team_id', 'metadata'];
+        const allowedFields = ['name', 'description', 'columns', 'rows', 'team_id', 'metadata'];
         const updateFields = [];
         const values = [];
         let paramIndex = 1;
@@ -324,7 +325,7 @@ router.delete('/:id', async (req, res) => {
 /**
  * POST /api/admin/clan-events/boards/:id/tiles
  * Add a tile to the board
- * Body: { tile_id, position, custom_points, metadata }
+ * Body: { tile_id, position, metadata }
  *
  * @deprecated Use /events/:eventId/teams/:teamId/board/tiles instead
  * This endpoint is kept for backwards compatibility
@@ -332,7 +333,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/tiles', async (req, res) => {
     try {
         const { id } = req.params;
-        const { tile_id, position, custom_points, metadata = {} } = req.body;
+        const { tile_id, position, metadata = {} } = req.body;
         // Validation
         if (!tile_id || !position) {
             return res.status(400).json({
@@ -368,11 +369,11 @@ router.post('/:id/tiles', async (req, res) => {
         }
         const result = await query(`
 			INSERT INTO bingo_board_tiles (
-				board_id, tile_id, position, custom_points, metadata
+				board_id, tile_id, position, metadata
 			)
-			VALUES ($1, $2, $3, $4, $5)
+			VALUES ($1, $2, $3, $4)
 			RETURNING *
-		`, [id, tile_id, position, custom_points, JSON.stringify(metadata)]);
+		`, [id, tile_id, position, JSON.stringify(metadata)]);
         res.status(201).json({
             success: true,
             data: result[0],
@@ -422,7 +423,7 @@ router.delete('/:boardId/tiles/:tileId', async (req, res) => {
 });
 /**
  * PATCH /api/admin/clan-events/boards/:boardId/tiles/:tileId
- * Update a board tile (position, custom_points, completion status, etc.)
+ * Update a board tile (position, completion status, etc.)
  *
  * @deprecated Use /events/:eventId/teams/:teamId/board/tiles/:tileId instead
  * This endpoint is kept for backwards compatibility
@@ -440,7 +441,7 @@ router.patch('/:boardId/tiles/:tileId', async (req, res) => {
             });
         }
         // Build dynamic update query
-        const allowedFields = ['position', 'custom_points', 'is_completed', 'completed_by_team_id', 'completed_at', 'metadata'];
+        const allowedFields = ['position', 'is_completed', 'completed_at', 'metadata'];
         const updateFields = [];
         const values = [];
         let paramIndex = 1;

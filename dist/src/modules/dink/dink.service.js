@@ -11,9 +11,9 @@ import { createGrandExchangeEmbed } from './events/grand-exchange.js';
 import { createCollectLogEmbed } from './events/collect-log.js';
 import { createLootEmbed } from './events/loot.js';
 import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './discord-utils.js';
-// Import tile progress service
-import { processDinkEventForTileProgress } from '../events/bingo/tile-progress.service.js';
-import { isPlayerInActiveBingoEvent } from '../events/bingo/bingo-participant-checker.js';
+// Bingo event processing
+import { tileProgressService } from '../events/bingo/tile-progress.service.js';
+import { BingoService } from '../events/bingo/bingo.service.js';
 // Cache for dink hash verification (10 minutes)
 const dinkHashCache = new Map();
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
@@ -316,7 +316,7 @@ export class DinkService {
                         const eventType = payloadData?.type || 'UNKNOWN';
                         const playerName = payloadData?.playerName || 'Unknown Player';
                         // Check if player is in an active bingo event BEFORE filtering
-                        const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName);
+                        const isBingoParticipant = await BingoService.isPlayerInActiveBingoEvent(undefined, playerName);
                         // Log LOGIN/LOGOUT events prominently
                         if (eventType === 'LOGIN' || eventType === 'LOGOUT') {
                             console.log('═══════════════════════════════════════════════════════════');
@@ -328,7 +328,7 @@ export class DinkService {
                         // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
                         // This must happen before any filtering
                         try {
-                            await processDinkEventForTileProgress(payloadData);
+                            await tileProgressService.processDinkEvent(payloadData);
                         }
                         catch (error) {
                             console.error('[DinkService] Error processing tile progress:', error);
@@ -379,7 +379,7 @@ export class DinkService {
             const eventType = req.body?.type || 'UNKNOWN';
             const playerName = req.body?.playerName || 'Unknown Player';
             // Check if player is in an active bingo event BEFORE filtering
-            const isBingoParticipant = await isPlayerInActiveBingoEvent(undefined, playerName);
+            const isBingoParticipant = await BingoService.isPlayerInActiveBingoEvent(undefined, playerName);
             // Log LOGIN/LOGOUT events prominently
             if (eventType === 'LOGIN' || eventType === 'LOGOUT') {
                 console.log('═══════════════════════════════════════════════════════════');
@@ -391,7 +391,7 @@ export class DinkService {
             // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
             // This must happen before any filtering
             try {
-                await processDinkEventForTileProgress(req.body);
+                await tileProgressService.processDinkEvent(req.body);
             }
             catch (error) {
                 console.error('[DinkService] Error processing tile progress:', error);

@@ -247,7 +247,13 @@ export class MembersService {
             if (!updatedMember) {
                 throw new Error('Failed to update member');
             }
-            return this.convertToMember(updatedMember);
+            // Fetch the full member after update to ensure we have all fields
+            // updateById might only return updated fields, so we need to fetch the complete record
+            const fullMember = await this.membersEntity.findById(existingMember.id);
+            if (!fullMember) {
+                throw new Error('Failed to fetch updated member');
+            }
+            return this.convertToMember(fullMember);
         }
         else {
             // Member doesn't exist - insert new member

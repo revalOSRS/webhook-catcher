@@ -4,13 +4,16 @@ import { getMemberFromHeaders, getEventParticipation } from './types.js';
 
 const router = Router({ mergeParams: true });
 
+/** Params type for routes that receive eventId from parent router */
+type EventParams = { eventId: string };
+
 /**
  * GET /api/app/clan-events/events/:eventId/team/progress
  * Get team progress summary
  */
 router.get('/progress', async (req, res: Response) => {
 	try {
-		const { eventId } = req.params;
+		const { eventId } = req.params as EventParams;
 		const member = await getMemberFromHeaders(req);
 
 		if (!member) {
@@ -71,7 +74,7 @@ router.get('/progress', async (req, res: Response) => {
  */
 router.get('/leaderboard', async (req, res: Response) => {
 	try {
-		const { eventId } = req.params;
+		const { eventId } = req.params as EventParams;
 		const member = await getMemberFromHeaders(req);
 
 		if (!member) {
@@ -149,7 +152,7 @@ router.get('/leaderboard', async (req, res: Response) => {
  */
 router.get('/activity', async (req, res: Response) => {
 	try {
-		const { eventId } = req.params;
+		const { eventId } = req.params as EventParams;
 		const { limit = '20' } = req.query;
 		const member = await getMemberFromHeaders(req);
 

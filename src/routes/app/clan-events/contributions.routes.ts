@@ -10,7 +10,7 @@ const router = Router({ mergeParams: true });
  */
 router.get('/', async (req, res: Response) => {
 	try {
-		const { eventId } = req.params;
+		const { eventId } = req.params as { eventId: string };
 		const member = await getMemberFromHeaders(req);
 
 		if (!member) {

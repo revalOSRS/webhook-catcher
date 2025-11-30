@@ -10,7 +10,7 @@ const router = Router({ mergeParams: true });
  */
 router.get('/:tileId', async (req, res: Response) => {
 	try {
-		const { eventId, tileId } = req.params;
+		const { eventId, tileId } = req.params as { eventId: string; tileId: string };
 		const member = await getMemberFromHeaders(req);
 
 		if (!member) {

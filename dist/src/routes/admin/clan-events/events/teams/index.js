@@ -1,52 +1,59 @@
+/**
+ * Teams Admin Routes
+ *
+ * CRUD operations for event teams using the EventTeamsEntity class.
+ */
 import { Router } from 'express';
 import { query } from '../../../../../db/connection.js';
+import { EventTeamsEntity } from '../../../../../modules/events/entities/event-teams.entity.js';
+import { EventTeamMembersEntity } from '../../../../../modules/events/entities/event-team-members.entity.js';
+import { EventsEntity } from '../../../../../modules/events/entities/events.entity.js';
+import progressRouter from './progress.routes.js';
 const router = Router();
+// Instantiate entities
+const teamsEntity = new EventTeamsEntity();
+const teamMembersEntity = new EventTeamMembersEntity();
+const eventsEntity = new EventsEntity();
+// ============================================================================
+// TEAMS CRUD
+// ============================================================================
 /**
  * GET /api/admin/clan-events/teams
- * Get all teams with optional filtering by event_id
- * Query params: event_id, limit, offset
- *
- * Returns: Array<TeamSummary> with pagination
+ * List all teams with optional filtering by event_id
  */
 router.get('/', async (req, res) => {
     try {
         const { event_id, limit = '50', offset = '0' } = req.query;
         let sql = `
-			SELECT 
-				et.id,
-				et.event_id,
-				et.name,
-				et.color,
-				et.icon,
-				et.score,
-				et.metadata,
-				et.created_at,
-				et.updated_at,
-				e.name as event_name,
-				e.status as event_status,
-				COUNT(etm.id) as member_count
-			FROM event_teams et
-			JOIN events e ON et.event_id = e.id
-			LEFT JOIN event_team_members etm ON et.id = etm.team_id
-			WHERE 1=1
-		`;
+      SELECT 
+        et.id, et.event_id, et.name, et.color, et.icon, et.score,
+        et.metadata, et.created_at, et.updated_at,
+        e.name as event_name, e.status as event_status,
+        COUNT(etm.id) as member_count
+      FROM event_teams et
+      JOIN events e ON et.event_id = e.id
+      LEFT JOIN event_team_members etm ON et.id = etm.team_id
+      WHERE 1=1
+    `;
         const params = [];
         let paramIndex = 1;
         if (event_id) {
-            sql += ` AND et.event_id = $${paramIndex}`;
+            sql += ` AND et.event_id = $${paramIndex++}`;
             params.push(event_id);
-            paramIndex++;
         }
         sql += `
-			GROUP BY et.id, e.name, e.status
-			ORDER BY et.score DESC, et.created_at DESC
-			LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-		`;
+      GROUP BY et.id, e.name, e.status
+      ORDER BY et.score DESC, et.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
         params.push(parseInt(limit), parseInt(offset));
         const teams = await query(sql, params);
         res.json({
             success: true,
-            data: teams,
+            data: teams.map(t => ({
+                ...t,
+                memberCount: parseInt(t.member_count)
+            })),
             pagination: {
                 limit: parseInt(limit),
                 offset: parseInt(offset)
@@ -54,86 +61,73 @@ router.get('/', async (req, res) => {
         });
     }
     catch (error) {
-        console.error('Error fetching teams:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error fetching teams:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to fetch teams',
-            message: error.message
+            message
         });
     }
 });
 /**
  * GET /api/admin/clan-events/teams/:id
- * Get a single team with all its members and OSRS account info
- *
- * Returns: TeamResponse
+ * Get a single team with all its members
  */
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        // Get team details (exclude discord_webhook_url from response)
-        const teams = await query(`
-			SELECT 
-				et.id,
-				et.event_id,
-				et.name,
-				et.color,
-				et.icon,
-				et.score,
-				et.metadata,
-				et.created_at,
-				et.updated_at,
-				e.name as event_name,
-				e.status as event_status,
-				e.event_type
-			FROM event_teams et
-			JOIN events e ON et.event_id = e.id
-			WHERE et.id = $1
-		`, [id]);
-        if (teams.length === 0) {
+        // Get team with event info
+        const team = await query(`
+      SELECT 
+        et.id, et.event_id, et.name, et.color, et.icon, et.score,
+        et.metadata, et.created_at, et.updated_at,
+        e.name as event_name, e.status as event_status, e.event_type
+      FROM event_teams et
+      JOIN events e ON et.event_id = e.id
+      WHERE et.id = $1
+    `, [id]);
+        if (team.length === 0) {
             return res.status(404).json({
                 success: false,
                 error: 'Team not found'
             });
         }
-        const team = teams[0];
-        // Get all members with OSRS account info
+        // Get members with OSRS account info
         const members = await query(`
-			SELECT 
-				etm.*,
-				m.discord_id,
-				m.discord_tag,
-				oa.osrs_nickname as osrs_account_name,
-				oa.account_type as osrs_account_type
-			FROM event_team_members etm
-			JOIN members m ON etm.member_id = m.id
-			LEFT JOIN osrs_accounts oa ON etm.osrs_account_id = oa.id
-			WHERE etm.team_id = $1
-			ORDER BY etm.role DESC, etm.individual_score DESC, etm.joined_at ASC
-		`, [id]);
+      SELECT 
+        etm.id, etm.team_id, etm.member_id, etm.osrs_account_id,
+        etm.role, etm.individual_score, etm.metadata,
+        etm.created_at as joined_at,
+        m.discord_id, m.discord_tag,
+        oa.osrs_nickname as osrs_account_name, oa.account_type as osrs_account_type
+      FROM event_team_members etm
+      JOIN members m ON etm.member_id = m.id
+      LEFT JOIN osrs_accounts oa ON etm.osrs_account_id = oa.id
+      WHERE etm.team_id = $1
+      ORDER BY etm.role DESC, etm.individual_score DESC, etm.created_at ASC
+    `, [id]);
         res.json({
             success: true,
             data: {
-                ...team,
+                ...team[0],
                 members
             }
         });
     }
     catch (error) {
-        console.error('Error fetching team:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error fetching team:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to fetch team',
-            message: error.message
+            message
         });
     }
 });
 /**
  * POST /api/admin/clan-events/teams
  * Create a new team
- * Body: { event_id, name, color?, icon?, metadata? }
- *
- * Returns: Created team object
  */
 router.post('/', async (req, res) => {
     try {
@@ -147,149 +141,164 @@ router.post('/', async (req, res) => {
             });
         }
         // Check if event exists
-        const eventCheck = await query('SELECT id FROM events WHERE id = $1', [event_id]);
-        if (eventCheck.length === 0) {
+        const event = await eventsEntity.findById(event_id);
+        if (!event) {
             return res.status(404).json({
                 success: false,
                 error: 'Event not found'
             });
         }
-        // Check if team name is already taken for this event
-        const nameCheck = await query('SELECT id FROM event_teams WHERE event_id = $1 AND name = $2', [event_id, name]);
-        if (nameCheck.length > 0) {
+        // Check for duplicate name
+        const existing = await teamsEntity.findByEventAndName(event_id, name);
+        if (existing) {
             return res.status(409).json({
                 success: false,
                 error: 'Team name already exists for this event'
             });
         }
-        const result = await query(`
-			INSERT INTO event_teams (
-				event_id, name, color, icon, metadata
-			)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING 
-				id,
-				event_id,
-				name,
-				color,
-				icon,
-				score,
-				metadata,
-				created_at,
-				updated_at
-		`, [event_id, name, color, icon, JSON.stringify(metadata)]);
+        const team = await teamsEntity.create({
+            eventId: event_id,
+            name,
+            color,
+            icon,
+            metadata
+        });
         res.status(201).json({
             success: true,
-            data: result[0],
+            data: team,
             message: 'Team created successfully'
         });
     }
     catch (error) {
-        console.error('Error creating team:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error creating team:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to create team',
-            message: error.message
+            message
+        });
+    }
+});
+/**
+ * POST /api/admin/clan-events/teams/batch
+ * Create multiple teams at once
+ */
+router.post('/batch', async (req, res) => {
+    try {
+        const { event_id, teams } = req.body;
+        if (!event_id || !Array.isArray(teams) || teams.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields',
+                required: ['event_id', 'teams (array)']
+            });
+        }
+        const event = await eventsEntity.findById(event_id);
+        if (!event) {
+            return res.status(404).json({
+                success: false,
+                error: 'Event not found'
+            });
+        }
+        const created = [];
+        const errors = [];
+        for (const teamData of teams) {
+            if (!teamData.name) {
+                errors.push({ name: '(unnamed)', error: 'Missing team name' });
+                continue;
+            }
+            try {
+                const existing = await teamsEntity.findByEventAndName(event_id, teamData.name);
+                if (existing) {
+                    errors.push({ name: teamData.name, error: 'Team name already exists' });
+                    continue;
+                }
+                const team = await teamsEntity.create({
+                    eventId: event_id,
+                    name: teamData.name,
+                    color: teamData.color,
+                    icon: teamData.icon,
+                    metadata: teamData.metadata || {}
+                });
+                created.push(team);
+            }
+            catch (err) {
+                const errMsg = err instanceof Error ? err.message : 'Unknown error';
+                errors.push({ name: teamData.name, error: errMsg });
+            }
+        }
+        res.status(201).json({
+            success: true,
+            data: {
+                created: created.length,
+                failed: errors.length,
+                teams: created,
+                errors: errors.length > 0 ? errors : undefined
+            },
+            message: `Created ${created.length} teams, ${errors.length} failed`
+        });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error batch creating teams:', message);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to batch create teams',
+            message
         });
     }
 });
 /**
  * PATCH /api/admin/clan-events/teams/:id
  * Update a team
- * Body: { name?, color?, icon?, score?, metadata? }
- *
- * Returns: Updated team object
  */
 router.patch('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
-        // Check if team exists
-        const existing = await query('SELECT id, event_id FROM event_teams WHERE id = $1', [id]);
-        if (existing.length === 0) {
+        const { name, color, icon, score, metadata } = req.body;
+        const existing = await teamsEntity.findById(id);
+        if (!existing) {
             return res.status(404).json({
                 success: false,
                 error: 'Team not found'
             });
         }
-        // If updating name, check for duplicates
-        if (updates.name) {
-            const nameCheck = await query('SELECT id FROM event_teams WHERE event_id = $1 AND name = $2 AND id != $3', [existing[0].event_id, updates.name, id]);
-            if (nameCheck.length > 0) {
+        // Check name uniqueness if changing
+        if (name && name !== existing.name) {
+            const duplicate = await teamsEntity.findByEventAndName(existing.eventId, name);
+            if (duplicate) {
                 return res.status(409).json({
                     success: false,
                     error: 'Team name already exists for this event'
                 });
             }
         }
-        // Build dynamic update query
-        // Note: discord_webhook_url is NOT allowed via API - must be set directly in database
-        const allowedFields = ['name', 'color', 'icon', 'score', 'metadata'];
-        const updateFields = [];
-        const values = [];
-        let paramIndex = 1;
-        for (const [key, value] of Object.entries(updates)) {
-            if (allowedFields.includes(key)) {
-                updateFields.push(`${key} = $${paramIndex}`);
-                if (key === 'metadata') {
-                    values.push(JSON.stringify(value));
-                }
-                else {
-                    values.push(value);
-                }
-                paramIndex++;
-            }
-        }
-        if (updateFields.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: 'No valid fields to update',
-                allowed_fields: allowedFields
-            });
-        }
-        values.push(id);
-        const sql = `
-			UPDATE event_teams 
-			SET ${updateFields.join(', ')}
-			WHERE id = $${paramIndex}
-			RETURNING 
-				id,
-				event_id,
-				name,
-				color,
-				icon,
-				score,
-				metadata,
-				created_at,
-				updated_at
-		`;
-        const result = await query(sql, values);
+        const updatedTeam = await teamsEntity.update(id, { name, color, icon, score, metadata });
         res.json({
             success: true,
-            data: result[0],
+            data: updatedTeam,
             message: 'Team updated successfully'
         });
     }
     catch (error) {
-        console.error('Error updating team:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error updating team:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to update team',
-            message: error.message
+            message
         });
     }
 });
 /**
  * DELETE /api/admin/clan-events/teams/:id
  * Delete a team (cascades to team members and board)
- *
- * Returns: Deleted team ID
  */
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await query('DELETE FROM event_teams WHERE id = $1 RETURNING id', [id]);
-        if (result.length === 0) {
+        const deleted = await teamsEntity.delete(id);
+        if (!deleted) {
             return res.status(404).json({
                 success: false,
                 error: 'Team not found'
@@ -298,37 +307,140 @@ router.delete('/:id', async (req, res) => {
         res.json({
             success: true,
             message: 'Team deleted successfully',
-            deleted_id: result[0].id
+            deleted_id: id
         });
     }
     catch (error) {
-        console.error('Error deleting team:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error deleting team:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to delete team',
-            message: error.message
+            message
+        });
+    }
+});
+/**
+ * POST /api/admin/clan-events/teams/:id/recalculate-score
+ * Recalculate a single team's score based on completed tiles
+ */
+router.post('/:id/recalculate-score', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const team = await teamsEntity.findById(id);
+        if (!team) {
+            return res.status(404).json({
+                success: false,
+                error: 'Team not found'
+            });
+        }
+        const scoreResult = await query(`
+      SELECT COALESCE(SUM(bt.base_points), 0) as total_points
+      FROM bingo_board_tiles bbt
+      JOIN bingo_boards bb ON bbt.board_id = bb.id
+      JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+      WHERE bb.team_id = $1 AND bbt.is_completed = true
+    `, [id]);
+        const newScore = parseInt(scoreResult[0]?.total_points || '0');
+        const oldScore = team.score;
+        if (newScore !== oldScore) {
+            await teamsEntity.updateScore(id, newScore);
+        }
+        res.json({
+            success: true,
+            data: {
+                oldScore,
+                newScore,
+                changed: newScore !== oldScore
+            },
+            message: newScore !== oldScore
+                ? `Score updated from ${oldScore} to ${newScore}`
+                : 'Score unchanged'
+        });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error recalculating team score:', message);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to recalculate team score',
+            message
+        });
+    }
+});
+// ============================================================================
+// TEAM MEMBERS
+// ============================================================================
+/**
+ * GET /api/admin/clan-events/teams/:id/leaderboard
+ * Get team leaderboard (members sorted by individual score)
+ */
+router.get('/:id/leaderboard', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const team = await teamsEntity.findById(id);
+        if (!team) {
+            return res.status(404).json({
+                success: false,
+                error: 'Team not found'
+            });
+        }
+        const leaderboard = await query(`
+      SELECT 
+        etm.id, etm.member_id, etm.osrs_account_id,
+        etm.role, etm.individual_score,
+        m.discord_tag,
+        oa.osrs_nickname as osrs_account_name,
+        COUNT(DISTINCT btp.board_tile_id) FILTER (WHERE btp.completed_at IS NOT NULL) as tiles_completed,
+        COALESCE(SUM(btp.progress_value), 0) as total_progress
+      FROM event_team_members etm
+      JOIN members m ON etm.member_id = m.id
+      LEFT JOIN osrs_accounts oa ON etm.osrs_account_id = oa.id
+      LEFT JOIN bingo_tile_progress btp ON btp.completed_by_osrs_account_id = oa.id
+      WHERE etm.team_id = $1
+      GROUP BY etm.id, m.discord_tag, oa.osrs_nickname
+      ORDER BY etm.individual_score DESC, total_progress DESC
+    `, [id]);
+        res.json({
+            success: true,
+            data: {
+                team: { id: team.id, name: team.name, score: team.score },
+                leaderboard: leaderboard.map((m, i) => ({
+                    rank: i + 1,
+                    ...m,
+                    tilesCompleted: parseInt(m.tiles_completed),
+                    totalProgress: parseFloat(m.total_progress)
+                }))
+            }
+        });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error fetching team leaderboard:', message);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch team leaderboard',
+            message
         });
     }
 });
 /**
  * POST /api/admin/clan-events/teams/:id/members
  * Add a member to a team
- * Body: { member_id, osrs_account_id (optional), role, metadata }
  */
 router.post('/:id/members', async (req, res) => {
     try {
         const { id } = req.params;
         const { member_id, osrs_account_id, role = 'member', metadata = {} } = req.body;
-        // Validation
-        if (!member_id) {
+        if (!member_id || !osrs_account_id) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required field: member_id'
+                error: 'Missing required fields',
+                required: ['member_id', 'osrs_account_id']
             });
         }
-        // Check if team exists
-        const teamCheck = await query('SELECT id FROM event_teams WHERE id = $1', [id]);
-        if (teamCheck.length === 0) {
+        const team = await teamsEntity.findById(id);
+        if (!team) {
             return res.status(404).json({
                 success: false,
                 error: 'Team not found'
@@ -342,119 +454,81 @@ router.post('/:id/members', async (req, res) => {
                 error: 'Member not found'
             });
         }
-        // If osrs_account_id is provided, validate it belongs to the member
-        if (osrs_account_id) {
-            const accountCheck = await query('SELECT id FROM osrs_accounts WHERE id = $1 AND discord_id = (SELECT discord_id FROM members WHERE id = $2)', [osrs_account_id, member_id]);
-            if (accountCheck.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'OSRS account not found or does not belong to this member'
-                });
-            }
+        // Check if OSRS account belongs to member
+        const accountCheck = await query('SELECT id FROM osrs_accounts WHERE id = $1 AND discord_id = (SELECT discord_id FROM members WHERE id = $2)', [osrs_account_id, member_id]);
+        if (accountCheck.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'OSRS account not found or does not belong to this member'
+            });
         }
-        // Check if member is already on this team
-        const existingMember = await query('SELECT id FROM event_team_members WHERE team_id = $1 AND member_id = $2', [id, member_id]);
-        if (existingMember.length > 0) {
+        // Check if already on team
+        const existing = await teamMembersEntity.findByTeamAndMember(id, member_id);
+        if (existing) {
             return res.status(409).json({
                 success: false,
                 error: 'Member is already on this team'
             });
         }
-        const result = await query(`
-			INSERT INTO event_team_members (
-				team_id, member_id, osrs_account_id, role, metadata
-			)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING *
-		`, [id, member_id, osrs_account_id || null, role, JSON.stringify(metadata)]);
+        const teamMember = await teamMembersEntity.create({
+            teamId: id,
+            memberId: member_id,
+            osrsAccountId: osrs_account_id,
+            role,
+            metadata
+        });
         res.status(201).json({
             success: true,
-            data: result[0],
+            data: teamMember,
             message: 'Member added to team successfully'
         });
     }
     catch (error) {
-        console.error('Error adding member to team:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error adding member to team:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to add member to team',
-            message: error.message
+            message
         });
     }
 });
 /**
  * PATCH /api/admin/clan-events/teams/:teamId/members/:memberId
- * Update a team member (role, individual_score, osrs_account_id, metadata)
+ * Update a team member
  */
 router.patch('/:teamId/members/:memberId', async (req, res) => {
     try {
         const { teamId, memberId } = req.params;
-        const updates = req.body;
-        // Check if team member exists
-        const existing = await query('SELECT id FROM event_team_members WHERE team_id = $1 AND id = $2', [teamId, memberId]);
-        if (existing.length === 0) {
+        const { role, individual_score, metadata } = req.body;
+        const existing = await teamMembersEntity.findById(memberId);
+        if (!existing || existing.teamId !== teamId) {
             return res.status(404).json({
                 success: false,
                 error: 'Team member not found'
             });
         }
-        // If updating osrs_account_id, validate it belongs to the member
-        if (updates.osrs_account_id !== undefined) {
-            const memberInfo = await query('SELECT member_id FROM event_team_members WHERE team_id = $1 AND id = $2', [teamId, memberId]);
-            if (memberInfo.length > 0) {
-                const accountCheck = await query('SELECT id FROM osrs_accounts WHERE id = $1 AND discord_id = (SELECT discord_id FROM members WHERE id = $2)', [updates.osrs_account_id, memberInfo[0].member_id]);
-                if (updates.osrs_account_id !== null && accountCheck.length === 0) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'OSRS account not found or does not belong to this member'
-                    });
-                }
-            }
-        }
-        // Build dynamic update query
-        const allowedFields = ['role', 'individual_score', 'osrs_account_id', 'metadata'];
-        const updateFields = [];
-        const values = [];
-        let paramIndex = 1;
-        for (const [key, value] of Object.entries(updates)) {
-            if (allowedFields.includes(key)) {
-                updateFields.push(`${key} = $${paramIndex}`);
-                if (key === 'metadata') {
-                    values.push(JSON.stringify(value));
-                }
-                else {
-                    values.push(value);
-                }
-                paramIndex++;
-            }
-        }
-        if (updateFields.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: 'No valid fields to update',
-                allowed_fields: allowedFields
-            });
-        }
-        values.push(memberId);
-        const sql = `
-			UPDATE event_team_members 
-			SET ${updateFields.join(', ')}
-			WHERE id = $${paramIndex}
-			RETURNING *
-		`;
-        const result = await query(sql, values);
+        const updateData = {};
+        if (role !== undefined)
+            updateData.role = role;
+        if (individual_score !== undefined)
+            updateData.individualScore = individual_score;
+        if (metadata !== undefined)
+            updateData.metadata = metadata;
+        const updated = await teamMembersEntity.update(memberId, updateData);
         res.json({
             success: true,
-            data: result[0],
+            data: updated,
             message: 'Team member updated successfully'
         });
     }
     catch (error) {
-        console.error('Error updating team member:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error updating team member:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to update team member',
-            message: error.message
+            message
         });
     }
 });
@@ -465,76 +539,98 @@ router.patch('/:teamId/members/:memberId', async (req, res) => {
 router.delete('/:teamId/members/:memberId', async (req, res) => {
     try {
         const { teamId, memberId } = req.params;
-        const result = await query('DELETE FROM event_team_members WHERE team_id = $1 AND id = $2 RETURNING id', [teamId, memberId]);
-        if (result.length === 0) {
+        const existing = await teamMembersEntity.findById(memberId);
+        if (!existing || existing.teamId !== teamId) {
             return res.status(404).json({
                 success: false,
                 error: 'Team member not found'
             });
         }
+        await teamMembersEntity.delete(memberId);
         res.json({
             success: true,
             message: 'Member removed from team successfully',
-            deleted_id: result[0].id
+            deleted_id: memberId
         });
     }
     catch (error) {
-        console.error('Error removing member from team:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error removing member from team:', message);
         res.status(500).json({
             success: false,
             error: 'Failed to remove member from team',
-            message: error.message
+            message
         });
     }
 });
 /**
- * GET /api/admin/clan-events/teams/:id/leaderboard
- * Get team leaderboard (members sorted by individual score)
+ * POST /api/admin/clan-events/teams/:fromTeamId/members/:memberId/transfer
+ * Transfer a member from one team to another
  */
-router.get('/:id/leaderboard', async (req, res) => {
+router.post('/:fromTeamId/members/:memberId/transfer', async (req, res) => {
     try {
-        const { id } = req.params;
-        // Check if team exists
-        const teamCheck = await query('SELECT id, name FROM event_teams WHERE id = $1', [id]);
-        if (teamCheck.length === 0) {
-            return res.status(404).json({
+        const { fromTeamId, memberId } = req.params;
+        const { to_team_id } = req.body;
+        if (!to_team_id) {
+            return res.status(400).json({
                 success: false,
-                error: 'Team not found'
+                error: 'Missing required field: to_team_id'
             });
         }
-        const leaderboard = await query(`
-			SELECT 
-				etm.*,
-				m.discord_tag,
-				COUNT(btp.id) as tiles_contributed_to,
-				COALESCE(SUM(btp.progress_value), 0) as total_progress
-			FROM event_team_members etm
-			JOIN members m ON etm.member_id = m.id
-			LEFT JOIN bingo_tile_progress btp ON btp.osrs_account_id IN (
-				SELECT id FROM osrs_accounts WHERE discord_id = m.discord_id
-			)
-			WHERE etm.team_id = $1
-			GROUP BY etm.id, m.discord_tag
-			ORDER BY etm.individual_score DESC, total_progress DESC
-		`, [id]);
+        // Get source member
+        const sourceMember = await teamMembersEntity.findById(memberId);
+        if (!sourceMember || sourceMember.teamId !== fromTeamId) {
+            return res.status(404).json({
+                success: false,
+                error: 'Team member not found in source team'
+            });
+        }
+        // Check destination team exists
+        const destTeam = await teamsEntity.findById(to_team_id);
+        if (!destTeam) {
+            return res.status(404).json({
+                success: false,
+                error: 'Destination team not found'
+            });
+        }
+        // Check not already on destination team
+        const existingDest = await teamMembersEntity.findByTeamAndMember(to_team_id, sourceMember.memberId);
+        if (existingDest) {
+            return res.status(409).json({
+                success: false,
+                error: 'Member is already on the destination team'
+            });
+        }
+        // Delete from source, create in destination
+        await teamMembersEntity.delete(memberId);
+        const newMember = await teamMembersEntity.create({
+            teamId: to_team_id,
+            memberId: sourceMember.memberId,
+            osrsAccountId: sourceMember.osrsAccountId,
+            role: sourceMember.role,
+            individualScore: sourceMember.individualScore,
+            metadata: sourceMember.metadata
+        });
         res.json({
             success: true,
             data: {
-                team: teamCheck[0],
-                leaderboard
-            }
+                fromTeam: fromTeamId,
+                toTeam: to_team_id,
+                member: newMember
+            },
+            message: 'Member transferred successfully'
         });
     }
     catch (error) {
-        console.error('Error fetching team leaderboard:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error transferring member:', message);
         res.status(500).json({
             success: false,
-            error: 'Failed to fetch team leaderboard',
-            message: error.message
+            error: 'Failed to transfer member',
+            message
         });
     }
 });
-import progressRouter from './progress.routes.js';
 // Mount progress routes
 router.use('/:teamId/progress', progressRouter);
 export default router;

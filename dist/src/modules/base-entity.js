@@ -197,8 +197,10 @@ export class BaseEntity {
     formatFromDb(row) {
         const formatted = {};
         for (const [key, value] of Object.entries(row)) {
-            if (this.camelCaseFields.includes(key)) {
-                formatted[this.toCamelCase(key)] = value;
+            // Convert snake_case key to camelCase to check if it's in camelCaseFields
+            const camelKey = this.toCamelCase(key);
+            if (this.camelCaseFields.includes(camelKey)) {
+                formatted[camelKey] = value;
             }
             else {
                 formatted[key] = value;
@@ -212,7 +214,8 @@ export class BaseEntity {
     formatForDb(data) {
         const formatted = {};
         for (const [key, value] of Object.entries(data)) {
-            if (this.camelCaseFields.includes(this.toSnakeCase(key))) {
+            // Check if the key (in camelCase) is in camelCaseFields list
+            if (this.camelCaseFields.includes(key)) {
                 formatted[this.toSnakeCase(key)] = value;
             }
             else {

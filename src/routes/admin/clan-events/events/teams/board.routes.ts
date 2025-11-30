@@ -361,12 +361,12 @@ router.patch('/', async (req: Request, res: Response) => {
 				updateFields.push(`${key} = $${paramIndex}`);
 				if (key === 'metadata') {
 					// Merge with existing metadata and ensure showTileEffects and showRowColumnBuffs are preserved
-					const metadataValue = typeof value === 'object' && value !== null ? value : {};
+					const metadataValue = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
 					const metadataWithSetting = {
 						...existingMetadata,
 						...metadataValue,
-						showTileEffects: metadataValue.showTileEffects ?? existingMetadata.showTileEffects ?? true,
-						showRowColumnBuffs: metadataValue.showRowColumnBuffs ?? existingMetadata.showRowColumnBuffs ?? false
+						showTileEffects: (metadataValue.showTileEffects as boolean | undefined) ?? existingMetadata.showTileEffects ?? true,
+						showRowColumnBuffs: (metadataValue.showRowColumnBuffs as boolean | undefined) ?? existingMetadata.showRowColumnBuffs ?? false
 					};
 					values.push(JSON.stringify(metadataWithSetting));
 				} else {

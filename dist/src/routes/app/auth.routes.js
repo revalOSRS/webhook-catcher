@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { MembersService } from '../../modules/members/index.js';
-import { DiscordService } from '../../modules/discord/index.js';
 const router = Router();
 // Discord OAuth authentication
 router.post('/discord', async (req, res) => {
@@ -30,6 +29,22 @@ router.post('/discord', async (req, res) => {
             });
         }
         // Exchange code for access token
+        // IMPORTANT: redirect_uri must EXACTLY match what was used in the authorization URL
+        // If Discord redirects to https://www.revalosrs.ee/login?code=xxx, 
+        // then redirect_uri should be https://www.revalosrs.ee/login (without /login it won't work!)
+        console.log('[Discord Auth] Exchanging code for token', {
+            hasCode: !!code,
+            codeLength: code?.length,
+            redirectUri,
+            clientId, // Log client ID to verify it matches the one in authorization URL
+            hasClientSecret: !!clientSecret,
+            // Verify: client_id in auth URL was 1426865801553776670
+            clientIdMatches: clientId === '1426865801553776670',
+            // Check if redirect URI needs /login path
+            redirectUriHasLogin: redirectUri.includes('/login'),
+            expectedWithLogin: 'https://www.revalosrs.ee/login',
+            expectedWithoutLogin: 'https://www.revalosrs.ee'
+        });
         const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
             method: 'POST',
             headers: {
@@ -44,26 +59,56 @@ router.post('/discord', async (req, res) => {
             })
         });
         if (!tokenResponse.ok) {
-            const errorData = await tokenResponse.json();
-            console.error('Discord token exchange failed:', errorData);
+            const errorText = await tokenResponse.text();
+            let errorData = {};
+            try {
+                errorData = JSON.parse(errorText);
+            }
+            catch (e) {
+                console.error('[Discord Auth] Failed to parse error response:', errorText);
+                errorData = { error: 'unknown', raw_response: errorText };
+            }
+            console.error('[Discord Auth] Token exchange failed:', {
+                status: tokenResponse.status,
+                statusText: tokenResponse.statusText,
+                error: errorData,
+                redirectUri,
+                codeLength: code?.length,
+                clientId,
+                // Check if client ID matches the one used in authorization
+                clientIdMatches: clientId === '1426865801553776670',
+                // Check if redirect URI matches expected
+                redirectUriMatches: redirectUri === 'https://www.revalosrs.ee'
+            });
             let errorMessage = 'Failed to authenticate with Discord';
             if (errorData.error === 'invalid_client') {
-                errorMessage = 'Invalid Discord client credentials';
+                errorMessage = 'Invalid Discord client credentials. Please check DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET.';
             }
             else if (errorData.error === 'invalid_grant') {
-                errorMessage = 'Invalid or expired authorization code';
+                errorMessage = 'Invalid or expired authorization code. The code may have already been used or expired. Please try logging in again.';
             }
             else if (errorData.error === 'redirect_uri_mismatch') {
-                errorMessage = 'Redirect URI mismatch';
+                errorMessage = `Redirect URI mismatch. Expected: ${redirectUri}. Make sure the redirect URI in your Discord app settings matches exactly.`;
             }
             return res.status(401).json({
                 status: 'error',
                 message: errorMessage,
-                error_code: errorData.error
+                error_code: errorData.error,
+                debug: {
+                    redirect_uri_used: redirectUri,
+                    error_details: errorData
+                }
             });
         }
         const tokenData = await tokenResponse.json();
         const accessToken = tokenData.access_token;
+        if (!accessToken) {
+            console.error('[Discord Auth] No access token in response:', tokenData);
+            return res.status(401).json({
+                status: 'error',
+                message: 'Failed to obtain access token from Discord'
+            });
+        }
         // Fetch user details from Discord
         const userResponse = await fetch('https://discord.com/api/users/@me', {
             headers: {
@@ -71,9 +116,19 @@ router.post('/discord', async (req, res) => {
             }
         });
         if (!userResponse.ok) {
+            const errorText = await userResponse.text();
+            console.error('[Discord Auth] Failed to fetch user data:', {
+                status: userResponse.status,
+                statusText: userResponse.statusText,
+                error: errorText
+            });
             return res.status(401).json({
                 status: 'error',
-                message: 'Failed to fetch user data from Discord'
+                message: 'Failed to fetch user data from Discord',
+                debug: {
+                    status: userResponse.status,
+                    error: errorText
+                }
             });
         }
         const discordUser = await userResponse.json();
@@ -140,23 +195,50 @@ router.post('/discord', async (req, res) => {
         }
         // Update discord_tag if changed
         if (discordTag && member.discord_tag !== discordTag) {
+            console.log('[Discord Auth] Updating discord_tag:', {
+                old: member.discord_tag,
+                new: discordTag
+            });
             member = await MembersService.upsertMember({
                 discord_id: discordId,
                 discord_tag: discordTag
             });
+            console.log('[Discord Auth] Member after upsert:', {
+                id: member?.id,
+                discord_id: member?.discord_id,
+                discord_tag: member?.discord_tag,
+                member_code: member?.member_code,
+                is_active: member?.is_active,
+                fullMember: member
+            });
         }
-        // Fetch avatar
-        const discordAvatar = await DiscordService.getDiscordAvatar(member.discord_id);
+        console.log('[Discord Auth] Preparing response with member:', {
+            memberType: typeof member,
+            memberIsNull: member === null,
+            memberIsUndefined: member === undefined,
+            memberKeys: member ? Object.keys(member) : 'N/A',
+            memberId: member?.id,
+            memberDiscordId: member?.discord_id,
+            memberDiscordTag: member?.discord_tag,
+            memberCode: member?.member_code,
+            memberIsActive: member?.is_active,
+            fullMemberObject: JSON.stringify(member, null, 2)
+        });
+        const responseData = {
+            id: member.id,
+            discord_id: member.discord_id,
+            discord_tag: member.discord_tag,
+            member_code: member.member_code,
+            is_active: member.is_active
+        };
+        console.log('[Discord Auth] Response data being sent:', {
+            responseData,
+            responseDataKeys: Object.keys(responseData),
+            responseDataValues: Object.values(responseData)
+        });
         return res.status(200).json({
             status: 'success',
-            data: {
-                id: member.id,
-                discord_id: member.discord_id,
-                discord_tag: member.discord_tag,
-                discord_avatar: discordAvatar,
-                member_code: member.member_code,
-                is_active: member.is_active
-            },
+            data: responseData,
             message: 'Discord authentication successful'
         });
     }

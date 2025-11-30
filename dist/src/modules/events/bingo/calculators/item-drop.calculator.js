@@ -1,50 +1,136 @@
 /**
  * Item Drop Progress Calculator
+ *
+ * Tracks team progress toward obtaining specific items from drops.
+ * Supports two modes:
+ * 1. Total amount mode: Count total items matching any required item
+ * 2. Per-item mode: Each specific item must reach its individual target
+ *
+ * Each player's item drops are tracked individually, then summed for team progress.
  */
-export function calculateItemDropProgress(event, requirement, existing) {
+import { BingoTileRequirementType } from '../types/bingo-requirements.type.js';
+/**
+ * Calculate item drop progress for a team.
+ *
+ * Logic:
+ * 1. Extract items from loot event
+ * 2. Find or create player's contribution record
+ * 3. For each required item found in the drop:
+ *    - Add quantity to player's item tracking
+ *    - Update player's total count
+ * 4. Calculate team totals based on mode:
+ *    - Total amount mode: Sum all matching items across team
+ *    - Per-item mode: Check each item meets its individual target
+ * 5. Determine completion based on mode
+ *
+ * @param event - The unified game event containing loot data
+ * @param requirement - The item drop requirement (items list, amounts)
+ * @param existing - Existing progress from database, or null if first event
+ * @param memberId - Discord member ID (optional)
+ * @param osrsAccountId - OSRS account ID (required for tracking)
+ * @param playerName - Player's OSRS name (required for display)
+ * @returns Progress result with new values and completion status
+ */
+export const calculateItemDropProgress = (event, requirement, existing, memberId, osrsAccountId, playerName) => {
     const lootData = event.data;
-    let progressIncrement = 0;
-    let itemsObtained = [];
-    // Single item format
-    if (requirement.item_id !== undefined) {
-        const matchingItem = lootData.items.find((item) => item.id === requirement.item_id);
-        if (matchingItem) {
-            progressIncrement = matchingItem.quantity;
+    const itemsObtained = [];
+    // Get existing metadata or create new
+    const existingMetadata = existing?.progressMetadata;
+    // Get or initialize player contributions
+    const playerContributions = existingMetadata?.playerContributions ? [...existingMetadata.playerContributions] : [];
+    // Find or create current player's contribution
+    let playerContribution = playerContributions.find(p => p.osrsAccountId === osrsAccountId);
+    if (!playerContribution && osrsAccountId && playerName) {
+        playerContribution = {
+            osrsAccountId,
+            osrsNickname: playerName,
+            memberId,
+            items: [],
+            totalCount: 0
+        };
+        playerContributions.push(playerContribution);
+    }
+    // Process each required item from this event
+    for (const reqItem of requirement.items) {
+        const foundItem = lootData.items.find(item => item.id === reqItem.itemId);
+        if (foundItem && playerContribution) {
+            // Update player's item tracking
+            const existingItem = playerContribution.items.find(i => i.itemId === reqItem.itemId);
+            if (existingItem) {
+                existingItem.quantity += foundItem.quantity;
+            }
+            else {
+                playerContribution.items.push({
+                    itemId: foundItem.id,
+                    itemName: foundItem.name,
+                    quantity: foundItem.quantity
+                });
+            }
+            playerContribution.totalCount += foundItem.quantity;
             itemsObtained.push({
-                id: matchingItem.id,
-                name: matchingItem.name,
-                quantity: matchingItem.quantity
+                itemId: foundItem.id,
+                itemName: foundItem.name,
+                quantity: foundItem.quantity
             });
         }
     }
-    else if (requirement.items && requirement.total_amount) {
-        // Multiple items format - count total matching items
-        for (const reqItem of requirement.items) {
-            const found = lootData.items.find((item) => item.id === reqItem.item_id);
-            if (found) {
-                progressIncrement += found.quantity;
-                itemsObtained.push({
-                    id: found.id,
-                    name: found.name,
-                    quantity: found.quantity
-                });
-            }
-        }
-    }
-    const currentProgress = existing?.progressValue || 0;
-    const newProgress = currentProgress + progressIncrement;
-    const targetValue = requirement.item_amount || requirement.total_amount || 1;
-    const isCompleted = newProgress >= targetValue;
+    // Calculate team-wide totals and determine completion
+    const { progressValue, targetValue, isCompleted } = calculateCompletion(playerContributions, requirement);
+    const progressMetadata = {
+        requirementType: BingoTileRequirementType.ITEM_DROP,
+        targetValue,
+        lastUpdateAt: event.timestamp.toISOString(),
+        currentTotalCount: progressValue,
+        playerContributions,
+        lastItemsObtained: itemsObtained.length > 0 ? itemsObtained : existingMetadata?.lastItemsObtained,
+        completedTiers: existingMetadata?.completedTiers,
+        currentTier: existingMetadata?.currentTier
+    };
     return {
-        progressValue: newProgress,
-        metadata: {
-            ...existing?.metadata,
-            count: newProgress,
-            current_value: newProgress,
-            target_value: targetValue,
-            last_update_at: event.timestamp.toISOString(),
-            last_items_obtained: itemsObtained
-        },
+        progressValue,
+        progressMetadata,
         isCompleted
     };
-}
+};
+/**
+ * Calculate completion based on requirement mode.
+ *
+ * @param contributions - All player contributions
+ * @param requirement - The item drop requirement
+ * @returns Progress value, target, and completion status
+ */
+const calculateCompletion = (contributions, requirement) => {
+    // Aggregate all items across players
+    const itemTotals = {};
+    let totalCount = 0;
+    for (const player of contributions) {
+        for (const item of player.items) {
+            itemTotals[item.itemId] = (itemTotals[item.itemId] ?? 0) + item.quantity;
+            totalCount += item.quantity;
+        }
+    }
+    // Total amount mode: sum all matching items
+    if (requirement.totalAmount !== undefined) {
+        return {
+            progressValue: totalCount,
+            targetValue: requirement.totalAmount,
+            isCompleted: totalCount >= requirement.totalAmount
+        };
+    }
+    // Per-item mode: each item must meet its individual target
+    let allItemsComplete = true;
+    let totalTarget = 0;
+    for (const reqItem of requirement.items) {
+        const requiredAmount = reqItem.itemAmount ?? 1;
+        const currentAmount = itemTotals[reqItem.itemId] ?? 0;
+        totalTarget += requiredAmount;
+        if (currentAmount < requiredAmount) {
+            allItemsComplete = false;
+        }
+    }
+    return {
+        progressValue: totalCount,
+        targetValue: totalTarget,
+        isCompleted: allItemsComplete
+    };
+};
