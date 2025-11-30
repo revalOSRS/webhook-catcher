@@ -219,7 +219,7 @@ Returns full event details including the bingo board. **Only available if user i
           "difficulty": "medium",
           "icon": "🔥",
           "description": "Complete the Fight Caves",
-          "basePoints": 50,
+          "points": 50,
           "requirements": {
             "matchType": "ALL",
             "requirements": [
@@ -544,7 +544,7 @@ Returns detailed information about a specific tile including full progress histo
     "difficulty": "medium",
     "icon": "🔥",
     "description": "Complete the Fight Caves and obtain a Fire Cape",
-    "basePoints": 50,
+    "points": 50,
     "requirements": {
       "matchType": "ALL",
       "requirements": [

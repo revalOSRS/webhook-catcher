@@ -91,7 +91,7 @@ export interface BoardTileWithProgress {
 	difficulty: string;
 	icon: string | null;
 	description: string | null;
-	basePoints: number;
+	points: number;
 	requirements: unknown;
 	progressEntries: TileProgressEntry[];
 	teamTotalXpGained?: number | null;

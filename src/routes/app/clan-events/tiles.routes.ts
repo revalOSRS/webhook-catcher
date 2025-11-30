@@ -99,7 +99,7 @@ router.get('/:tileId', async (req, res: Response) => {
 				difficulty: tile.difficulty,
 				icon: tile.icon,
 				description: tile.description,
-				basePoints: tile.points,
+				points: tile.points,
 				requirements: tile.requirements,
 				progress: progress.map((p: any) => ({
 					id: p.id,

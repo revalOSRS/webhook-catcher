@@ -31,7 +31,7 @@ interface BoardTile {
 	difficulty: string;
 	icon: string | null;
 	description: string | null;
-	basePoints: number;
+	points: number;
 	requirements: any;
 	progressEntries: TileProgressEntry[];
 	teamTotalXpGained?: number | null;
@@ -109,7 +109,7 @@ const mapBoardTile = (tile: any): BoardTile => ({
 	difficulty: tile.difficulty,
 	icon: tile.icon,
 	description: tile.description,
-	basePoints: tile.points,
+	points: tile.points,
 	requirements: tile.requirements,
 	progressEntries: (tile.progressEntries || []).map(mapProgressEntry),
 	teamTotalXpGained: tile.teamTotalXpGained

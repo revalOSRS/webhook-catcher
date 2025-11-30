@@ -435,7 +435,7 @@ router.get('/:eventId', async (req, res: Response) => {
 					difficulty: tile.difficulty,
 					icon: tile.icon,
 					description: tile.description,
-					basePoints: tile.basePoints,
+					points: tile.points,
 					requirements: tile.requirements,
 					progressEntries,
 					teamTotalXpGained: tile.teamTotalXpGained,
