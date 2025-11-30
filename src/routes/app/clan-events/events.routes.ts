@@ -62,10 +62,10 @@ router.get('/', async (req, res: Response) => {
 		`, [member.id]);
 
 		const participatingMap = new Map(
-			participating.map((p: any) => [p.event_id, {
-				teamId: p.team_id,
-				teamName: p.team_name,
-				teamScore: p.team_score
+			participating.map((p: any) => [p.eventId, {
+				teamId: p.teamId,
+				teamName: p.teamName,
+				teamScore: p.teamScore
 			}])
 		);
 
@@ -74,11 +74,11 @@ router.get('/', async (req, res: Response) => {
 			return {
 				id: event.id,
 				name: event.name,
-				eventType: event.event_type,
+				eventType: event.eventType,
 				status: event.status,
-				startDate: event.start_date,
-				endDate: event.end_date,
-				teamCount: parseInt(event.total_teams),
+				startDate: event.startDate,
+				endDate: event.endDate,
+				teamCount: parseInt(event.totalTeams),
 				isParticipating: !!participation,
 				teamId: participation?.teamId,
 				teamName: participation?.teamName,
@@ -149,19 +149,19 @@ router.get('/my-events', async (req, res: Response) => {
 			data: events.map((e: any) => ({
 				id: e.id,
 				name: e.name,
-				eventType: e.event_type,
+				eventType: e.eventType,
 				status: e.status,
-				startDate: e.start_date,
-				endDate: e.end_date,
+				startDate: e.startDate,
+				endDate: e.endDate,
 				team: {
-					id: e.team_id,
-					name: e.team_name,
-					color: e.team_color,
-					icon: e.team_icon,
-					score: e.team_score
+					id: e.teamId,
+					name: e.teamName,
+					color: e.teamColor,
+					icon: e.teamIcon,
+					score: e.teamScore
 				},
 				myRole: e.role,
-				myScore: e.individual_score
+				myScore: e.individualScore
 			}))
 		});
 	} catch (error: any) {
@@ -175,63 +175,63 @@ router.get('/my-events', async (req, res: Response) => {
 });
 
 /**
- * Helper to map progress entry from DB to camelCase
+ * Helper to map progress entry (DB now returns camelCase automatically)
  */
 const mapProgressEntry = (p: any): TileProgressEntry => ({
 	id: p.id,
-	osrsAccountId: p.osrs_account_id,
-	progressValue: p.progress_value,
-	progressMetadata: p.progress_metadata,
-	completionType: p.completion_type,
-	completedAt: p.completed_at,
-	completedByOsrsAccountId: p.completed_by_osrs_account_id,
-	completedByMemberId: p.completed_by_member_id,
-	recordedAt: p.recorded_at
+	osrsAccountId: p.osrsAccountId,
+	progressValue: p.progressValue,
+	progressMetadata: p.progressMetadata,
+	completionType: p.completionType,
+	completedAt: p.completedAt,
+	completedByOsrsAccountId: p.completedByOsrsAccountId,
+	completedByMemberId: p.completedByMemberId,
+	recordedAt: p.recordedAt
 });
 
 /**
- * Helper to map tile effect from DB to camelCase
+ * Helper to map tile effect (DB now returns camelCase automatically)
  */
 const mapTileEffect = (e: any): TileEffect => ({
 	id: e.id,
-	buffName: e.buff_name,
-	buffType: e.buff_type,
-	effectType: e.effect_type,
-	effectValue: e.effect_value,
-	buffIcon: e.buff_icon,
-	isActive: e.is_active,
-	expiresAt: e.expires_at
+	buffName: e.buffName,
+	buffType: e.buffType,
+	effectType: e.effectType,
+	effectValue: e.effectValue,
+	buffIcon: e.buffIcon,
+	isActive: e.isActive,
+	expiresAt: e.expiresAt
 });
 
 /**
- * Helper to map line effect from DB to camelCase
+ * Helper to map line effect (DB now returns camelCase automatically)
  */
 const mapLineEffect = (e: any): LineEffect => ({
 	id: e.id,
-	lineType: e.line_type,
-	lineIdentifier: e.line_identifier,
-	buffName: e.buff_name,
-	buffType: e.buff_type,
-	effectType: e.effect_type,
-	effectValue: e.effect_value,
-	buffIcon: e.buff_icon,
-	isActive: e.is_active,
-	expiresAt: e.expires_at
+	lineType: e.lineType,
+	lineIdentifier: e.lineIdentifier,
+	buffName: e.buffName,
+	buffType: e.buffType,
+	effectType: e.effectType,
+	effectValue: e.effectValue,
+	buffIcon: e.buffIcon,
+	isActive: e.isActive,
+	expiresAt: e.expiresAt
 });
 
 /**
- * Helper to map board tile effect from DB to camelCase
+ * Helper to map board tile effect (DB now returns camelCase automatically)
  */
 const mapBoardTileEffect = (e: any): BoardTileEffect => ({
 	id: e.id,
-	boardTileId: e.board_tile_id,
-	buffName: e.buff_name,
-	buffType: e.buff_type,
-	effectType: e.effect_type,
-	effectValue: e.effect_value,
-	buffIcon: e.buff_icon,
-	isActive: e.is_active,
-	expiresAt: e.expires_at
+	boardTileId: e.boardTileId,
+	buffName: e.buffName,
+	buffType: e.buffType,
+	effectType: e.effectType,
+	effectValue: e.effectValue,
+	buffIcon: e.buffIcon,
+	isActive: e.isActive,
+	expiresAt: e.expiresAt
 });
 
 /**
@@ -290,11 +290,11 @@ router.get('/:eventId', async (req, res: Response) => {
 
 		const members: TeamMember[] = teamMembers.map((tm: any) => ({
 			id: tm.id,
-			memberId: tm.member_id,
-			discordTag: tm.discord_tag,
+			memberId: tm.memberId,
+			discordTag: tm.discordTag,
 			role: tm.role,
-			osrsAccountId: tm.osrs_account_id,
-			osrsAccountName: tm.osrs_account_name
+			osrsAccountId: tm.osrsAccountId,
+			osrsAccountName: tm.osrsAccountName
 		}));
 
 		// Get team's board
@@ -322,14 +322,14 @@ router.get('/:eventId', async (req, res: Response) => {
 						json_agg(
 							json_build_object(
 								'id', btp.id,
-								'osrs_account_id', btp.osrs_account_id,
-								'progress_value', btp.progress_value,
-								'progress_metadata', btp.progress_metadata,
-								'completion_type', btp.completion_type,
-								'completed_at', btp.completed_at,
-								'completed_by_osrs_account_id', btp.completed_by_osrs_account_id,
-								'completed_by_member_id', btp.completed_by_member_id,
-								'recorded_at', btp.recorded_at
+								'osrsAccountId', btp.osrs_account_id,
+								'progressValue', btp.progress_value,
+								'progressMetadata', btp.progress_metadata,
+								'completionType', btp.completion_type,
+								'completedAt', btp.completed_at,
+								'completedByOsrsAccountId', btp.completed_by_osrs_account_id,
+								'completedByMemberId', btp.completed_by_member_id,
+								'recordedAt', btp.recorded_at
 							)
 						) FILTER (WHERE btp.id IS NOT NULL),
 						'[]'::json
@@ -369,7 +369,7 @@ router.get('/:eventId', async (req, res: Response) => {
 			`, [teamBoard.id]);
 
 			// Get tile effects
-			const showTileBuffs = teamBoard.metadata?.show_tile_buffs !== false;
+			const showTileBuffs = teamBoard.metadata?.showTileBuffs !== false;
 			const tileEffects = await query(`
 				SELECT 
 					bbte.*,
@@ -385,14 +385,14 @@ router.get('/:eventId', async (req, res: Response) => {
 				ORDER BY bbte.applied_at DESC
 			`, [teamBoard.id, showTileBuffs]);
 
-			// Group tile effects by board_tile_id
+			// Group tile effects by boardTileId
 			const tileEffectsByTile: Record<string, TileEffect[]> = {};
 			tileEffects.forEach((effect: any) => {
-				if (!tileEffectsByTile[effect.board_tile_id]) {
-					tileEffectsByTile[effect.board_tile_id] = [];
+				if (!tileEffectsByTile[effect.boardTileId]) {
+					tileEffectsByTile[effect.boardTileId] = [];
 				}
-				if (showTileBuffs || effect.is_active) {
-					tileEffectsByTile[effect.board_tile_id].push(mapTileEffect(effect));
+				if (showTileBuffs || effect.isActive) {
+					tileEffectsByTile[effect.boardTileId].push(mapTileEffect(effect));
 				}
 			});
 
@@ -412,34 +412,34 @@ router.get('/:eventId', async (req, res: Response) => {
 			`, [teamBoard.id]);
 
 			const rowEffects: LineEffect[] = lineEffects
-				.filter((e: any) => e.line_type === 'row')
+				.filter((e: any) => e.lineType === 'row')
 				.map(mapLineEffect);
 
 			const columnEffects: LineEffect[] = lineEffects
-				.filter((e: any) => e.line_type === 'column')
+				.filter((e: any) => e.lineType === 'column')
 				.map(mapLineEffect);
 
 			// Map tiles with progress entries and tile effects
 			const tilesWithProgress: BoardTileWithProgress[] = tiles.map((tile: any) => {
-				// Map progress entries from snake_case to camelCase
-				const progressEntries: TileProgressEntry[] = (tile.progress_entries || []).map(mapProgressEntry);
+				// Map progress entries (DB now returns camelCase, but nested JSON still has snake_case)
+				const progressEntries: TileProgressEntry[] = (tile.progressEntries || []).map(mapProgressEntry);
 
 				return {
 					id: tile.id,
-					boardId: tile.board_id,
-					tileId: tile.tile_id,
+					boardId: tile.boardId,
+					tileId: tile.tileId,
 					position: tile.position,
-					isCompleted: tile.is_completed,
-					completedAt: tile.completed_at,
+					isCompleted: tile.isCompleted,
+					completedAt: tile.completedAt,
 					task: tile.task,
 					category: tile.category,
 					difficulty: tile.difficulty,
 					icon: tile.icon,
 					description: tile.description,
-					basePoints: tile.base_points,
+					basePoints: tile.basePoints,
 					requirements: tile.requirements,
 					progressEntries,
-					teamTotalXpGained: tile.team_total_xp_gained,
+					teamTotalXpGained: tile.teamTotalXpGained,
 					tileEffects: tileEffectsByTile[tile.id] || undefined
 				};
 			});
@@ -451,7 +451,7 @@ router.get('/:eventId', async (req, res: Response) => {
 				metadata: teamBoard.metadata,
 				tiles: tilesWithProgress,
 				tileEffects: tileEffects
-					.filter((e: any) => showTileBuffs || e.is_active)
+					.filter((e: any) => showTileBuffs || e.isActive)
 					.map(mapBoardTileEffect),
 				rowEffects,
 				columnEffects
@@ -462,10 +462,10 @@ router.get('/:eventId', async (req, res: Response) => {
 			id: event.id,
 			name: event.name,
 			description: event.description,
-			eventType: event.event_type,
+			eventType: event.eventType,
 			status: event.status,
-			startDate: event.start_date,
-			endDate: event.end_date,
+			startDate: event.startDate,
+			endDate: event.endDate,
 			config: event.config,
 			team: {
 				id: participation.teamId,

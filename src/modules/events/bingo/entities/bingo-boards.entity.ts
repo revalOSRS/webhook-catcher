@@ -195,18 +195,18 @@ export class BingoBoardsEntity extends BaseEntity<BingoBoard, string> {
   }
 
   /**
-   * Map database row to BingoBoard
+   * Map database row to BingoBoard (DB now returns camelCase automatically)
    */
   private mapRow(row: any): BingoBoard {
     return {
       id: row.id,
-      eventId: row.event_id,
-      teamId: row.team_id,
+      eventId: row.eventId,
+      teamId: row.teamId,
       columns: row.columns,
       rows: row.rows,
       metadata: row.metadata as BingoBoardMetadata,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt)
     };
   }
 }

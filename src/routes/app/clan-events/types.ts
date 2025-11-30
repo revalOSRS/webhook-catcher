@@ -178,9 +178,9 @@ export const getMemberFromHeaders = async (req: Request): Promise<AuthenticatedM
 	const m = members[0];
 	return {
 		id: m.id,
-		discordId: m.discord_id,
-		memberCode: m.member_code,
-		discordTag: m.discord_tag
+		discordId: m.discordId,
+		memberCode: m.memberCode,
+		discordTag: m.discordTag
 	};
 };
 
@@ -207,11 +207,11 @@ export const getEventParticipation = async (memberId: number, eventId: string): 
 
 	const p = participation[0];
 	return {
-		teamId: p.team_id,
-		teamName: p.team_name,
+		teamId: p.teamId,
+		teamName: p.teamName,
 		color: p.color,
 		icon: p.icon,
 		score: p.score,
-		eventId: p.event_id
+		eventId: p.eventId
 	};
 };

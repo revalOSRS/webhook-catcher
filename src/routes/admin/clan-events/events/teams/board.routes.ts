@@ -79,74 +79,74 @@ interface BoardResponse {
 }
 
 /**
- * Map DB progress entry to camelCase
+ * Map progress entry (DB now returns camelCase automatically)
  */
 const mapProgressEntry = (p: any): TileProgressEntry => ({
 	id: p.id,
-	osrsAccountId: p.osrs_account_id,
-	progressValue: p.progress_value,
-	progressMetadata: p.progress_metadata,
-	completionType: p.completion_type,
-	completedAt: p.completed_at,
-	completedByOsrsAccountId: p.completed_by_osrs_account_id,
-	completedByMemberId: p.completed_by_member_id,
-	recordedAt: p.recorded_at
+	osrsAccountId: p.osrsAccountId,
+	progressValue: p.progressValue,
+	progressMetadata: p.progressMetadata,
+	completionType: p.completionType,
+	completedAt: p.completedAt,
+	completedByOsrsAccountId: p.completedByOsrsAccountId,
+	completedByMemberId: p.completedByMemberId,
+	recordedAt: p.recordedAt
 });
 
 /**
- * Map DB tile to camelCase
+ * Map tile (DB now returns camelCase automatically)
  */
 const mapBoardTile = (tile: any): BoardTile => ({
 	id: tile.id,
-	boardId: tile.board_id,
-	tileId: tile.tile_id,
+	boardId: tile.boardId,
+	tileId: tile.tileId,
 	position: tile.position,
-	isCompleted: tile.is_completed,
-	completedAt: tile.completed_at,
+	isCompleted: tile.isCompleted,
+	completedAt: tile.completedAt,
 	metadata: tile.metadata,
 	task: tile.task,
 	category: tile.category,
 	difficulty: tile.difficulty,
 	icon: tile.icon,
 	description: tile.description,
-	basePoints: tile.base_points,
+	basePoints: tile.basePoints,
 	requirements: tile.requirements,
-	progressEntries: (tile.progress_entries || []).map(mapProgressEntry),
-	teamTotalXpGained: tile.team_total_xp_gained
+	progressEntries: (tile.progressEntries || []).map(mapProgressEntry),
+	teamTotalXpGained: tile.teamTotalXpGained
 });
 
 /**
- * Map DB tile effect to camelCase
+ * Map tile effect (DB now returns camelCase automatically)
  */
 const mapTileEffect = (e: any): TileEffect => ({
 	id: e.id,
-	boardTileId: e.board_tile_id,
-	buffDebuffId: e.buff_debuff_id,
-	isActive: e.is_active,
-	expiresAt: e.expires_at,
-	buffName: e.buff_name,
-	buffType: e.buff_type,
-	effectType: e.effect_type,
-	effectValue: e.effect_value,
-	buffIcon: e.buff_icon
+	boardTileId: e.boardTileId,
+	buffDebuffId: e.buffDebuffId,
+	isActive: e.isActive,
+	expiresAt: e.expiresAt,
+	buffName: e.buffName,
+	buffType: e.buffType,
+	effectType: e.effectType,
+	effectValue: e.effectValue,
+	buffIcon: e.buffIcon
 });
 
 /**
- * Map DB line effect to camelCase
+ * Map line effect (DB now returns camelCase automatically)
  */
 const mapLineEffect = (e: any): LineEffect => ({
 	id: e.id,
-	boardId: e.board_id,
-	lineType: e.line_type,
-	lineIdentifier: e.line_identifier,
-	buffDebuffId: e.buff_debuff_id,
-	isActive: e.is_active,
-	expiresAt: e.expires_at,
-	buffName: e.buff_name,
-	buffType: e.buff_type,
-	effectType: e.effect_type,
-	effectValue: e.effect_value,
-	buffIcon: e.buff_icon
+	boardId: e.boardId,
+	lineType: e.lineType,
+	lineIdentifier: e.lineIdentifier,
+	buffDebuffId: e.buffDebuffId,
+	isActive: e.isActive,
+	expiresAt: e.expiresAt,
+	buffName: e.buffName,
+	buffType: e.buffType,
+	effectType: e.effectType,
+	effectValue: e.effectValue,
+	buffIcon: e.buffIcon
 });
 
 /**
@@ -225,7 +225,7 @@ router.get('/', async (req: Request, res: Response) => {
 						ON CONFLICT (board_id, position) DO NOTHING
 					`, [
 						newBoard[0].id,
-						tile.tile_id,
+						tile.tileId,
 						tile.position,
 						JSON.stringify(tile.metadata || {})
 					]);
@@ -250,14 +250,14 @@ router.get('/', async (req: Request, res: Response) => {
 					json_agg(
 						json_build_object(
 							'id', btp.id,
-							'osrs_account_id', btp.osrs_account_id,
-							'progress_value', btp.progress_value,
-							'progress_metadata', btp.progress_metadata,
-							'completion_type', btp.completion_type,
-							'completed_at', btp.completed_at,
-							'completed_by_osrs_account_id', btp.completed_by_osrs_account_id,
-							'completed_by_member_id', btp.completed_by_member_id,
-							'recorded_at', btp.recorded_at
+							'osrsAccountId', btp.osrs_account_id,
+							'progressValue', btp.progress_value,
+							'progressMetadata', btp.progress_metadata,
+							'completionType', btp.completion_type,
+							'completedAt', btp.completed_at,
+							'completedByOsrsAccountId', btp.completed_by_osrs_account_id,
+							'completedByMemberId', btp.completed_by_member_id,
+							'recordedAt', btp.recorded_at
 						)
 					) FILTER (WHERE btp.id IS NOT NULL),
 					'[]'::json
@@ -328,13 +328,13 @@ router.get('/', async (req: Request, res: Response) => {
 		`, [board.id]);
 
 		// Separate row and column effects and map to camelCase
-		const rowEffects = lineEffects.filter((e: any) => e.line_type === 'row').map(mapLineEffect);
-		const columnEffects = lineEffects.filter((e: any) => e.line_type === 'column').map(mapLineEffect);
+		const rowEffects = lineEffects.filter((e: any) => e.lineType === 'row').map(mapLineEffect);
+		const columnEffects = lineEffects.filter((e: any) => e.lineType === 'column').map(mapLineEffect);
 
 		const response: BoardResponse = {
 			id: board.id,
-			eventId: board.event_id,
-			teamId: board.team_id,
+			eventId: board.eventId,
+			teamId: board.teamId,
 			columns: board.columns,
 			rows: board.rows,
 			metadata: board.metadata,
@@ -1448,25 +1448,25 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 				if (completedByOsrsAccountId) {
 					const accounts = await query('SELECT osrs_nickname FROM osrs_accounts WHERE id = $1 LIMIT 1', [completedByOsrsAccountId])
 					if (accounts.length > 0) {
-						playerName = accounts[0].osrs_nickname || 'Admin'
+						playerName = accounts[0].osrsNickname || 'Admin'
 					}
 				}
 
 				const { DiscordNotificationsService } = await import('../../../../../modules/events/bingo/discord-notifications.service.js')
 				await DiscordNotificationsService.sendTileProgressNotification({
-					teamId: tile.team_id,
-					teamName: tile.team_name,
-					eventName: tile.event_name,
-					tileId: tile.tile_id,
+					teamId: tile.teamId,
+					teamName: tile.teamName,
+					eventName: tile.eventName,
+					tileId: tile.tileId,
 					tileTask: tile.task,
 					tilePosition: tile.position,
 					playerName,
-					progressValue: progressData?.[0]?.progress_value || 1,
-					progressMetadata: progressData?.[0]?.progress_metadata || { manual_completion: true, notes: notes || null },
+					progressValue: progressData?.[0]?.progressValue || 1,
+					progressMetadata: progressData?.[0]?.progressMetadata || { manual_completion: true, notes: notes || null },
 					isCompleted: true,
 					completionType: 'manual_admin',
-					completedTiers: progressData?.[0]?.progress_metadata?.completed_tiers,
-					totalTiers: progressData?.[0]?.progress_metadata?.total_tiers
+					completedTiers: progressData?.[0]?.progressMetadata?.completedTiers,
+					totalTiers: progressData?.[0]?.progressMetadata?.totalTiers
 				})
 			} catch (error) {
 				console.error('[BoardRoutes] Error sending Discord notification:', error)

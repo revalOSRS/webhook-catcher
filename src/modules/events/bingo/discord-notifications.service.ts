@@ -54,17 +54,17 @@ export class DiscordNotificationsService {
   static sendTileProgressNotification = async (data: TileProgressNotification): Promise<void> => {
     try {
       // Get team's Discord webhook URL
-      const teams = await query<{ discord_webhook_url: string | null; name: string }>(
+      const teams = await query<{ discordWebhookUrl: string | null; name: string }>(
         'SELECT discord_webhook_url, name FROM event_teams WHERE id = $1',
         [data.teamId]
       );
 
-      if (teams.length === 0 || !teams[0].discord_webhook_url) {
+      if (teams.length === 0 || !teams[0].discordWebhookUrl) {
         // No webhook configured for this team, skip silently
         return;
       }
 
-      const webhookUrl = teams[0].discord_webhook_url;
+      const webhookUrl = teams[0].discordWebhookUrl;
       const teamName = teams[0].name || data.teamName;
 
       // Build and send Discord embed
@@ -187,8 +187,8 @@ export class DiscordNotificationsService {
   ): string | null => {
     const details: string[] = [];
 
-    // Show last items obtained
-    const lastItems = metadata.last_items_obtained;
+    // Show last items obtained (DB now returns camelCase)
+    const lastItems = metadata.lastItemsObtained;
     if (Array.isArray(lastItems) && lastItems.length > 0) {
       const items = lastItems.slice(0, 3).map((item: { name: string; quantity: number }) => {
         const qty = item.quantity > 1 ? ` x${item.quantity}` : '';
@@ -198,13 +198,13 @@ export class DiscordNotificationsService {
     }
 
     // Show tier progress details
-    const completedTiers = metadata.completed_tiers;
+    const completedTiers = metadata.completedTiers;
     if (Array.isArray(completedTiers) && completedTiers.length > 0) {
       const tierDetails: string[] = [];
       
       for (const tierNum of completedTiers as number[]) {
-        const tierProgress = metadata[`tier_${tierNum}_progress`] as number | undefined;
-        const tierMetadata = (metadata[`tier_${tierNum}_metadata`] || {}) as Record<string, unknown>;
+        const tierProgress = metadata[`tier${tierNum}Progress`] as number | undefined;
+        const tierMetadata = (metadata[`tier${tierNum}Metadata`] || {}) as Record<string, unknown>;
         const isNewlyCompleted = newlyCompletedTiers?.includes(tierNum);
         const prefix = isNewlyCompleted ? '⭐ ' : '';
         
@@ -226,19 +226,19 @@ export class DiscordNotificationsService {
    */
   private static formatProgressValue = (value: number, metadata: Record<string, unknown>): string => {
     // XP requirements
-    if (typeof metadata.gained_xp === 'number') {
-      const target = metadata.target_xp as number;
-      return `${this.formatNumber(metadata.gained_xp)} / ${this.formatNumber(target)} XP`;
+    if (typeof metadata.gainedXp === 'number') {
+      const target = metadata.targetXp as number;
+      return `${this.formatNumber(metadata.gainedXp)} / ${this.formatNumber(target)} XP`;
     }
 
     // Item count requirements
-    if (typeof metadata.count === 'number' && typeof metadata.target_value === 'number') {
-      return `${metadata.count} / ${metadata.target_value}`;
+    if (typeof metadata.count === 'number' && typeof metadata.targetValue === 'number') {
+      return `${metadata.count} / ${metadata.targetValue}`;
     }
 
     // Value drop requirements
-    if (typeof metadata.current_value === 'number' && typeof metadata.target_value === 'number') {
-      return `${this.formatNumber(metadata.current_value)} / ${this.formatNumber(metadata.target_value)} gp`;
+    if (typeof metadata.currentValue === 'number' && typeof metadata.targetValue === 'number') {
+      return `${this.formatNumber(metadata.currentValue)} / ${this.formatNumber(metadata.targetValue)} gp`;
     }
 
     return this.formatNumber(value);

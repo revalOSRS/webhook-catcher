@@ -101,8 +101,8 @@ router.get('/available', async (req: Request, res: Response) => {
           json_agg(
             json_build_object(
               'id', oa.id,
-              'osrs_nickname', oa.osrs_nickname,
-              'account_type', oa.account_type
+              'osrsNickname', oa.osrs_nickname,
+              'accountType', oa.account_type
             )
           ) FILTER (WHERE oa.id IS NOT NULL),
           '[]'::json

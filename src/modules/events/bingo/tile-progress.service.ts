@@ -170,7 +170,7 @@ export class TileProgressService {
     if (!osrsAccountId) return [];
 
     // Get team memberships for active events (within date range)
-    const memberships = await query<{ team_id: string; event_id: string; event_start_date: Date }>(`
+    const memberships = await query<{ teamId: string; eventId: string; eventStartDate: Date }>(`
       SELECT DISTINCT et.id as team_id, e.id as event_id, e.start_date as event_start_date
       FROM event_team_members etm
       JOIN event_teams et ON etm.team_id = et.id
@@ -183,7 +183,7 @@ export class TileProgressService {
 
     if (memberships.length === 0) return [];
 
-    const teamIds = memberships.map(m => m.team_id);
+    const teamIds = memberships.map(m => m.teamId);
 
     // Get board tiles for these teams
     // Include completed tiles with tiers so we can track incomplete tier progress
@@ -205,20 +205,20 @@ export class TileProgressService {
     `, [teamIds]);
 
     return tiles.map((tile: Record<string, unknown>) => {
-      const membership = memberships.find(m => m.team_id === tile.team_id);
+      const membership = memberships.find(m => m.teamId === tile.teamId);
       return {
         id: tile.id as string,
-        boardId: tile.board_id as string,
-        tileId: tile.tile_id as string,
+        boardId: tile.boardId as string,
+        tileId: tile.tileId as string,
         position: tile.position as string,
-        isCompleted: tile.is_completed as boolean,
-        teamId: tile.team_id as string,
-        eventId: membership?.event_id || '',
-        eventStartDate: membership?.event_start_date || new Date(),
+        isCompleted: tile.isCompleted as boolean,
+        teamId: tile.teamId as string,
+        eventId: membership?.eventId || '',
+        eventStartDate: membership?.eventStartDate || new Date(),
         requirements: tile.requirements as BingoTileRequirements,
-        tileTask: tile.tile_task as string | undefined,
-        eventName: tile.event_name as string | undefined,
-        teamName: tile.team_name as string | undefined
+        tileTask: tile.tileTask as string | undefined,
+        eventName: tile.eventName as string | undefined,
+        teamName: tile.teamName as string | undefined
       };
     });
   };

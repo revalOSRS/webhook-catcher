@@ -137,8 +137,8 @@ router.get('/:id/statistics', async (req: Request, res: Response) => {
     `, [id]);
 
     const stats = boardStats[0];
-    const totalTiles = parseInt(stats?.total_tiles || '0');
-    const completedTiles = parseInt(stats?.completed_tiles || '0');
+    const totalTiles = parseInt(stats?.totalTiles || '0');
+    const completedTiles = parseInt(stats?.completedTiles || '0');
     const completionPercentage = totalTiles > 0 ? (completedTiles / totalTiles) * 100 : 0;
 
     res.json({
@@ -162,7 +162,7 @@ router.get('/:id/statistics', async (req: Request, res: Response) => {
           completed: completedTiles,
           completionPercentage: Math.round(completionPercentage * 100) / 100
         },
-        totalProgressValue: parseFloat(stats?.total_progress_value || '0')
+        totalProgressValue: parseFloat(stats?.totalProgressValue || '0')
       }
     });
   } catch (error: unknown) {
@@ -222,9 +222,9 @@ router.get('/:id/leaderboard', async (req: Request, res: Response) => {
         leaderboard: leaderboard.map((team, index) => ({
           rank: index + 1,
           ...team,
-          memberCount: parseInt(team.member_count),
-          tilesCompleted: parseInt(team.tiles_completed),
-          totalTiles: parseInt(team.total_tiles)
+          memberCount: parseInt(team.memberCount),
+          tilesCompleted: parseInt(team.tilesCompleted),
+          totalTiles: parseInt(team.totalTiles)
         }))
       }
     });
@@ -586,7 +586,7 @@ router.post('/:id/recalculate-scores', async (req: Request, res: Response) => {
         WHERE bb.team_id = $1 AND bb.event_id = $2 AND bbt.is_completed = true
       `, [team.id, id]);
 
-      const newScore = parseInt(scoreResult[0]?.total_points || '0');
+      const newScore = parseInt(scoreResult[0]?.totalPoints || '0');
       
       if (newScore !== team.score) {
         await teamsEntity.updateScore(team.id, newScore);

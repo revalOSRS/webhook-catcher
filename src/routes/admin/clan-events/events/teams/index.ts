@@ -62,7 +62,7 @@ router.get('/', async (req: Request, res: Response) => {
       success: true,
       data: teams.map(t => ({
         ...t,
-        memberCount: parseInt(t.member_count)
+        memberCount: parseInt(t.memberCount)
       })),
       pagination: {
         limit: parseInt(limit as string),
@@ -375,7 +375,7 @@ router.post('/:id/recalculate-score', async (req: Request, res: Response) => {
       WHERE bb.team_id = $1 AND bbt.is_completed = true
     `, [id]);
 
-    const newScore = parseInt(scoreResult[0]?.total_points || '0');
+    const newScore = parseInt(scoreResult[0]?.totalPoints || '0');
     const oldScore = team.score;
 
     if (newScore !== oldScore) {
@@ -448,8 +448,8 @@ router.get('/:id/leaderboard', async (req: Request, res: Response) => {
         leaderboard: leaderboard.map((m, i) => ({
           rank: i + 1,
           ...m,
-          tilesCompleted: parseInt(m.tiles_completed),
-          totalProgress: parseFloat(m.total_progress)
+          tilesCompleted: parseInt(m.tilesCompleted),
+          totalProgress: parseFloat(m.totalProgress)
         }))
       }
     });

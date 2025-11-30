@@ -142,16 +142,16 @@ router.get('/:id', async (req: Request, res: Response) => {
 		`, [id]);
 
 		// Separate row and column effects
-		const rowEffects = lineEffects.filter(e => e.line_type === 'row');
-		const columnEffects = lineEffects.filter(e => e.line_type === 'column');
+		const rowEffects = lineEffects.filter(e => e.lineType === 'row');
+		const columnEffects = lineEffects.filter(e => e.lineType === 'column');
 
 		res.json({
 			success: true,
 			data: {
 				...board,
 				tiles,
-				row_effects: rowEffects,
-				column_effects: columnEffects
+				rowEffects,
+				columnEffects
 			}
 		});
 	} catch (error: any) {
@@ -270,12 +270,12 @@ router.patch('/:id', async (req: Request, res: Response) => {
 			});
 		}
 
-		// If updating team_id, validate it belongs to the event
-		if (updates.team_id !== undefined) {
-			if (updates.team_id) {
+		// If updating teamId, validate it belongs to the event
+		if (updates.teamId !== undefined) {
+			if (updates.teamId) {
 				const teamCheck = await query(
 					'SELECT id FROM event_teams WHERE id = $1 AND event_id = $2',
-					[updates.team_id, existing[0].event_id]
+					[updates.teamId, existing[0].eventId]
 				);
 				if (teamCheck.length === 0) {
 					return res.status(404).json({
@@ -286,15 +286,22 @@ router.patch('/:id', async (req: Request, res: Response) => {
 			}
 		}
 
-		// Build dynamic update query
-		const allowedFields = ['name', 'description', 'columns', 'rows', 'team_id', 'metadata'];
+		// Build dynamic update query - map camelCase input to snake_case columns
+		const fieldMapping: Record<string, string> = {
+			name: 'name',
+			description: 'description',
+			columns: 'columns',
+			rows: 'rows',
+			teamId: 'team_id',
+			metadata: 'metadata'
+		};
 		const updateFields: string[] = [];
 		const values: any[] = [];
 		let paramIndex = 1;
 
 		for (const [key, value] of Object.entries(updates)) {
-			if (allowedFields.includes(key)) {
-				updateFields.push(`${key} = $${paramIndex}`);
+			if (fieldMapping[key]) {
+				updateFields.push(`${fieldMapping[key]} = $${paramIndex}`);
 				if (key === 'metadata') {
 					values.push(JSON.stringify(value));
 				} else {
@@ -308,7 +315,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 			return res.status(400).json({
 				success: false,
 				error: 'No valid fields to update',
-				allowed_fields: allowedFields
+				allowedFields: Object.keys(fieldMapping)
 			});
 		}
 
@@ -357,7 +364,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 		res.json({
 			success: true,
 			message: 'Board deleted successfully',
-			deleted_id: result[0].id
+			deletedId: result[0].id
 		});
 	} catch (error: any) {
 		console.error('Error deleting board:', error);

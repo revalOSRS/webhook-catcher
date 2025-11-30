@@ -7,8 +7,8 @@ import { query, queryOne, pool } from '../db/connection.js'
 
 export interface BaseEntityData {
   id?: number | string
-  created_at?: Date
-  updated_at?: Date
+  createdAt?: Date
+  updatedAt?: Date
   [key: string]: any
 }
 
@@ -252,22 +252,13 @@ export abstract class BaseEntity<T extends BaseEntityData = BaseEntityData, ID e
   }
 
   /**
-   * Format data from database (snake_case to camelCase)
+   * Format data from database
+   * Note: The query function now automatically converts snake_case to camelCase,
+   * so this method just returns the row as-is. Override in subclasses if you need
+   * additional transformation (e.g., parsing JSON fields).
    */
   protected formatFromDb(row: any): T {
-    const formatted: any = {}
-
-    for (const [key, value] of Object.entries(row)) {
-      // Convert snake_case key to camelCase to check if it's in camelCaseFields
-      const camelKey = this.toCamelCase(key)
-      if (this.camelCaseFields.includes(camelKey)) {
-        formatted[camelKey] = value
-      } else {
-        formatted[key] = value
-      }
-    }
-
-    return formatted as T
+    return row as T
   }
 
   /**
