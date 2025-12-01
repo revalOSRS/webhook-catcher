@@ -423,7 +423,7 @@ export class MembersService {
    * Returns true if the dink hash exists and the member is active and in Discord
    */
   static async verifyDinkHash(dinkHash: string): Promise<boolean> {
-    const result = await queryOne<{ is_valid: boolean }>(
+    const result = await queryOne<{ isValid: boolean }>(
       `SELECT
         CASE
           WHEN m.is_active = true AND m.in_discord = true THEN true
@@ -435,7 +435,7 @@ export class MembersService {
       [dinkHash]
     )
 
-    return result?.is_valid ?? false
+    return result?.isValid ?? false
   }
 
   /**
