@@ -14,6 +14,7 @@ import clanRoutes from './routes/app/clan/index.js'
 import activityRoutes from './routes/app/activity.routes.js'
 import eventFiltersRoutes from './routes/app/event-filters.routes.js'
 import clanEventsRoutes from './routes/app/clan-events/index.js'
+import publicBingoRoutes from './routes/app/clan-events/public.routes.js'
 import adminClanEventsRoutes from './routes/admin/clan-events/index.js'
 
 // Import middleware
@@ -114,6 +115,9 @@ app.use('/api/clan', clanRoutes)
 // app.use('/api/battleship', battleshipRoutes)
 app.use('/api/activity-events', activityRoutes)
 app.use('/api/app/clan-events', clanEventsRoutes)
+
+// Public routes - no authentication required
+app.use('/api/public/bingo', publicBingoRoutes)
 
 // Admin routes - protected by Discord rank check
 app.use('/api/admin/clan-events', requireDiscordAdmin, adminClanEventsRoutes)
