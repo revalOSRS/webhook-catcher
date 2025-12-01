@@ -185,10 +185,17 @@ export type DinkBarbarianAssaultGambleEvent = DinkEvent & {
 export type DinkChatEvent = DinkEvent & {
   type: DinkEventType.CHAT;
   extra: {
+    /** Message type: GAMEMESSAGE, PUBLICCHAT, PRIVATECHAT, FRIENDSCHAT, CLAN_CHAT, BROADCAST, UNKNOWN, etc. */
     type: string;
+    /** The chat message content */
     message: string;
-    source: null;
-    clanTitle: null;
+    /** The sender's name (for player-sent messages like PUBLICCHAT, PRIVATECHAT) */
+    source: string | null;
+    /** Clan title info (for CLAN_CHAT, CLAN_GUEST_CHAT, CLAN_GIM_CHAT, CLAN_MESSAGE) */
+    clanTitle: {
+      rankId: number;
+      title: string;
+    } | null;
   }
 }
 

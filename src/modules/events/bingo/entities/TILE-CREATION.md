@@ -295,6 +295,59 @@ interface BaGamblesRequirementDef {
 
 ---
 
+### 7. CHAT
+
+For tracking specific game chat messages (quest completions, achievement notifications, etc.).
+
+```typescript
+interface ChatRequirementDef {
+  type: 'CHAT';
+  message: string;       // The message text to match (case-insensitive, partial match by default)
+  messageType?: string;  // Optional: specific message type (e.g., GAMEMESSAGE, BROADCAST)
+  exactMatch?: boolean;  // If true, requires exact message match instead of partial
+  count?: number;        // Number of times this message must be received (default: 1)
+}
+```
+
+#### Common Message Types (from Dink/RuneLite):
+- `GAMEMESSAGE` - System/game messages
+- `BROADCAST` - Broadcast messages
+- `PUBLICCHAT` - Public chat
+- `PRIVATECHAT` - Private messages
+- `FRIENDSCHAT` - Friends chat
+- `CLAN_CHAT` - Clan chat
+- `CLAN_GUEST_CHAT` - Guest clan chat
+- `UNKNOWN` - Other messages
+
+#### Example: Receive a specific game message
+```json
+{
+  "type": "CHAT",
+  "message": "Congratulations, you've completed a quest!",
+  "messageType": "GAMEMESSAGE"
+}
+```
+
+#### Example: Any message containing specific text
+```json
+{
+  "type": "CHAT",
+  "message": "completed Monkey Madness"
+}
+```
+
+#### Example: Receive message multiple times
+```json
+{
+  "type": "CHAT",
+  "message": "You've been playing for a while",
+  "messageType": "GAMEMESSAGE",
+  "count": 5
+}
+```
+
+---
+
 ## Match Types
 
 The `matchType` field determines how multiple requirements are evaluated:
@@ -619,6 +672,12 @@ interface TieredRequirementDef {
 
 #### BA_GAMBLES Fields:
 - Amount (number)
+
+#### CHAT Fields:
+- Message (text, required) - The message pattern to match
+- Message Type (optional dropdown) - GAMEMESSAGE, BROADCAST, PUBLICCHAT, etc.
+- Exact Match (checkbox, default: false) - If checked, requires exact match
+- Count (number, default: 1) - How many times the message must be received
 
 ### 3. Tiered Requirements UI
 

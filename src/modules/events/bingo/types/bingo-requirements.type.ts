@@ -14,7 +14,8 @@ import {
   type ValueDropRequirementDef,
   type SpeedrunRequirementDef,
   type ExperienceRequirementDef,
-  type BaGamblesRequirementDef
+  type BaGamblesRequirementDef,
+  type ChatRequirementDef
 } from '../entities/bingo-tiles.entity.js';
 
 // Re-export everything for convenience
@@ -35,6 +36,7 @@ export type ValueDropRequirement = ValueDropRequirementDef;
 export type SpeedrunRequirement = SpeedrunRequirementDef;
 export type ExperienceRequirement = ExperienceRequirementDef;
 export type BaGamblesRequirement = BaGamblesRequirementDef;
+export type ChatRequirement = ChatRequirementDef;
 
 // ============================================================================
 // PROGRESS METADATA TYPES (tracking individual player contributions)
@@ -269,6 +271,41 @@ export interface BaGamblesProgressMetadata extends BaseProgressMetadata {
 }
 
 // ============================================================================
+// CHAT METADATA
+// ============================================================================
+
+/**
+ * Chat message record
+ */
+interface ChatMessageRecord {
+  message: string;
+  messageType: string;
+  timestamp: string;
+}
+
+/**
+ * Player contribution for chat requirements
+ */
+export interface ChatPlayerContribution extends BasePlayerContribution {
+  messages: ChatMessageRecord[];
+  count: number;
+}
+
+/**
+ * Progress metadata for CHAT requirements
+ * Tracks matching chat messages per player
+ */
+export interface ChatProgressMetadata extends BaseProgressMetadata {
+  requirementType: BingoTileRequirementType.CHAT;
+  /** Target number of messages required */
+  targetCount: number;
+  /** Current team total matching messages */
+  currentTotalCount: number;
+  /** Each player's matching messages */
+  playerContributions: ChatPlayerContribution[];
+}
+
+// ============================================================================
 // UNION TYPE FOR ALL PROGRESS METADATA
 // ============================================================================
 
@@ -282,7 +319,8 @@ export type ProgressMetadata =
   | ValueDropProgressMetadata
   | PetProgressMetadata
   | ExperienceProgressMetadata
-  | BaGamblesProgressMetadata;
+  | BaGamblesProgressMetadata
+  | ChatProgressMetadata;
 
 // ============================================================================
 // CALCULATOR TYPES (for progress calculation functions)

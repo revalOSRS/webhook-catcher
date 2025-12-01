@@ -39,7 +39,8 @@ export enum BingoTileRequirementType {
   VALUE_DROP = 'VALUE_DROP',
   SPEEDRUN = 'SPEEDRUN',
   EXPERIENCE = 'EXPERIENCE',
-  BA_GAMBLES = 'BA_GAMBLES'
+  BA_GAMBLES = 'BA_GAMBLES',
+  CHAT = 'CHAT'
 }
 
 /**
@@ -99,6 +100,34 @@ export interface BaGamblesRequirementDef {
 }
 
 /**
+ * Chat requirement definition
+ * 
+ * Matches chat messages by content and optionally by message type.
+ * The message can be a partial match (contains) or exact match.
+ * 
+ * Common message types from Dink:
+ * - GAMEMESSAGE: System/game messages
+ * - PUBLICCHAT: Public chat messages
+ * - PRIVATECHAT: Private messages
+ * - FRIENDSCHAT: Friends chat
+ * - CLAN_CHAT: Clan chat
+ * - CLAN_GUEST_CHAT: Guest clan chat
+ * - BROADCAST: Broadcast messages
+ * - UNKNOWN: Other message types
+ */
+export interface ChatRequirementDef {
+  type: BingoTileRequirementType.CHAT;
+  /** The message text to match (case-insensitive, partial match by default) */
+  message: string;
+  /** Optional: specific message type to match (e.g., GAMEMESSAGE, BROADCAST) */
+  messageType?: string;
+  /** If true, requires exact message match instead of partial */
+  exactMatch?: boolean;
+  /** Number of times this message must be received (default: 1) */
+  count?: number;
+}
+
+/**
  * Union type for all requirement definitions
  */
 export type BingoTileRequirementDef =
@@ -107,7 +136,8 @@ export type BingoTileRequirementDef =
   | ValueDropRequirementDef
   | SpeedrunRequirementDef
   | ExperienceRequirementDef
-  | BaGamblesRequirementDef;
+  | BaGamblesRequirementDef
+  | ChatRequirementDef;
 
 /**
  * Tiered requirement with points

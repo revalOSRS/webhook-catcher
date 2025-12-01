@@ -11,7 +11,8 @@ export enum UnifiedEventType {
   SPEEDRUN = 'SPEEDRUN',
   BA_GAMBLE = 'BA_GAMBLE',
   LOGOUT = 'LOGOUT',
-  EXPERIENCE = 'EXPERIENCE'
+  EXPERIENCE = 'EXPERIENCE',
+  CHAT = 'CHAT'
 }
 
 export enum UnifiedEventSource {
@@ -28,7 +29,7 @@ export interface UnifiedGameEvent {
   source: UnifiedEventSource // Event source identifier
   
   // Event-specific data
-  data: LootEventData | PetEventData | SpeedrunEventData | BaGambleEventData | LogoutEventData | ExperienceEventData
+  data: LootEventData | PetEventData | SpeedrunEventData | BaGambleEventData | LogoutEventData | ExperienceEventData | ChatEventData
 }
 
 export interface LootEventData {
@@ -66,5 +67,19 @@ export interface ExperienceEventData {
   skill: string
   experience: number
   level?: number
+}
+
+export interface ChatEventData {
+  /** The chat message content */
+  message: string
+  /** The type of chat message (e.g., GAMEMESSAGE, BROADCAST, PUBLICCHAT) */
+  messageType: string
+  /** The source/sender of the message (for player messages) */
+  source?: string
+  /** Clan title info (for clan chat messages) */
+  clanTitle?: {
+    rankId: number
+    title: string
+  }
 }
 

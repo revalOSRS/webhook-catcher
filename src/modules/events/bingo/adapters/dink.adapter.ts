@@ -10,7 +10,8 @@ import type {
   DinkSpeedrunEvent, 
   DinkBarbarianAssaultGambleEvent,
   DinkLogoutEvent,
-  DinkKillCountEvent
+  DinkKillCountEvent,
+  DinkChatEvent
 } from '../../../dink/events/event.js'
 import { DinkEventType } from '../../../dink/events/event.js'
 import type { UnifiedGameEvent } from '../types/unified-event.type.js'
@@ -24,6 +25,7 @@ type SupportedDinkEvent =
   | DinkBarbarianAssaultGambleEvent 
   | DinkLogoutEvent 
   | DinkKillCountEvent
+  | DinkChatEvent
 
 /**
  * Adapter map for converting Dink events to UnifiedGameEvent
@@ -47,6 +49,9 @@ const eventAdapters: Partial<Record<DinkEventType, (event: SupportedDinkEvent, o
   
   [DinkEventType.KILL_COUNT]: (event, osrsAccountId, timestamp) => 
     adaptKillCountAsSpeedrun(event as DinkKillCountEvent, osrsAccountId, timestamp),
+  
+  [DinkEventType.CHAT]: (event, osrsAccountId, timestamp) => 
+    adaptChatEvent(event as DinkChatEvent, osrsAccountId, timestamp),
 }
 
 /**
@@ -201,6 +206,26 @@ const adaptKillCountAsSpeedrun = (event: DinkKillCountEvent, osrsAccountId: numb
     }
   }
 }
+
+/**
+ * Converts a chat event to unified format.
+ * 
+ * Extracts message content, type, and optional source/clan info from the Dink chat event.
+ * Used for tracking specific game messages like quest completions, achievements, etc.
+ */
+const adaptChatEvent = (event: DinkChatEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => ({
+  eventType: UnifiedEventType.CHAT,
+  playerName: event.playerName,
+  osrsAccountId,
+  timestamp,
+  source: UnifiedEventSource.DINK,
+  data: {
+    message: event.extra.message,
+    messageType: event.extra.type,
+    source: event.extra.source ?? undefined,
+    clanTitle: event.extra.clanTitle ?? undefined
+  }
+})
 
 /**
  * Parses a time string to total seconds.

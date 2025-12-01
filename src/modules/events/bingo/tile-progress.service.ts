@@ -20,6 +20,7 @@ import { calculateValueDropProgress } from './calculators/value-drop.calculator.
 import { calculateSpeedrunProgress } from './calculators/speedrun.calculator.js';
 import { calculateBaGamblesProgress } from './calculators/ba-gambles.calculator.js';
 import { calculateExperienceProgress } from './calculators/experience.calculator.js';
+import { calculateChatProgress } from './calculators/chat.calculator.js';
 import { DiscordNotificationsService } from './discord-notifications.service.js';
 import type { UnifiedGameEvent } from './types/unified-event.type.js';
 import type { DinkEvent } from '../../dink/events/event.js';
@@ -32,6 +33,7 @@ import type {
   SpeedrunRequirement,
   ExperienceRequirement,
   BaGamblesRequirement,
+  ChatRequirement,
   BingoTileRequirementDef,
   ProgressMetadata,
   TierCompletion,
@@ -452,6 +454,8 @@ export class TileProgressService {
         return { ...base, requirementType: type, skill: '', currentTotalXp: 0, targetXp: 0 } as ProgressMetadata;
       case BingoTileRequirementType.BA_GAMBLES:
         return { ...base, requirementType: type, currentTotalGambles: 0 } as ProgressMetadata;
+      case BingoTileRequirementType.CHAT:
+        return { ...base, requirementType: type, targetCount: 0, currentTotalCount: 0 } as ProgressMetadata;
       default:
         return { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 } as ProgressMetadata;
     }
@@ -823,6 +827,11 @@ export class TileProgressService {
         return progressValue >= (petReq.amount ?? 1);
       }
       
+      case BingoTileRequirementType.CHAT: {
+        const chatReq = requirement as ChatRequirement;
+        return progressValue >= (chatReq.count ?? 1);
+      }
+      
       // Speedruns are handled separately in calculateSpeedrunTieredProgress
       case BingoTileRequirementType.SPEEDRUN:
         return false;
@@ -870,6 +879,8 @@ export class TileProgressService {
         return calculateBaGamblesProgress(event, req as BaGamblesRequirement, existing, memberId, osrsAccountId, playerName);
       case BingoTileRequirementType.EXPERIENCE:
         return await calculateExperienceProgress(event, req as ExperienceRequirement, existing, eventStartDate, memberId, osrsAccountId, playerName);
+      case BingoTileRequirementType.CHAT:
+        return calculateChatProgress(event, req as ChatRequirement, existing, memberId, osrsAccountId, playerName);
       default:
         return this.buildEmptyProgress(null, { matchType: BingoTileMatchType.ALL, requirements: [req], tiers: [] });
     }
