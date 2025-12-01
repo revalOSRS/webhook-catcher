@@ -11,6 +11,7 @@
  */
 
 import { query, queryOne } from '../../../db/connection.js';
+import { DiscordNotificationsService } from './discord-notifications.service.js';
 import {
   EffectType,
   EffectCategory,
@@ -300,9 +301,29 @@ export class EffectsService {
       }
     });
 
-    // If immediate trigger, apply now
+    // Apply immediate effect if needed
+    let immediateResult: { pointsAwarded?: number; message?: string } | undefined;
     if (effectDef.trigger === EffectTrigger.IMMEDIATE) {
-      await this.applyImmediateEffect(result, effectDef);
+      immediateResult = await this.applyImmediateEffect(result, effectDef);
+    }
+
+    // Send Discord notification for effect unlock
+    try {
+      await DiscordNotificationsService.sendEffectUnlockNotification({
+        teamId: params.teamId,
+        eventId: params.eventId,
+        effectName: effectDef.name,
+        effectDescription: effectDef.description,
+        effectIcon: effectDef.icon,
+        effectType: effectDef.type,
+        effectCategory: effectDef.category,
+        source: params.source,
+        sourceIdentifier: params.sourceIdentifier,
+        trigger: effectDef.trigger,
+        immediateResult
+      });
+    } catch (error) {
+      console.error('[EffectsService] Failed to send effect unlock notification:', error);
     }
 
     return result;
@@ -310,11 +331,12 @@ export class EffectsService {
 
   /**
    * Apply an immediate effect (e.g., point bonus)
+   * @returns Result of the immediate effect for notification purposes
    */
   private static applyImmediateEffect = async (
     earnedEffect: TeamEarnedEffect,
     effectDef: EffectDefinition
-  ): Promise<void> => {
+  ): Promise<{ pointsAwarded?: number; message?: string } | undefined> => {
     let result: EffectResultData = {};
     const config = effectDef.config as any;
 
@@ -336,7 +358,7 @@ export class EffectsService {
 
       default:
         // Most effects are manual, not immediate
-        return;
+        return undefined;
     }
 
     // Mark as used
@@ -346,6 +368,11 @@ export class EffectsService {
        WHERE id = $1`,
       [earnedEffect.id]
     );
+
+    return {
+      pointsAwarded: result.pointsChanged,
+      message: result.message
+    };
 
     // Log
     await this.logEffectAction({
@@ -455,6 +482,27 @@ export class EffectsService {
       result: result.result
     });
 
+    // Send Discord notification for effect activation
+    try {
+      await DiscordNotificationsService.sendEffectActivationNotification({
+        sourceTeamId: teamId,
+        targetTeamId: request.targetTeamId,
+        eventId: earnedEffect.eventId,
+        effectName: effectDef.name,
+        effectDescription: effectDef.description,
+        effectIcon: effectDef.icon,
+        effectType: effectDef.type,
+        action: 'activated',
+        result: {
+          message: result.result.message,
+          pointsChanged: result.result.pointsChanged,
+          tilesAffected: result.result.tilesAffected
+        }
+      });
+    } catch (error) {
+      console.error('[EffectsService] Failed to send effect activation notification:', error);
+    }
+
     return {
       success: result.success,
       action: EffectAction.ACTIVATED,
@@ -511,6 +559,26 @@ export class EffectsService {
         result: { reflectedEffectId: incomingEffect.id }
       });
 
+      // Send notification for reflected effect
+      try {
+        await DiscordNotificationsService.sendEffectActivationNotification({
+          sourceTeamId: incomingEffect.teamId,
+          targetTeamId: targetTeamId,
+          eventId: incomingEffect.eventId,
+          effectName: incomingDef.name,
+          effectDescription: incomingDef.description,
+          effectIcon: incomingDef.icon,
+          effectType: incomingDef.type,
+          action: 'reflected',
+          result: {
+            message: 'Effect was reflected back!',
+            blockedBy: 'Uno Reverse'
+          }
+        });
+      } catch (error) {
+        console.error('[EffectsService] Failed to send reflection notification:', error);
+      }
+
       return {
         success: false,
         action: EffectAction.REFLECTED,
@@ -560,6 +628,26 @@ export class EffectsService {
         success: true,
         result: { blockedEffectId: incomingEffect.id }
       });
+
+      // Send notification for blocked effect
+      try {
+        await DiscordNotificationsService.sendEffectActivationNotification({
+          sourceTeamId: incomingEffect.teamId,
+          targetTeamId: targetTeamId,
+          eventId: incomingEffect.eventId,
+          effectName: incomingDef.name,
+          effectDescription: incomingDef.description,
+          effectIcon: incomingDef.icon,
+          effectType: incomingDef.type,
+          action: 'blocked',
+          result: {
+            message: 'Effect was blocked!',
+            blockedBy: 'Shield'
+          }
+        });
+      } catch (error) {
+        console.error('[EffectsService] Failed to send blocked notification:', error);
+      }
 
       return {
         success: false,

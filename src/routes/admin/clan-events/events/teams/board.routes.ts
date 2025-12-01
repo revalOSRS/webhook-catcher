@@ -1361,7 +1361,7 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 			});
 		}
 
-		if (tileCheck[0].is_completed) {
+		if (tileCheck[0].isCompleted) {
 			return res.status(409).json({
 				success: false,
 				error: 'Tile is already completed'
@@ -1535,7 +1535,7 @@ router.post('/tiles/:tileId/revert', async (req: Request, res: Response) => {
 			});
 		}
 
-		if (!tileCheck[0].is_completed) {
+		if (!tileCheck[0].isCompleted) {
 			return res.status(409).json({
 				success: false,
 				error: 'Tile is not completed'

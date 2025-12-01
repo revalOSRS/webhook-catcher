@@ -21,42 +21,53 @@ import { BingoTileMatchType, BingoTileRequirementType } from '../types/bingo-req
 /**
  * Checks if an event matches tile requirements.
  * 
- * Two modes are supported:
- * 1. Tiered requirements: If `tiers` array exists, returns true if event matches ANY tier's requirement.
+ * Supports tiles with both base requirements AND tiers:
+ * 
+ * 1. Tiered requirements: Returns true if event matches ANY tier's requirement.
  *    This allows progressive completion where reaching any tier counts as a match.
  * 
  * 2. Regular requirements: Uses `matchType` to determine logic:
  *    - ALL: Every requirement in the array must be satisfied by the event
  *    - ANY: At least one requirement must be satisfied by the event
  * 
+ * When BOTH tiers and requirements exist, the event can match EITHER:
+ * - Any tier's requirement, OR
+ * - The base requirements
+ * 
+ * This allows tiles like "Collect different bones" where base bones and tier bones
+ * are all tracked separately.
+ * 
  * Returns false if no requirements are defined.
  */
 export const matchesRequirement = (event: UnifiedGameEvent, requirements: BingoTileRequirements): boolean => {
-  // If using tiers, check each tier
+  let matchesTier = false;
+  let matchesBase = false;
+
+  // Check tiers if they exist
   if (requirements.tiers && requirements.tiers.length > 0) {
-    // For tiered requirements, we check if event matches ANY tier
-    // (tiles are marked complete when any tier is met)
-    return requirements.tiers.some(tier => 
+    matchesTier = requirements.tiers.some(tier => 
       matchesSimplifiedRequirement(event, tier.requirement)
-    )
+    );
   }
 
-  // If using regular requirements, check based on match_type
+  // Check base requirements if they exist
   if (requirements.requirements && requirements.requirements.length > 0) {
     if (requirements.matchType === BingoTileMatchType.ALL) {
-      // ALL requirements must match
-      return requirements.requirements.every(req => 
+      // For ALL mode with tiers, check if ANY base requirement matches
+      // (since tiers are separate track, we want to track any matching base requirement)
+      matchesBase = requirements.requirements.some(req => 
         matchesSimplifiedRequirement(event, req)
-      )
+      );
     } else {
       // ANY requirement must match
-      return requirements.requirements.some(req => 
+      matchesBase = requirements.requirements.some(req => 
         matchesSimplifiedRequirement(event, req)
-      )
+      );
     }
   }
 
-  return false
+  // Return true if event matches either tiers OR base requirements
+  return matchesTier || matchesBase;
 }
 
 /**
