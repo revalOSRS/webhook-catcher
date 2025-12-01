@@ -22,6 +22,7 @@ import { calculateBaGamblesProgress } from './calculators/ba-gambles.calculator.
 import { calculateExperienceProgress } from './calculators/experience.calculator.js';
 import { calculateChatProgress } from './calculators/chat.calculator.js';
 import { DiscordNotificationsService } from './discord-notifications.service.js';
+import { EffectsService } from './effects.service.js';
 import type { UnifiedGameEvent } from './types/unified-event.type.js';
 import type { DinkEvent } from '../../dink/events/event.js';
 import type {
@@ -971,6 +972,7 @@ export class TileProgressService {
 
   /**
    * Mark a tile as completed in both progress and board_tiles tables.
+   * Also checks for row/column completions and grants any configured effects.
    */
   private markTileCompleted = async (boardTileId: string, completedByOsrsAccountId: number | null): Promise<void> => {
     await query(`
@@ -984,6 +986,23 @@ export class TileProgressService {
       SET is_completed = true, completed_at = CURRENT_TIMESTAMP
       WHERE id = $1 AND is_completed = false
     `, [boardTileId]);
+
+    // Check for line completions and grant effects
+    try {
+      // Get the tile's position and board ID
+      const tileInfo = await query<{ boardId: string; position: string }>(
+        'SELECT board_id, position FROM bingo_board_tiles WHERE id = $1',
+        [boardTileId]
+      );
+
+      if (tileInfo.length > 0) {
+        const { boardId, position } = tileInfo[0];
+        await EffectsService.checkLineCompletions(boardId, position);
+      }
+    } catch (error) {
+      // Log but don't fail the tile completion
+      console.error('Error checking line completions:', error);
+    }
   };
 
   /**
