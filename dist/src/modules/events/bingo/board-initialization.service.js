@@ -80,12 +80,17 @@ export class BoardInitializationService {
         }
         const boardId = boardResult[0].id;
         // Create tiles
+        const tileCount = boardConfig.tiles?.length || 0;
         await this.createTiles(boardId, boardConfig.tiles);
         // Create line effects (rows and columns)
+        const rowEffectCount = boardConfig.rowEffects?.length || 0;
+        const columnEffectCount = boardConfig.columnEffects?.length || 0;
         await this.createRowEffects(boardId, boardConfig.rowEffects);
         await this.createColumnEffects(boardId, boardConfig.columnEffects);
         // Create tile effects
+        const tileEffectCount = boardConfig.tileEffects?.length || 0;
         await this.createTileEffects(boardId, boardConfig.tileEffects);
+        console.log(`[BoardInit] Created board ${boardId}: ${tileCount} tiles, ${rowEffectCount} row effects, ${columnEffectCount} column effects, ${tileEffectCount} tile effects`);
     };
     /**
      * Creates board tiles from the tile configuration.
@@ -118,14 +123,26 @@ export class BoardInitializationService {
      *
      * Row effects apply to all tiles in a specific row (identified by row number).
      * Effects are linked via `buffDebuffId` to the buffs/debuffs table.
+     *
+     * Supports both:
+     * - { rowNumber: 1, buffDebuffId: "..." } (legacy/current format)
+     * - { lineIdentifier: "1", buffDebuffId: "..." } (new unified format)
      */
     createRowEffects = async (boardId, effects) => {
         if (!effects?.length) {
             return;
         }
         for (const effect of effects) {
-            if (!effect.lineIdentifier)
+            // Support both rowNumber and lineIdentifier
+            const lineIdentifier = effect.lineIdentifier ?? effect.rowNumber?.toString();
+            if (!lineIdentifier)
                 continue;
+            // Verify the buff/debuff exists
+            const buffExists = await query('SELECT id FROM bingo_buffs_debuffs WHERE id = $1', [effect.buffDebuffId]);
+            if (buffExists.length === 0) {
+                console.warn(`[BoardInit] Row effect buff/debuff not found: ${effect.buffDebuffId}`);
+                continue;
+            }
             await query(`
         INSERT INTO bingo_board_line_effects (
           board_id, line_type, line_identifier, buff_debuff_id,
@@ -135,12 +152,13 @@ export class BoardInitializationService {
         ON CONFLICT (board_id, line_type, line_identifier, buff_debuff_id) DO NOTHING
       `, [
                 boardId,
-                effect.lineIdentifier,
+                lineIdentifier,
                 effect.buffDebuffId,
                 effect.isActive !== false,
                 effect.expiresAt || null,
                 JSON.stringify(effect.metadata || {})
             ]);
+            console.log(`[BoardInit] Created row effect: row ${lineIdentifier} -> ${effect.buffDebuffId}`);
         }
     };
     /**
@@ -148,14 +166,26 @@ export class BoardInitializationService {
      *
      * Column effects apply to all tiles in a specific column (identified by letter A-Z).
      * Effects are linked via `buffDebuffId` to the buffs/debuffs table.
+     *
+     * Supports both:
+     * - { columnLetter: "A", buffDebuffId: "..." } (legacy/current format)
+     * - { lineIdentifier: "A", buffDebuffId: "..." } (new unified format)
      */
     createColumnEffects = async (boardId, effects) => {
         if (!effects?.length) {
             return;
         }
         for (const effect of effects) {
-            if (!effect.lineIdentifier)
+            // Support both columnLetter and lineIdentifier
+            const lineIdentifier = effect.lineIdentifier ?? effect.columnLetter;
+            if (!lineIdentifier)
                 continue;
+            // Verify the buff/debuff exists
+            const buffExists = await query('SELECT id FROM bingo_buffs_debuffs WHERE id = $1', [effect.buffDebuffId]);
+            if (buffExists.length === 0) {
+                console.warn(`[BoardInit] Column effect buff/debuff not found: ${effect.buffDebuffId}`);
+                continue;
+            }
             await query(`
         INSERT INTO bingo_board_line_effects (
           board_id, line_type, line_identifier, buff_debuff_id,
@@ -165,12 +195,13 @@ export class BoardInitializationService {
         ON CONFLICT (board_id, line_type, line_identifier, buff_debuff_id) DO NOTHING
       `, [
                 boardId,
-                effect.lineIdentifier,
+                lineIdentifier,
                 effect.buffDebuffId,
                 effect.isActive !== false,
                 effect.expiresAt || null,
                 JSON.stringify(effect.metadata || {})
             ]);
+            console.log(`[BoardInit] Created column effect: column ${lineIdentifier} -> ${effect.buffDebuffId}`);
         }
     };
     /**
@@ -190,6 +221,13 @@ export class BoardInitializationService {
         for (const effect of effects) {
             const tileId = positionToTileId.get(effect.position);
             if (!tileId) {
+                console.warn(`[BoardInit] Tile effect position not found: ${effect.position}`);
+                continue;
+            }
+            // Verify the buff/debuff exists
+            const buffExists = await query('SELECT id FROM bingo_buffs_debuffs WHERE id = $1', [effect.buffDebuffId]);
+            if (buffExists.length === 0) {
+                console.warn(`[BoardInit] Tile effect buff/debuff not found: ${effect.buffDebuffId}`);
                 continue;
             }
             await query(`
@@ -205,6 +243,7 @@ export class BoardInitializationService {
                 effect.expiresAt || null,
                 JSON.stringify(effect.metadata || {})
             ]);
+            console.log(`[BoardInit] Created tile effect: ${effect.position} -> ${effect.buffDebuffId}`);
         }
     };
 }

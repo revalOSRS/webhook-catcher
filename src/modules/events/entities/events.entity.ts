@@ -16,7 +16,12 @@ export interface BingoTileConfig {
 }
 
 export interface BingoLineEffectConfig {
-  lineIdentifier: string; // Row number or column letter
+  /** For rows: the row number (1, 2, 3...) */
+  rowNumber?: number;
+  /** For columns: the column letter (A, B, C...) */
+  columnLetter?: string;
+  /** Unified identifier - can be used instead of rowNumber/columnLetter */
+  lineIdentifier?: string;
   buffDebuffId: string;
   isActive?: boolean;
   expiresAt?: string;
