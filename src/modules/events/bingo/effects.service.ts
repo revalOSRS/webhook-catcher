@@ -95,7 +95,7 @@ export class EffectsService {
   ): Promise<LineCompletion | null> => {
     // Check if already recorded as completed
     const existing = await queryOne(
-      'SELECT id FROM bingo_bingo_line_completions WHERE board_id = $1 AND line_type = $2 AND line_identifier = $3',
+      'SELECT id FROM bingo_line_completions WHERE board_id = $1 AND line_type = $2 AND line_identifier = $3',
       [boardId, 'row', rowNumber.toString()]
     );
     if (existing) return null;
@@ -119,7 +119,7 @@ export class EffectsService {
 
     // Record the completion
     const result = await queryOne<{ id: string }>(`
-      INSERT INTO bingo_bingo_line_completions (board_id, team_id, event_id, line_type, line_identifier, tile_ids, tile_points)
+      INSERT INTO bingo_line_completions (board_id, team_id, event_id, line_type, line_identifier, tile_ids, tile_points)
       VALUES ($1, $2, $3, 'row', $4, $5, $6)
       RETURNING id
     `, [boardId, board.teamId, board.eventId, rowNumber.toString(), rowTiles.map(t => t.id), tilePoints]);
@@ -146,7 +146,7 @@ export class EffectsService {
   ): Promise<LineCompletion | null> => {
     // Check if already recorded as completed
     const existing = await queryOne(
-      'SELECT id FROM bingo_bingo_line_completions WHERE board_id = $1 AND line_type = $2 AND line_identifier = $3',
+      'SELECT id FROM bingo_line_completions WHERE board_id = $1 AND line_type = $2 AND line_identifier = $3',
       [boardId, 'column', columnLetter]
     );
     if (existing) return null;
@@ -170,7 +170,7 @@ export class EffectsService {
 
     // Record the completion
     const result = await queryOne<{ id: string }>(`
-      INSERT INTO bingo_bingo_line_completions (board_id, team_id, event_id, line_type, line_identifier, tile_ids, tile_points)
+      INSERT INTO bingo_line_completions (board_id, team_id, event_id, line_type, line_identifier, tile_ids, tile_points)
       VALUES ($1, $2, $3, 'column', $4, $5, $6)
       RETURNING id
     `, [boardId, board.teamId, board.eventId, columnLetter, columnTiles.map(t => t.id), tilePoints]);
@@ -232,7 +232,7 @@ export class EffectsService {
 
     // Mark effects as granted
     await query(
-      'UPDATE bingo_bingo_line_completions SET effects_granted = true WHERE board_id = $1 AND line_type = $2 AND line_identifier = $3',
+      'UPDATE bingo_line_completions SET effects_granted = true WHERE board_id = $1 AND line_type = $2 AND line_identifier = $3',
       [line.boardId, line.type, line.identifier]
     );
   };
