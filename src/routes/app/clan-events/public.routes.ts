@@ -33,6 +33,20 @@ interface PublicTeam {
 }
 
 /**
+ * Public line effect data (for rows/columns)
+ */
+interface PublicLineEffect {
+	lineType: 'row' | 'column';
+	lineIdentifier: string;
+	name: string;
+	description: string | null;
+	icon: string | null;
+	type: 'buff' | 'debuff';
+	effectType: string;
+	effectValue: number | null;
+}
+
+/**
  * Public board data
  */
 interface PublicBoard {
@@ -40,6 +54,8 @@ interface PublicBoard {
 	rows: number;
 	columns: number;
 	tiles: PublicBoardTile[];
+	rowEffects: PublicLineEffect[];
+	columnEffects: PublicLineEffect[];
 }
 
 /**
@@ -56,6 +72,7 @@ interface PublicBoardTile {
 	icon: string | null;
 	points: number;
 	progress: PublicTileProgress | null;
+	effects: PublicEffect[];
 }
 
 /**
@@ -66,6 +83,18 @@ interface PublicTileProgress {
 	targetValue: number | null;
 	completedTiers: number[];
 	currentTier: number | null;
+}
+
+/**
+ * Public effect data
+ */
+interface PublicEffect {
+	name: string;
+	description: string | null;
+	icon: string | null;
+	type: 'buff' | 'debuff';
+	effectType: string;
+	effectValue: number | null;
 }
 
 /**
@@ -179,6 +208,82 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			ORDER BY bb.team_id, bbt.position
 		`, [eventId]);
 
+		// Get all active tile effects for this event
+		const allTileEffects = await query(`
+			SELECT 
+				bbte.board_tile_id,
+				bbd.name,
+				bbd.description,
+				bbd.icon,
+				bbd.type,
+				bbd.effect_type,
+				bbd.effect_value
+			FROM bingo_board_tile_effects bbte
+			JOIN bingo_buffs_debuffs bbd ON bbte.buff_debuff_id = bbd.id
+			JOIN bingo_board_tiles bbt ON bbte.board_tile_id = bbt.id
+			JOIN bingo_boards bb ON bbt.board_id = bb.id
+			WHERE bb.event_id = $1 AND bbte.is_active = true
+			ORDER BY bbte.applied_at DESC
+		`, [eventId]);
+
+		// Group effects by tile
+		const effectsByTile: Record<string, PublicEffect[]> = {};
+		for (const effect of allTileEffects) {
+			if (!effectsByTile[effect.boardTileId]) {
+				effectsByTile[effect.boardTileId] = [];
+			}
+			effectsByTile[effect.boardTileId].push({
+				name: effect.name,
+				description: effect.description,
+				icon: effect.icon,
+				type: effect.type,
+				effectType: effect.effectType,
+				effectValue: effect.effectValue ? parseFloat(effect.effectValue) : null
+			});
+		}
+
+		// Get all active line effects (rows and columns) for this event
+		const allLineEffects = await query(`
+			SELECT 
+				bble.board_id,
+				bble.line_type,
+				bble.line_identifier,
+				bbd.name,
+				bbd.description,
+				bbd.icon,
+				bbd.type,
+				bbd.effect_type,
+				bbd.effect_value
+			FROM bingo_board_line_effects bble
+			JOIN bingo_buffs_debuffs bbd ON bble.buff_debuff_id = bbd.id
+			JOIN bingo_boards bb ON bble.board_id = bb.id
+			WHERE bb.event_id = $1 AND bble.is_active = true
+			ORDER BY bble.line_type, bble.line_identifier
+		`, [eventId]);
+
+		// Group line effects by board
+		const lineEffectsByBoard: Record<string, { row: PublicLineEffect[]; column: PublicLineEffect[] }> = {};
+		for (const effect of allLineEffects) {
+			if (!lineEffectsByBoard[effect.boardId]) {
+				lineEffectsByBoard[effect.boardId] = { row: [], column: [] };
+			}
+			const lineEffect: PublicLineEffect = {
+				lineType: effect.lineType,
+				lineIdentifier: effect.lineIdentifier,
+				name: effect.name,
+				description: effect.description,
+				icon: effect.icon,
+				type: effect.type,
+				effectType: effect.effectType,
+				effectValue: effect.effectValue ? parseFloat(effect.effectValue) : null
+			};
+			if (effect.lineType === 'row') {
+				lineEffectsByBoard[effect.boardId].row.push(lineEffect);
+			} else {
+				lineEffectsByBoard[effect.boardId].column.push(lineEffect);
+			}
+		}
+
 		// Group boards and tiles by team
 		const boardsByTeam: Record<string, { 
 			boardId: string; 
@@ -221,7 +326,8 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				difficulty: row.difficulty,
 				icon: row.icon,
 				points: row.points,
-				progress
+				progress,
+				effects: effectsByTile[row.tileId] || []
 			});
 		}
 
@@ -231,11 +337,14 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			
 			let board: PublicBoard | null = null;
 			if (boardData) {
+				const boardLineEffects = lineEffectsByBoard[boardData.boardId] || { row: [], column: [] };
 				board = {
 					id: boardData.boardId,
 					rows: boardData.rows,
 					columns: boardData.columns,
-					tiles: boardData.tiles
+					tiles: boardData.tiles,
+					rowEffects: boardLineEffects.row,
+					columnEffects: boardLineEffects.column
 				};
 			}
 
