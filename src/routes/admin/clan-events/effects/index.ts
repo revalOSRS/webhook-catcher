@@ -208,16 +208,20 @@ router.post('/library', async (req: Request, res: Response) => {
       });
     }
 
+    // Extract a numeric value from config for backward compatibility with effect_value column
+    const effectValue = config.points ?? config.multiplier ?? config.charges ?? 
+                        config.tilesCount ?? config.durationSeconds ?? config.bonusPerLine ?? 0;
+
     const result = await queryOne(`
       INSERT INTO bingo_buffs_debuffs (
         id, name, description, type, category, target, trigger,
-        effect_type, config, icon, is_active
+        effect_type, effect_value, config, icon, is_active
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `, [
       id, name, description, type, category, target, trigger,
-      config.type, JSON.stringify(config), icon, isActive
+      config.type, effectValue, JSON.stringify(config), icon, isActive
     ]);
 
     res.status(201).json({
