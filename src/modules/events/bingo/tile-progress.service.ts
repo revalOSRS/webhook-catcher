@@ -397,11 +397,11 @@ export class TileProgressService {
   /**
    * Determine if a tile is completed based on requirements and progress.
    * 
-   * Match types:
-   * - ALL: Every requirement must be completed
-   * - ANY: At least one requirement must be completed
-   * 
-   * For tiered requirements, completion means at least one tier is done.
+   * Completion logic:
+   * - Base requirements only: Complete when progress.isCompleted is true
+   * - Tiers only: Complete when at least one tier is done
+   * - Both base requirements AND tiers: Complete when EITHER is satisfied
+   *   (allows base requirement to complete tile before any bonus tiers)
    * 
    * @param requirements - Tile requirement configuration
    * @param progress - Current progress result
@@ -411,14 +411,29 @@ export class TileProgressService {
     requirements: BingoTileRequirements,
     progress: ProgressResult
   ): boolean => {
-    // For tiered requirements, check if at least one tier is complete
+    // Check if base requirements are complete
+    const baseComplete = progress.isCompleted;
+
+    // Check if any tier is complete
+    const completedTiers = progress.completedTiers || progress.progressMetadata.completedTiers;
+    const tiersComplete = (completedTiers?.length || 0) > 0;
+
+    // Tile is complete if:
+    // - Base requirements are complete (if they exist), OR
+    // - At least one tier is complete (for tiered tiles)
+    // This allows tiles with both base requirements AND tiers to be completed
+    // when the base requirement is satisfied, even before any tier is done.
     if (requirements.tiers && requirements.tiers.length > 0) {
-      const completedTiers = progress.completedTiers || progress.progressMetadata.completedTiers;
-      return (completedTiers?.length || 0) > 0;
+      // If tile has both base requirements and tiers, either can complete it
+      if (requirements.requirements && requirements.requirements.length > 0) {
+        return baseComplete || tiersComplete;
+      }
+      // Tier-only tiles: need at least one tier complete
+      return tiersComplete;
     }
 
-    // For regular requirements, use the isCompleted flag from progress calculation
-    return progress.isCompleted;
+    // For regular requirements without tiers, use the isCompleted flag
+    return baseComplete;
   };
 
   /**
