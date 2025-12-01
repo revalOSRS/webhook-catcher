@@ -4,8 +4,38 @@
  * Public endpoint for RuneLite plugin to fetch event filtering configuration
  */
 import { Router } from 'express';
-import { getEventFilters, DEFAULT_EVENT_FILTERS } from '../../db/types/event-filters.types.js';
 const router = Router();
+/**
+ * Default event filters configuration
+ */
+const DEFAULT_EVENT_FILTERS = {
+    loot: {
+        minValue: 1000,
+        whitelist: [526],
+        blacklist: [592]
+    },
+    enabled: {
+        loot: true,
+        pet: true,
+        quest: true,
+        level: true,
+        killCount: true,
+        clue: true,
+        diary: true,
+        combatAchievement: true,
+        collection: true,
+        death: true,
+        detailedKill: true,
+        areaEntry: true,
+        emote: true
+    }
+};
+/**
+ * Get appropriate event filters based on current time
+ */
+const getEventFilters = () => {
+    return DEFAULT_EVENT_FILTERS;
+};
 /**
  * GET /event-filters
  *
@@ -13,32 +43,15 @@ const router = Router();
  *
  * Public endpoint (no authentication required)
  * Called once per login session by the plugin
- *
- * Response Format:
- * {
- *   loot: {
- *     minValue: number,
- *     whitelist: number[],
- *     blacklist: number[]
- *   },
- *   enabled: {
- *     loot: boolean,
- *     pet: boolean,
- *     ... (14 event types)
- *   }
- * }
  */
 router.get('/', async (req, res) => {
     try {
-        // Get time-based configuration (peak hours vs normal)
         const filters = getEventFilters();
-        // Log request for monitoring (optional)
         console.log(`[Event Filters] Request received from ${req.ip || req.headers['x-forwarded-for'] || 'unknown'}`);
         res.json(filters);
     }
     catch (error) {
         console.error('Error fetching event filters:', error);
-        // Return safe defaults on error (graceful degradation)
         res.status(500).json(DEFAULT_EVENT_FILTERS);
     }
 });
@@ -46,7 +59,6 @@ router.get('/', async (req, res) => {
  * GET /event-filters/debug
  *
  * Debug endpoint to see current configuration and peak hours status
- * Remove or protect this in production!
  */
 router.get('/debug', async (req, res) => {
     try {

@@ -124,11 +124,11 @@ router.post('/:tileId/claim', async (req, res) => {
     const team = await battleshipService.getTeamById(team_id)
     if (team) {
       await battleshipService.logEventAction({
-        event_id: tile.event_id,
+        event_id: tile.eventId,
         action_type: 'tile_claimed',
         actor_discord_id: discord_id,
         team_id,
-        details: { tile_id: tileId, coordinate: tile.coordinate, task_id: tile.task_id }
+        details: { tile_id: tileId, coordinate: tile.coordinate, task_id: tile.taskId }
       })
     }
 
@@ -222,7 +222,7 @@ router.post('/:tileId/complete', async (req, res) => {
       proof_url
     })
 
-    if (!tile || !tile.claimed_by_team_id) {
+    if (!tile || !tile.claimedByTeamId) {
       return res.status(400).json({
         status: 'error',
         message: 'Tile cannot be completed'
@@ -230,18 +230,18 @@ router.post('/:tileId/complete', async (req, res) => {
     }
 
     // Update team score
-    await battleshipService.updateTeamScore(tile.claimed_by_team_id, total_points_awarded)
+    await battleshipService.updateTeamScore(tile.claimedByTeamId, total_points_awarded)
 
     // Log the action
     await battleshipService.logEventAction({
-      event_id: tile.event_id,
+      event_id: tile.eventId,
       action_type: 'tile_completed',
       actor_discord_id: completed_by_discord_id,
-      team_id: tile.claimed_by_team_id,
+      team_id: tile.claimedByTeamId,
       details: {
         tile_id: tileId,
         coordinate: tile.coordinate,
-        task_id: tile.task_id,
+        task_id: tile.taskId,
         points_awarded: total_points_awarded,
         bonus_tier: bonus_tier_achieved
       }

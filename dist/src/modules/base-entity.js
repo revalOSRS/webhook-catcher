@@ -192,21 +192,13 @@ export class BaseEntity {
         return count > 0;
     }
     /**
-     * Format data from database (snake_case to camelCase)
+     * Format data from database
+     * Note: The query function now automatically converts snake_case to camelCase,
+     * so this method just returns the row as-is. Override in subclasses if you need
+     * additional transformation (e.g., parsing JSON fields).
      */
     formatFromDb(row) {
-        const formatted = {};
-        for (const [key, value] of Object.entries(row)) {
-            // Convert snake_case key to camelCase to check if it's in camelCaseFields
-            const camelKey = this.toCamelCase(key);
-            if (this.camelCaseFields.includes(camelKey)) {
-                formatted[camelKey] = value;
-            }
-            else {
-                formatted[key] = value;
-            }
-        }
-        return formatted;
+        return row;
     }
     /**
      * Format data for database (camelCase to snake_case)

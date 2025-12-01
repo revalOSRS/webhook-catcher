@@ -63,7 +63,7 @@ export async function requireDiscordAdmin(req, res, next) {
         }
         const member = members[0];
         // Verify member code matches and member is active
-        if (code !== member.member_code || !member.is_active) {
+        if (code !== member.memberCode || !member.isActive) {
             return res.status(403).json({
                 status: 'error',
                 message: 'Access denied'
@@ -134,8 +134,8 @@ export async function requireMemberAuth(req, res, next) {
         }
         const member = members[0];
         // Verify both authentication methods match
-        const memberCodeMatches = code === member.member_code;
-        const discordIdMatches = discordId === member.discord_id;
+        const memberCodeMatches = code === member.memberCode;
+        const discordIdMatches = discordId === member.discordId;
         if (!memberCodeMatches || !discordIdMatches) {
             return res.status(403).json({
                 status: 'error',
@@ -143,7 +143,7 @@ export async function requireMemberAuth(req, res, next) {
             });
         }
         // Check if member is active
-        if (!member.is_active) {
+        if (!member.isActive) {
             return res.status(403).json({
                 status: 'error',
                 message: 'Member account is inactive'

@@ -107,7 +107,7 @@ router.post('/:teamId/members', requireAdmin, async (req, res) => {
         const team = await battleshipService.getTeamById(teamId);
         if (team) {
             await battleshipService.logEventAction({
-                event_id: team.event_id,
+                event_id: team.eventId,
                 action_type: 'member_added',
                 team_id: teamId,
                 actor_discord_id: discord_id,

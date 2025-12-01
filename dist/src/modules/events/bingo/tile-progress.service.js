@@ -19,7 +19,9 @@ import { calculateValueDropProgress } from './calculators/value-drop.calculator.
 import { calculateSpeedrunProgress } from './calculators/speedrun.calculator.js';
 import { calculateBaGamblesProgress } from './calculators/ba-gambles.calculator.js';
 import { calculateExperienceProgress } from './calculators/experience.calculator.js';
+import { calculateChatProgress } from './calculators/chat.calculator.js';
 import { DiscordNotificationsService } from './discord-notifications.service.js';
+import { EffectsService } from './effects.service.js';
 import { BingoTileMatchType, BingoTileRequirementType } from './types/bingo-requirements.type.js';
 import { BingoTileCompletionType } from './types/bingo-tile-completion-type.type.js';
 /**
@@ -131,7 +133,7 @@ export class TileProgressService {
     `, [osrsAccountId]);
         if (memberships.length === 0)
             return [];
-        const teamIds = memberships.map(m => m.team_id);
+        const teamIds = memberships.map(m => m.teamId);
         // Get board tiles for these teams
         // Include completed tiles with tiers so we can track incomplete tier progress
         const tiles = await query(`
@@ -151,20 +153,20 @@ export class TileProgressService {
             AND jsonb_array_length(bt.requirements->'tiers') > 0))
     `, [teamIds]);
         return tiles.map((tile) => {
-            const membership = memberships.find(m => m.team_id === tile.team_id);
+            const membership = memberships.find(m => m.teamId === tile.teamId);
             return {
                 id: tile.id,
-                boardId: tile.board_id,
-                tileId: tile.tile_id,
+                boardId: tile.boardId,
+                tileId: tile.tileId,
                 position: tile.position,
-                isCompleted: tile.is_completed,
-                teamId: tile.team_id,
-                eventId: membership?.event_id || '',
-                eventStartDate: membership?.event_start_date || new Date(),
+                isCompleted: tile.isCompleted,
+                teamId: tile.teamId,
+                eventId: membership?.eventId || '',
+                eventStartDate: membership?.eventStartDate || new Date(),
                 requirements: tile.requirements,
-                tileTask: tile.tile_task,
-                eventName: tile.event_name,
-                teamName: tile.team_name
+                tileTask: tile.tileTask,
+                eventName: tile.eventName,
+                teamName: tile.teamName
             };
         });
     };
@@ -337,6 +339,8 @@ export class TileProgressService {
                 return { ...base, requirementType: type, skill: '', currentTotalXp: 0, targetXp: 0 };
             case BingoTileRequirementType.BA_GAMBLES:
                 return { ...base, requirementType: type, currentTotalGambles: 0 };
+            case BingoTileRequirementType.CHAT:
+                return { ...base, requirementType: type, targetCount: 0, currentTotalCount: 0 };
             default:
                 return { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 };
         }
@@ -479,15 +483,23 @@ export class TileProgressService {
      * Calculate regular (non-speedrun) tiered progress.
      *
      * For non-speedrun tiers (item drops, experience, etc.), progress accumulates
-     * and we only process one matching tier per event. Completing a higher tier
-     * auto-completes all lower tiers.
+     * across events. After calculating new progress, we check ALL tiers to see
+     * which ones are now complete based on the final progressValue.
+     *
+     * This allows scenarios like:
+     * - Tier 1: Get 1 item from list (totalAmount: 1)
+     * - Tier 2: Get 2 items from list (totalAmount: 2)
+     * - Tier 3: Get 4 items from list (totalAmount: 4)
+     *
+     * If you get 3 items, Tiers 1 and 2 are both completed.
      *
      * @returns Progress with accumulated values and tier completions
      */
     calculateRegularTieredProgress = async (event, requirements, existing, eventStartDate, completedTierNumbers, memberId, osrsAccountId, playerName) => {
         const newCompletedTiers = [...(existing?.progressMetadata?.completedTiers || [])];
         const updatedCompletedNumbers = [...completedTierNumbers];
-        // Find the first matching tier
+        // Find the first matching tier to use its calculator for progress tracking
+        let tierResult = null;
         for (const tier of requirements.tiers) {
             const tierReq = {
                 matchType: BingoTileMatchType.ALL,
@@ -496,48 +508,125 @@ export class TileProgressService {
             };
             if (!matchesRequirement(event, tierReq))
                 continue;
-            const tierResult = await this.calculateRequirementProgress(event, tier.requirement, existing, eventStartDate, tier, memberId, osrsAccountId, playerName);
-            if (tierResult.isCompleted && !updatedCompletedNumbers.includes(tier.tier)) {
+            // Calculate progress using this tier's requirement
+            // This accumulates items/xp/etc. into progressValue
+            tierResult = await this.calculateRequirementProgress(event, tier.requirement, existing, eventStartDate, tier, memberId, osrsAccountId, playerName);
+            // Only need to calculate once - progress is cumulative
+            break;
+        }
+        // If no matching tier found, return existing progress
+        if (!tierResult) {
+            if (existing) {
+                return {
+                    progressValue: existing.progressValue,
+                    progressMetadata: existing.progressMetadata,
+                    isCompleted: (existing.progressMetadata.completedTiers?.length || 0) > 0
+                };
+            }
+            return this.buildEmptyProgress(null, requirements);
+        }
+        // Now check ALL tiers to see which are complete based on the new progressValue
+        // Sort tiers by tier number (ascending) to process in order
+        const sortedTiers = [...requirements.tiers].sort((a, b) => a.tier - b.tier);
+        for (const tier of sortedTiers) {
+            if (updatedCompletedNumbers.includes(tier.tier))
+                continue;
+            // Check if this tier is now complete based on current progress
+            const isThisTierComplete = this.isTierComplete(tier.requirement, tierResult.progressValue, tierResult.progressMetadata);
+            if (isThisTierComplete) {
                 newCompletedTiers.push({
                     tier: tier.tier,
                     completedAt: new Date().toISOString(),
                     completedByOsrsAccountId: osrsAccountId || 0
                 });
                 updatedCompletedNumbers.push(tier.tier);
-                // Auto-complete lower tiers
-                for (const lowerTier of requirements.tiers.filter(t => t.tier < tier.tier)) {
-                    if (!updatedCompletedNumbers.includes(lowerTier.tier)) {
-                        newCompletedTiers.push({
-                            tier: lowerTier.tier,
-                            completedAt: new Date().toISOString(),
-                            completedByOsrsAccountId: osrsAccountId || 0
-                        });
-                        updatedCompletedNumbers.push(lowerTier.tier);
+            }
+        }
+        // Update metadata with tier info
+        const updatedMetadata = {
+            ...tierResult.progressMetadata,
+            completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
+            currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
+        };
+        return {
+            progressValue: tierResult.progressValue,
+            progressMetadata: updatedMetadata,
+            isCompleted: newCompletedTiers.length > 0,
+            completedTiers: newCompletedTiers
+        };
+    };
+    /**
+     * Check if a specific tier is complete based on current progress.
+     *
+     * Compares progressValue against the tier's requirement target:
+     * - ITEM_DROP with totalAmount: progressValue >= totalAmount
+     * - ITEM_DROP per-item: each item has met its individual target
+     * - EXPERIENCE: progressValue >= target experience
+     * - BA_GAMBLES: progressValue >= target gambles
+     * - VALUE_DROP: progressValue >= target value
+     * - PET: progressValue >= target pet count
+     *
+     * @param requirement - The tier's requirement definition
+     * @param progressValue - Current accumulated progress value
+     * @param metadata - Current progress metadata (for per-item tracking)
+     * @returns true if the tier's requirement is satisfied
+     */
+    isTierComplete = (requirement, progressValue, metadata) => {
+        switch (requirement.type) {
+            case BingoTileRequirementType.ITEM_DROP: {
+                const itemReq = requirement;
+                // Total amount mode: compare progressValue against totalAmount
+                if (itemReq.totalAmount !== undefined) {
+                    return progressValue >= itemReq.totalAmount;
+                }
+                // Per-item mode: need to check each item has met its target
+                // This requires looking at the metadata's playerContributions
+                const itemMetadata = metadata;
+                if (!itemMetadata.playerContributions)
+                    return false;
+                // Aggregate items across all players
+                const itemTotals = {};
+                for (const player of itemMetadata.playerContributions) {
+                    for (const item of player.items) {
+                        itemTotals[item.itemId] = (itemTotals[item.itemId] ?? 0) + item.quantity;
                     }
                 }
+                // Check each required item meets its target
+                for (const reqItem of itemReq.items) {
+                    const requiredAmount = reqItem.itemAmount ?? 1;
+                    const currentAmount = itemTotals[reqItem.itemId] ?? 0;
+                    if (currentAmount < requiredAmount) {
+                        return false;
+                    }
+                }
+                return true;
             }
-            // Update metadata with tier info
-            const updatedMetadata = {
-                ...tierResult.progressMetadata,
-                completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
-                currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
-            };
-            return {
-                progressValue: tierResult.progressValue,
-                progressMetadata: updatedMetadata,
-                isCompleted: newCompletedTiers.length > 0,
-                completedTiers: newCompletedTiers
-            };
+            case BingoTileRequirementType.EXPERIENCE: {
+                const expReq = requirement;
+                return progressValue >= expReq.experience;
+            }
+            case BingoTileRequirementType.BA_GAMBLES: {
+                const baReq = requirement;
+                return progressValue >= baReq.amount;
+            }
+            case BingoTileRequirementType.VALUE_DROP: {
+                const valueReq = requirement;
+                return progressValue >= valueReq.value;
+            }
+            case BingoTileRequirementType.PET: {
+                const petReq = requirement;
+                return progressValue >= (petReq.amount ?? 1);
+            }
+            case BingoTileRequirementType.CHAT: {
+                const chatReq = requirement;
+                return progressValue >= (chatReq.count ?? 1);
+            }
+            // Speedruns are handled separately in calculateSpeedrunTieredProgress
+            case BingoTileRequirementType.SPEEDRUN:
+                return false;
+            default:
+                return false;
         }
-        // No matching tier - return existing
-        if (existing) {
-            return {
-                progressValue: existing.progressValue,
-                progressMetadata: existing.progressMetadata,
-                isCompleted: (existing.progressMetadata.completedTiers?.length || 0) > 0
-            };
-        }
-        return this.buildEmptyProgress(null, requirements);
     };
     /**
      * Calculate progress for a specific requirement type.
@@ -567,6 +656,8 @@ export class TileProgressService {
                 return calculateBaGamblesProgress(event, req, existing, memberId, osrsAccountId, playerName);
             case BingoTileRequirementType.EXPERIENCE:
                 return await calculateExperienceProgress(event, req, existing, eventStartDate, memberId, osrsAccountId, playerName);
+            case BingoTileRequirementType.CHAT:
+                return calculateChatProgress(event, req, existing, memberId, osrsAccountId, playerName);
             default:
                 return this.buildEmptyProgress(null, { matchType: BingoTileMatchType.ALL, requirements: [req], tiers: [] });
         }
@@ -638,6 +729,7 @@ export class TileProgressService {
     };
     /**
      * Mark a tile as completed in both progress and board_tiles tables.
+     * Also checks for row/column completions and grants any configured effects.
      */
     markTileCompleted = async (boardTileId, completedByOsrsAccountId) => {
         await query(`
@@ -650,6 +742,19 @@ export class TileProgressService {
       SET is_completed = true, completed_at = CURRENT_TIMESTAMP
       WHERE id = $1 AND is_completed = false
     `, [boardTileId]);
+        // Check for line completions and grant effects
+        try {
+            // Get the tile's position and board ID
+            const tileInfo = await query('SELECT board_id, position FROM bingo_board_tiles WHERE id = $1', [boardTileId]);
+            if (tileInfo.length > 0) {
+                const { boardId, position } = tileInfo[0];
+                await EffectsService.checkLineCompletions(boardId, position);
+            }
+        }
+        catch (error) {
+            // Log but don't fail the tile completion
+            console.error('Error checking line completions:', error);
+        }
     };
     /**
      * Send Discord notification if there's a new tier or tile completion.

@@ -1,16 +1,139 @@
 import { query, queryOne } from '../connection.js'
-import type {
-  Event,
-  BattleshipBingoEvent,
-  Team,
-  TeamMember,
-  BattleshipBingoShip,
-  BattleshipBingoTile,
-  BattleshipBingoTileProgress,
-  BattleshipBingoActiveEffect,
-  BattleshipBingoBombAction,
-  EventLog
-} from '../types/battleship.types.js'
+
+// ==================== LOCAL TYPE DEFINITIONS ====================
+// These types were previously in ../types/battleship.types.js
+
+interface Event {
+  id: string;
+  eventType: string;
+  name: string;
+  description?: string;
+  status: string;
+  startTime: Date;
+  endTime: Date;
+  createdByDiscordId: string;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface BattleshipBingoEvent {
+  id: string;
+  eventId: string;
+  boardConfig: Record<string, unknown>;
+  rulesConfig: Record<string, unknown>;
+  totalTiles: number;
+  createdAt: Date;
+}
+
+interface Team {
+  id: string;
+  eventId: string;
+  name: string;
+  color: string;
+  score: number;
+  tilesCompleted: number;
+  bombsRemaining: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface TeamMember {
+  id: string;
+  teamId: string;
+  discordId: string;
+  memberCode?: string;
+  role: 'captain' | 'member';
+  individualScore: number;
+  tilesCompleted: number;
+  joinedAt: Date;
+}
+
+interface BattleshipBingoShip {
+  id: string;
+  eventId: string;
+  teamId: string;
+  shipName?: string;
+  size: number;
+  coordinates: string[];
+  segmentsDestroyed: number;
+  isSunk: boolean;
+  destroyedAt?: Date;
+  createdAt: Date;
+}
+
+interface BattleshipBingoTile {
+  id: string;
+  eventId: string;
+  coordinate: string;
+  taskId: string;
+  buffDebuffId?: string;
+  basePoints: number;
+  status: 'unclaimed' | 'claimed' | 'completed';
+  claimedByTeamId?: string;
+  claimedAt?: Date;
+  completedByDiscordId?: string;
+  completedAt?: Date;
+  contributors?: Record<string, unknown>;
+  bonusTierAchieved?: string;
+  completionValue?: number;
+  totalPointsAwarded?: number;
+  proofUrl?: string;
+  isBombed: boolean;
+  bombedByTeamId?: string;
+  bombedAt?: Date;
+  createdAt: Date;
+}
+
+interface BattleshipBingoTileProgress {
+  id: string;
+  tileId: string;
+  discordId: string;
+  progressAmount: number;
+  progressPercentage: number;
+  contributionType?: string;
+  currentBestValue?: number;
+  proofUrl?: string;
+  notes?: string;
+  lastUpdated: Date;
+  createdAt: Date;
+}
+
+interface BattleshipBingoBombAction {
+  id: string;
+  eventId: string;
+  bombingTeamId: string;
+  targetCoordinate: string;
+  bombedByDiscordId: string;
+  result: 'hit' | 'miss' | 'sunk_ship' | 'blocked';
+  shipId?: string;
+  pointsAwarded: number;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
+
+interface EventLog {
+  id: string;
+  eventId: string;
+  actionType: string;
+  actorDiscordId?: string;
+  teamId?: string;
+  details: Record<string, unknown>;
+  createdAt: Date;
+}
+
+// BattleshipBingoActiveEffect not used in this file but kept for completeness
+interface BattleshipBingoActiveEffect {
+  id: string;
+  eventId: string;
+  teamId: string;
+  buffDebuffId: string;
+  source: string;
+  expiresAt?: Date;
+  remainingUses?: number;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
 
 // ==================== EVENT MANAGEMENT ====================
 

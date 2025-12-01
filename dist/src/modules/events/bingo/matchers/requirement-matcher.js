@@ -47,6 +47,7 @@ export const matchesRequirement = (event, requirements) => {
  * - SPEEDRUN → matchesSpeedrun
  * - EXPERIENCE → matchesExperience
  * - BA_GAMBLES → matchesBaGambles
+ * - CHAT → matchesChat
  *
  * Returns false for unknown requirement types.
  */
@@ -64,6 +65,8 @@ const matchesSimplifiedRequirement = (event, requirement) => {
             return matchesExperience(event, requirement);
         case BingoTileRequirementType.BA_GAMBLES:
             return matchesBaGambles(event, requirement);
+        case BingoTileRequirementType.CHAT:
+            return matchesChat(event, requirement);
         default:
             return false;
     }
@@ -199,4 +202,39 @@ const matchesBaGambles = (event, requirement) => {
         return false;
     const baData = event.data;
     return baData.gambleCount >= requirement.amount;
+};
+/**
+ * Checks if a chat event matches the required message pattern.
+ *
+ * Matching logic:
+ * 1. First checks if the message type matches (if specified)
+ * 2. Then checks if the message content matches:
+ *    - If exactMatch is true: message must equal the requirement exactly (case-insensitive)
+ *    - If exactMatch is false (default): message must contain the requirement (case-insensitive)
+ *
+ * Examples:
+ * - Message "You've completed Monkey Madness!" matches requirement "completed Monkey Madness"
+ * - With exactMatch: true, "hello" only matches "hello", not "hello world"
+ *
+ * Returns false if event is not a CHAT event.
+ */
+const matchesChat = (event, requirement) => {
+    if (event.eventType !== UnifiedEventType.CHAT)
+        return false;
+    const chatData = event.data;
+    // Check message type if specified
+    if (requirement.messageType) {
+        if (chatData.messageType.toUpperCase() !== requirement.messageType.toUpperCase()) {
+            return false;
+        }
+    }
+    // Check message content
+    const eventMessage = chatData.message.toLowerCase();
+    const requiredMessage = requirement.message.toLowerCase();
+    if (requirement.exactMatch) {
+        return eventMessage === requiredMessage;
+    }
+    else {
+        return eventMessage.includes(requiredMessage);
+    }
 };

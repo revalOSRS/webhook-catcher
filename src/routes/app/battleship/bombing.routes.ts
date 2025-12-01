@@ -30,7 +30,7 @@ router.post('/', async (req, res) => {
       })
     }
 
-    if (team.bombs_remaining <= 0) {
+    if (team.bombsRemaining <= 0) {
       return res.status(400).json({
         status: 'error',
         message: 'No bombs remaining for this team'
@@ -47,7 +47,7 @@ router.post('/', async (req, res) => {
     }
 
     // Check if tile is already bombed
-    if (tile.is_bombed) {
+    if (tile.isBombed) {
       return res.status(400).json({
         status: 'error',
         message: 'This tile has already been bombed'
@@ -55,7 +55,7 @@ router.post('/', async (req, res) => {
     }
 
     // Check if it's the team's own tile
-    if (tile.claimed_by_team_id === bombing_team_id) {
+    if (tile.claimedByTeamId === bombing_team_id) {
       return res.status(400).json({
         status: 'error',
         message: 'Cannot bomb your own team\'s tile'
@@ -78,7 +78,7 @@ router.post('/', async (req, res) => {
       // Damage the ship
       const damagedShip = await battleshipService.damageShip(ship.id)
       
-      if (damagedShip && damagedShip.is_sunk) {
+      if (damagedShip && damagedShip.isSunk) {
         result = 'sunk_ship'
         pointsAwarded = 500 // Bonus for sinking a ship
       }
@@ -87,7 +87,7 @@ router.post('/', async (req, res) => {
       await battleshipService.markTileBombed(tile.id, bombing_team_id)
     } else {
       // Miss - check if tile is claimed
-      if (tile.claimed_by_team_id) {
+      if (tile.claimedByTeamId) {
         // Still mark as bombed, but no points
         await battleshipService.markTileBombed(tile.id, bombing_team_id)
       }

@@ -456,7 +456,9 @@ export class EffectsService {
     });
 
     return {
-      ...result,
+      success: result.success,
+      action: EffectAction.ACTIVATED,
+      result: result.result,
       earnedEffect: updatedEffect!
     };
   };

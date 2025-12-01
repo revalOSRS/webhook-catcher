@@ -123,8 +123,8 @@ router.get('/:id/statistics', async (req, res) => {
       LIMIT 5
     `, [id]);
         const stats = boardStats[0];
-        const totalTiles = parseInt(stats?.total_tiles || '0');
-        const completedTiles = parseInt(stats?.completed_tiles || '0');
+        const totalTiles = parseInt(stats?.totalTiles || '0');
+        const completedTiles = parseInt(stats?.completedTiles || '0');
         const completionPercentage = totalTiles > 0 ? (completedTiles / totalTiles) * 100 : 0;
         res.json({
             success: true,
@@ -147,7 +147,7 @@ router.get('/:id/statistics', async (req, res) => {
                     completed: completedTiles,
                     completionPercentage: Math.round(completionPercentage * 100) / 100
                 },
-                totalProgressValue: parseFloat(stats?.total_progress_value || '0')
+                totalProgressValue: parseFloat(stats?.totalProgressValue || '0')
             }
         });
     }
@@ -204,9 +204,9 @@ router.get('/:id/leaderboard', async (req, res) => {
                 leaderboard: leaderboard.map((team, index) => ({
                     rank: index + 1,
                     ...team,
-                    memberCount: parseInt(team.member_count),
-                    tilesCompleted: parseInt(team.tiles_completed),
-                    totalTiles: parseInt(team.total_tiles)
+                    memberCount: parseInt(team.memberCount),
+                    tilesCompleted: parseInt(team.tilesCompleted),
+                    totalTiles: parseInt(team.totalTiles)
                 }))
             }
         });
@@ -227,21 +227,21 @@ router.get('/:id/leaderboard', async (req, res) => {
  */
 router.post('/', async (req, res) => {
     try {
-        const { name, description, event_type, status = 'draft', start_date, end_date, config = {} } = req.body;
+        const { name, description, eventType, status = 'draft', startDate, endDate, config = {} } = req.body;
         // Validation
-        if (!name || !event_type) {
+        if (!name || !eventType) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields',
-                required: ['name', 'event_type']
+                required: ['name', 'eventType']
             });
         }
         const validEventTypes = Object.values(EventType);
-        if (!validEventTypes.includes(event_type)) {
+        if (!validEventTypes.includes(eventType)) {
             return res.status(400).json({
                 success: false,
-                error: 'Invalid event_type',
-                valid_types: validEventTypes
+                error: 'Invalid eventType',
+                validTypes: validEventTypes
             });
         }
         const validStatuses = Object.values(EventStatus);
@@ -249,11 +249,11 @@ router.post('/', async (req, res) => {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid status',
-                valid_statuses: validStatuses
+                validStatuses: validStatuses
             });
         }
         // Validate bingo config if provided
-        if (event_type === EventType.BINGO && config.board) {
+        if (eventType === EventType.BINGO && config.board) {
             const board = config.board;
             if (board.columns && (board.columns < 1 || board.columns > 20)) {
                 return res.status(400).json({
@@ -271,10 +271,10 @@ router.post('/', async (req, res) => {
         const event = await eventsEntity.create({
             name,
             description,
-            eventType: event_type,
+            eventType: eventType,
             status: status,
-            startDate: start_date ? new Date(start_date) : new Date(),
-            endDate: end_date ? new Date(end_date) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            startDate: startDate ? new Date(startDate) : new Date(),
+            endDate: endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             config
         });
         res.status(201).json({
@@ -300,7 +300,7 @@ router.post('/', async (req, res) => {
 router.post('/:id/duplicate', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, include_teams = false } = req.body;
+        const { name, includeTeams = false } = req.body;
         const original = await eventsEntity.findById(id);
         if (!original) {
             return res.status(404).json({
@@ -320,7 +320,7 @@ router.post('/:id/duplicate', async (req, res) => {
         });
         let teamsCreated = 0;
         // Optionally duplicate teams
-        if (include_teams) {
+        if (includeTeams) {
             const teams = await teamsEntity.findByEventId(id);
             for (const team of teams) {
                 await teamsEntity.create({
@@ -357,7 +357,7 @@ router.post('/:id/duplicate', async (req, res) => {
 router.patch('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, description, status, start_date, end_date, config } = req.body;
+        const { name, description, status, startDate, endDate, config } = req.body;
         const existing = await eventsEntity.findById(id);
         if (!existing) {
             return res.status(404).json({
@@ -372,10 +372,10 @@ router.patch('/:id', async (req, res) => {
             updateData.description = description;
         if (status !== undefined)
             updateData.status = status;
-        if (start_date !== undefined)
-            updateData.startDate = new Date(start_date);
-        if (end_date !== undefined)
-            updateData.endDate = new Date(end_date);
+        if (startDate !== undefined)
+            updateData.startDate = new Date(startDate);
+        if (endDate !== undefined)
+            updateData.endDate = new Date(endDate);
         if (config !== undefined)
             updateData.config = config;
         const updatedEvent = await eventsEntity.update(id, updateData);
@@ -515,13 +515,13 @@ router.post('/:id/recalculate-scores', async (req, res) => {
         for (const team of teams) {
             // Calculate score from completed tiles
             const scoreResult = await query(`
-        SELECT COALESCE(SUM(bt.base_points), 0) as total_points
+        SELECT COALESCE(SUM(bt.points), 0) as total_points
         FROM bingo_board_tiles bbt
         JOIN bingo_boards bb ON bbt.board_id = bb.id
         JOIN bingo_tiles bt ON bbt.tile_id = bt.id
         WHERE bb.team_id = $1 AND bb.event_id = $2 AND bbt.is_completed = true
       `, [team.id, id]);
-            const newScore = parseInt(scoreResult[0]?.total_points || '0');
+            const newScore = parseInt(scoreResult[0]?.totalPoints || '0');
             if (newScore !== team.score) {
                 await teamsEntity.updateScore(team.id, newScore);
                 results.push({

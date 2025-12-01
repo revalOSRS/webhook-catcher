@@ -138,7 +138,7 @@ router.get('/tiles', async (req, res) => {
         bbt.id, bbt.board_id, bbt.tile_id, bbt.position,
         bbt.is_completed, bbt.completed_at, bbt.metadata,
         bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
-        bt.base_points, bt.requirements,
+        bt.points, bt.requirements,
         btp.id as progress_id,
         btp.progress_value,
         btp.progress_metadata,

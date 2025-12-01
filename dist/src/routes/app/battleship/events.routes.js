@@ -87,7 +87,7 @@ router.get('/:eventId', async (req, res) => {
             });
         }
         // If it's a battleship bingo event, include that data
-        if (event.event_type === 'battleship_bingo') {
+        if (event.eventType === 'battleship_bingo') {
             const bbEvent = await battleshipService.getBattleshipBingoEvent(eventId);
             return res.status(200).json({
                 status: 'success',

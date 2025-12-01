@@ -106,7 +106,7 @@ router.get('/:id', async (req, res) => {
 				bt.difficulty,
 				bt.icon,
 				bt.description,
-				bt.base_points
+				bt.points
 			FROM bingo_board_tiles bbt
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			WHERE bbt.board_id = $1
@@ -127,15 +127,15 @@ router.get('/:id', async (req, res) => {
 			ORDER BY bble.line_type, bble.line_identifier
 		`, [id]);
         // Separate row and column effects
-        const rowEffects = lineEffects.filter(e => e.line_type === 'row');
-        const columnEffects = lineEffects.filter(e => e.line_type === 'column');
+        const rowEffects = lineEffects.filter(e => e.lineType === 'row');
+        const columnEffects = lineEffects.filter(e => e.lineType === 'column');
         res.json({
             success: true,
             data: {
                 ...board,
                 tiles,
-                row_effects: rowEffects,
-                column_effects: columnEffects
+                rowEffects,
+                columnEffects
             }
         });
     }
@@ -234,10 +234,10 @@ router.patch('/:id', async (req, res) => {
                 error: 'Board not found'
             });
         }
-        // If updating team_id, validate it belongs to the event
-        if (updates.team_id !== undefined) {
-            if (updates.team_id) {
-                const teamCheck = await query('SELECT id FROM event_teams WHERE id = $1 AND event_id = $2', [updates.team_id, existing[0].event_id]);
+        // If updating teamId, validate it belongs to the event
+        if (updates.teamId !== undefined) {
+            if (updates.teamId) {
+                const teamCheck = await query('SELECT id FROM event_teams WHERE id = $1 AND event_id = $2', [updates.teamId, existing[0].eventId]);
                 if (teamCheck.length === 0) {
                     return res.status(404).json({
                         success: false,
@@ -246,14 +246,21 @@ router.patch('/:id', async (req, res) => {
                 }
             }
         }
-        // Build dynamic update query
-        const allowedFields = ['name', 'description', 'columns', 'rows', 'team_id', 'metadata'];
+        // Build dynamic update query - map camelCase input to snake_case columns
+        const fieldMapping = {
+            name: 'name',
+            description: 'description',
+            columns: 'columns',
+            rows: 'rows',
+            teamId: 'team_id',
+            metadata: 'metadata'
+        };
         const updateFields = [];
         const values = [];
         let paramIndex = 1;
         for (const [key, value] of Object.entries(updates)) {
-            if (allowedFields.includes(key)) {
-                updateFields.push(`${key} = $${paramIndex}`);
+            if (fieldMapping[key]) {
+                updateFields.push(`${fieldMapping[key]} = $${paramIndex}`);
                 if (key === 'metadata') {
                     values.push(JSON.stringify(value));
                 }
@@ -267,7 +274,7 @@ router.patch('/:id', async (req, res) => {
             return res.status(400).json({
                 success: false,
                 error: 'No valid fields to update',
-                allowed_fields: allowedFields
+                allowedFields: Object.keys(fieldMapping)
             });
         }
         values.push(id);
@@ -310,7 +317,7 @@ router.delete('/:id', async (req, res) => {
         res.json({
             success: true,
             message: 'Board deleted successfully',
-            deleted_id: result[0].id
+            deletedId: result[0].id
         });
     }
     catch (error) {
@@ -333,9 +340,9 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/tiles', async (req, res) => {
     try {
         const { id } = req.params;
-        const { tile_id, position, metadata = {} } = req.body;
+        const { tileId, position, metadata = {} } = req.body;
         // Validation
-        if (!tile_id || !position) {
+        if (!tileId || !position) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields',
@@ -351,7 +358,7 @@ router.post('/:id/tiles', async (req, res) => {
             });
         }
         // Check if tile exists
-        const tileCheck = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile_id]);
+        const tileCheck = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tileId]);
         if (tileCheck.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -373,7 +380,7 @@ router.post('/:id/tiles', async (req, res) => {
 			)
 			VALUES ($1, $2, $3, $4)
 			RETURNING *
-		`, [id, tile_id, position, JSON.stringify(metadata)]);
+		`, [id, tileId, position, JSON.stringify(metadata)]);
         res.status(201).json({
             success: true,
             data: result[0],

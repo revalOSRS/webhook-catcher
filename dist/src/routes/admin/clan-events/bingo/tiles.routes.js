@@ -1,59 +1,69 @@
 import { Router } from 'express';
-import { query } from '../../../../db/connection.js';
+import { BingoTilesEntity } from '../../../../modules/events/bingo/entities/bingo-tiles.entity.js';
 import { validateRequirement } from '../../../../utils/requirement-validator.js';
 const router = Router();
+const tilesEntity = new BingoTilesEntity();
+/**
+ * Helper to map tile to response format (camelCase)
+ */
+const mapTileToResponse = (tile) => ({
+    id: tile.id,
+    task: tile.task,
+    description: tile.description,
+    category: tile.category,
+    difficulty: tile.difficulty,
+    icon: tile.icon,
+    requirements: tile.requirements,
+    points: tile.points,
+    createdAt: tile.createdAt,
+    updatedAt: tile.updatedAt
+});
 /**
  * GET /api/admin/clan-events/bingo/tiles
  * Get all tiles from the library with optional filtering
- * Query params: category, difficulty, is_active, search, limit, offset
+ * Query params: category, difficulty, search, limit, offset
  */
 router.get('/', async (req, res) => {
     try {
-        const { category, difficulty, is_active, search, limit = '100', offset = '0' } = req.query;
-        let sql = 'SELECT * FROM bingo_tiles WHERE 1=1';
-        const params = [];
-        let paramIndex = 1;
-        if (category) {
-            sql += ` AND category = $${paramIndex}`;
-            params.push(category);
-            paramIndex++;
-        }
-        if (difficulty) {
-            sql += ` AND difficulty = $${paramIndex}`;
-            params.push(difficulty);
-            paramIndex++;
-        }
-        if (is_active !== undefined) {
-            sql += ` AND is_active = $${paramIndex}`;
-            params.push(is_active === 'true');
-            paramIndex++;
-        }
+        const { category, difficulty, search, limit = '100', offset = '0' } = req.query;
+        // Use entity for basic operations, raw query for filtering
+        let tiles;
         if (search) {
-            sql += ` AND (task ILIKE $${paramIndex} OR description ILIKE $${paramIndex} OR id ILIKE $${paramIndex})`;
-            params.push(`%${search}%`);
-            paramIndex++;
+            // Use search method
+            tiles = await tilesEntity.search(search);
         }
-        sql += ` ORDER BY category, difficulty, task LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-        params.push(parseInt(limit), parseInt(offset));
-        const tiles = await query(sql, params);
-        // Get counts by category and difficulty
-        const stats = await query(`
-			SELECT 
-				COUNT(*) as total,
-				COUNT(*) FILTER (WHERE is_active = true) as active,
-				COUNT(*) FILTER (WHERE difficulty = 'easy') as easy,
-				COUNT(*) FILTER (WHERE difficulty = 'medium') as medium,
-				COUNT(*) FILTER (WHERE difficulty = 'hard') as hard,
-				COUNT(*) FILTER (WHERE difficulty = 'extreme') as extreme
-			FROM bingo_tiles
-		`);
+        else if (category) {
+            // Filter by category
+            tiles = await tilesEntity.findByCategory(category);
+        }
+        else if (difficulty) {
+            // Filter by difficulty
+            tiles = await tilesEntity.findByDifficulty(difficulty);
+        }
+        else {
+            // Get all
+            tiles = await tilesEntity.findAll();
+        }
+        // Apply limit/offset manually (for now)
+        const offsetNum = parseInt(offset);
+        const limitNum = parseInt(limit);
+        const paginatedTiles = tiles.slice(offsetNum, offsetNum + limitNum);
+        // Calculate stats
+        const stats = {
+            total: tiles.length,
+            easy: tiles.filter(t => t.difficulty === 'easy').length,
+            medium: tiles.filter(t => t.difficulty === 'medium').length,
+            hard: tiles.filter(t => t.difficulty === 'hard').length,
+            extreme: tiles.filter(t => t.difficulty === 'extreme').length
+        };
         res.json({
             success: true,
-            data: tiles,
-            stats: stats[0],
+            data: paginatedTiles.map(mapTileToResponse),
+            stats,
             pagination: {
-                limit: parseInt(limit),
-                offset: parseInt(offset)
+                limit: limitNum,
+                offset: offsetNum,
+                total: tiles.length
             }
         });
     }
@@ -67,34 +77,52 @@ router.get('/', async (req, res) => {
     }
 });
 /**
+ * GET /api/admin/clan-events/bingo/tiles/categories/list
+ * Get list of all unique categories
+ */
+router.get('/categories/list', async (req, res) => {
+    try {
+        const tiles = await tilesEntity.findAll();
+        // Group by category
+        const categoryMap = new Map();
+        tiles.forEach(tile => {
+            categoryMap.set(tile.category, (categoryMap.get(tile.category) || 0) + 1);
+        });
+        const categories = Array.from(categoryMap.entries()).map(([category, tileCount]) => ({
+            category,
+            tileCount
+        })).sort((a, b) => a.category.localeCompare(b.category));
+        res.json({
+            success: true,
+            data: categories
+        });
+    }
+    catch (error) {
+        console.error('Error fetching categories:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch categories',
+            message: error.message
+        });
+    }
+});
+/**
  * GET /api/admin/clan-events/bingo/tiles/:id
  * Get a single tile by ID
  */
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const tiles = await query('SELECT * FROM bingo_tiles WHERE id = $1', [id]);
-        if (tiles.length === 0) {
+        const tile = await tilesEntity.findById(id);
+        if (!tile) {
             return res.status(404).json({
                 success: false,
                 error: 'Tile not found'
             });
         }
-        // Get usage stats for this tile
-        const usageStats = await query(`
-			SELECT 
-				COUNT(DISTINCT bbt.board_id) as used_on_boards,
-				COUNT(*) FILTER (WHERE bbt.is_completed = true) as times_completed,
-				COUNT(*) as total_placements
-			FROM bingo_board_tiles bbt
-			WHERE bbt.tile_id = $1
-		`, [id]);
         res.json({
             success: true,
-            data: {
-                ...tiles[0],
-                usage_stats: usageStats[0]
-            }
+            data: mapTileToResponse(tile)
         });
     }
     catch (error) {
@@ -109,24 +137,24 @@ router.get('/:id', async (req, res) => {
 /**
  * POST /api/admin/clan-events/bingo/tiles
  * Create a new tile in the library
- * Body: { id, task, category, difficulty, icon, description, base_points, requirements, metadata }
+ * Body: { id, task, category, difficulty, icon, description, points, requirements }
  */
 router.post('/', async (req, res) => {
     try {
-        const { id, task, category, difficulty, icon, description, base_points, requirements = [], metadata = {}, is_active = true } = req.body;
+        const { id, task, category, difficulty, icon, description, points = 0, requirements = {} } = req.body;
         // Validation
-        if (!id || !task || !category || !difficulty || base_points === undefined) {
+        if (!id || !task || !category || !difficulty) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields',
-                required: ['id', 'task', 'category', 'difficulty', 'base_points']
+                required: ['id', 'task', 'category', 'difficulty']
             });
         }
-        // Validate base_points is a number
-        if (typeof base_points !== 'number' || base_points < 0) {
+        // Validate points is a number
+        if (typeof points !== 'number' || points < 0) {
             return res.status(400).json({
                 success: false,
-                error: 'base_points must be a non-negative number'
+                error: 'points must be a non-negative number'
             });
         }
         const validDifficulties = ['easy', 'medium', 'hard', 'extreme'];
@@ -134,45 +162,41 @@ router.post('/', async (req, res) => {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid difficulty',
-                valid_difficulties: validDifficulties
+                validDifficulties
             });
         }
         // Validate requirements if provided
-        if (requirements) {
+        if (requirements && Object.keys(requirements).length > 0) {
             const validation = validateRequirement(requirements);
             if (!validation.valid) {
                 return res.status(400).json({
                     success: false,
                     error: 'Invalid requirements',
-                    validation_errors: validation.errors
+                    validationErrors: validation.errors
                 });
             }
         }
         // Check if ID already exists
-        const existing = await query('SELECT id FROM bingo_tiles WHERE id = $1', [id]);
-        if (existing.length > 0) {
+        const existing = await tilesEntity.findById(id);
+        if (existing) {
             return res.status(409).json({
                 success: false,
                 error: 'Tile ID already exists'
             });
         }
-        const result = await query(`
-			INSERT INTO bingo_tiles (
-				id, task, category, difficulty, icon, description,
-				base_points, requirements, metadata, is_active
-			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			RETURNING *
-		`, [
-            id, task, category, difficulty, icon, description,
-            base_points,
-            JSON.stringify(requirements),
-            JSON.stringify(metadata),
-            is_active
-        ]);
+        const tile = await tilesEntity.createTile({
+            id,
+            task,
+            category,
+            difficulty,
+            icon,
+            description,
+            points,
+            requirements
+        });
         res.status(201).json({
             success: true,
-            data: result[0],
+            data: mapTileToResponse(tile),
             message: 'Tile created successfully'
         });
     }
@@ -208,7 +232,7 @@ router.post('/bulk', async (req, res) => {
             if (!tile.id || !tile.task || !tile.category || !tile.difficulty) {
                 errors.push({
                     index: i,
-                    tile_id: tile.id,
+                    tileId: tile.id,
                     error: 'Missing required fields'
                 });
                 continue;
@@ -216,69 +240,51 @@ router.post('/bulk', async (req, res) => {
             if (!validDifficulties.includes(tile.difficulty)) {
                 errors.push({
                     index: i,
-                    tile_id: tile.id,
+                    tileId: tile.id,
                     error: `Invalid difficulty: ${tile.difficulty}`
                 });
                 continue;
             }
-            // Validate base_points
-            if (tile.base_points === undefined || typeof tile.base_points !== 'number' || tile.base_points < 0) {
-                errors.push({
-                    index: i,
-                    tile_id: tile.id,
-                    error: 'base_points is required and must be a non-negative number'
-                });
-                continue;
-            }
             // Validate requirements if provided
-            if (tile.requirements) {
+            if (tile.requirements && Object.keys(tile.requirements).length > 0) {
                 const validation = validateRequirement(tile.requirements);
                 if (!validation.valid) {
                     errors.push({
                         index: i,
-                        tile_id: tile.id,
+                        tileId: tile.id,
                         error: 'Invalid requirements',
-                        validation_errors: validation.errors
+                        validationErrors: validation.errors
                     });
                     continue;
                 }
             }
             try {
                 // Check if ID already exists
-                const existing = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tile.id]);
-                if (existing.length > 0) {
+                const existing = await tilesEntity.findById(tile.id);
+                if (existing) {
                     errors.push({
                         index: i,
-                        tile_id: tile.id,
+                        tileId: tile.id,
                         error: 'Tile ID already exists'
                     });
                     continue;
                 }
-                const result = await query(`
-					INSERT INTO bingo_tiles (
-						id, task, category, difficulty, icon, description,
-						base_points, requirements, metadata, is_active
-					)
-					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-					RETURNING *
-				`, [
-                    tile.id,
-                    tile.task,
-                    tile.category,
-                    tile.difficulty,
-                    tile.icon || null,
-                    tile.description || null,
-                    tile.base_points,
-                    JSON.stringify(tile.requirements || []),
-                    JSON.stringify(tile.metadata || {}),
-                    tile.is_active !== undefined ? tile.is_active : true
-                ]);
-                results.push(result[0]);
+                const created = await tilesEntity.createTile({
+                    id: tile.id,
+                    task: tile.task,
+                    category: tile.category,
+                    difficulty: tile.difficulty,
+                    icon: tile.icon,
+                    description: tile.description,
+                    points: tile.points || 0,
+                    requirements: tile.requirements || {}
+                });
+                results.push(created);
             }
             catch (error) {
                 errors.push({
                     index: i,
-                    tile_id: tile.id,
+                    tileId: tile.id,
                     error: error.message
                 });
             }
@@ -288,7 +294,7 @@ router.post('/bulk', async (req, res) => {
             data: {
                 created: results.length,
                 failed: errors.length,
-                tiles: results,
+                tiles: results.map(mapTileToResponse),
                 errors: errors.length > 0 ? errors : undefined
             },
             message: `Created ${results.length} tiles, ${errors.length} failed`
@@ -312,29 +318,21 @@ router.patch('/:id', async (req, res) => {
         const { id } = req.params;
         const updates = req.body;
         // Check if tile exists
-        const existing = await query('SELECT id FROM bingo_tiles WHERE id = $1', [id]);
-        if (existing.length === 0) {
+        const existing = await tilesEntity.findById(id);
+        if (!existing) {
             return res.status(404).json({
                 success: false,
                 error: 'Tile not found'
             });
         }
-        // Build dynamic update query
-        const allowedFields = [
-            'task', 'category', 'difficulty', 'icon', 'description',
-            'base_points', 'requirements', 'metadata', 'is_active'
-        ];
-        const updateFields = [];
-        const values = [];
-        let paramIndex = 1;
         // Validate requirements if being updated
-        if (updates.requirements) {
+        if (updates.requirements && Object.keys(updates.requirements).length > 0) {
             const validation = validateRequirement(updates.requirements);
             if (!validation.valid) {
                 return res.status(400).json({
                     success: false,
                     error: 'Invalid requirements',
-                    validation_errors: validation.errors
+                    validationErrors: validation.errors
                 });
             }
         }
@@ -345,41 +343,20 @@ router.patch('/:id', async (req, res) => {
                 return res.status(400).json({
                     success: false,
                     error: 'Invalid difficulty',
-                    valid_difficulties: validDifficulties
+                    validDifficulties
                 });
             }
         }
-        for (const [key, value] of Object.entries(updates)) {
-            if (allowedFields.includes(key)) {
-                updateFields.push(`${key} = $${paramIndex}`);
-                // Convert arrays/objects to JSON strings for JSONB fields
-                if (['requirements', 'metadata'].includes(key)) {
-                    values.push(JSON.stringify(value));
-                }
-                else {
-                    values.push(value);
-                }
-                paramIndex++;
-            }
-        }
-        if (updateFields.length === 0) {
-            return res.status(400).json({
+        const tile = await tilesEntity.update(id, updates);
+        if (!tile) {
+            return res.status(500).json({
                 success: false,
-                error: 'No valid fields to update',
-                allowed_fields: allowedFields
+                error: 'Failed to update tile'
             });
         }
-        values.push(id);
-        const sql = `
-			UPDATE bingo_tiles 
-			SET ${updateFields.join(', ')}
-			WHERE id = $${paramIndex}
-			RETURNING *
-		`;
-        const result = await query(sql, values);
         res.json({
             success: true,
-            data: result[0],
+            data: mapTileToResponse(tile),
             message: 'Tile updated successfully'
         });
     }
@@ -395,22 +372,12 @@ router.patch('/:id', async (req, res) => {
 /**
  * DELETE /api/admin/clan-events/bingo/tiles/:id
  * Delete a tile from the library
- * Note: This will fail if the tile is used on any boards (foreign key constraint)
  */
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        // Check if tile is in use
-        const usage = await query('SELECT COUNT(*) as count FROM bingo_board_tiles WHERE tile_id = $1', [id]);
-        if (parseInt(usage[0].count) > 0) {
-            return res.status(409).json({
-                success: false,
-                error: 'Cannot delete tile',
-                message: `This tile is used on ${usage[0].count} board(s). Remove it from all boards first.`
-            });
-        }
-        const result = await query('DELETE FROM bingo_tiles WHERE id = $1 RETURNING id', [id]);
-        if (result.length === 0) {
+        const deleted = await tilesEntity.delete(id);
+        if (!deleted) {
             return res.status(404).json({
                 success: false,
                 error: 'Tile not found'
@@ -419,43 +386,22 @@ router.delete('/:id', async (req, res) => {
         res.json({
             success: true,
             message: 'Tile deleted successfully',
-            deleted_id: result[0].id
+            deletedId: id
         });
     }
     catch (error) {
+        // Handle foreign key constraint error
+        if (error.message?.includes('foreign key constraint')) {
+            return res.status(409).json({
+                success: false,
+                error: 'Cannot delete tile',
+                message: 'This tile is used on one or more boards. Remove it from all boards first.'
+            });
+        }
         console.error('Error deleting tile:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to delete tile',
-            message: error.message
-        });
-    }
-});
-/**
- * GET /api/admin/clan-events/bingo/tiles/categories/list
- * Get list of all unique categories
- */
-router.get('/categories/list', async (req, res) => {
-    try {
-        const categories = await query(`
-			SELECT 
-				category,
-				COUNT(*) as tile_count,
-				COUNT(*) FILTER (WHERE is_active = true) as active_count
-			FROM bingo_tiles
-			GROUP BY category
-			ORDER BY category
-		`);
-        res.json({
-            success: true,
-            data: categories
-        });
-    }
-    catch (error) {
-        console.error('Error fetching categories:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to fetch categories',
             message: error.message
         });
     }

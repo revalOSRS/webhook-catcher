@@ -5,6 +5,7 @@ import teamsRouter from './events/teams/index.js';
 import tilesRouter from './bingo/tiles.routes.js';
 import buffsRouter from './buffs/index.js';
 import boardRouter from './events/teams/board.routes.js';
+import effectsRouter from './effects/index.js';
 const router = Router();
 // Mount sub-routers
 router.use('/events', eventsRouter);
@@ -13,5 +14,6 @@ router.use('/teams', teamsRouter);
 // Mount board routes at /events/:eventId/teams/:teamId/board
 router.use('/events/:eventId/teams/:teamId/board', boardRouter);
 router.use('/bingo/tiles', tilesRouter);
-router.use('/buffs', buffsRouter);
+router.use('/buffs', buffsRouter); // Old basic buffs (legacy, kept for backwards compatibility)
+router.use('/effects', effectsRouter); // New enhanced effects system
 export default router;

@@ -507,7 +507,7 @@ export interface LineEffectConfig {
   /** Effect to grant when line is completed */
   buffDebuffId: string;
   /** Optional: custom metadata for this instance */
-  metadata?: EffectMetadata;
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================================================

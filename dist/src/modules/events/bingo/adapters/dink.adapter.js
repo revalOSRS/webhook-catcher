@@ -16,6 +16,7 @@ const eventAdapters = {
     [DinkEventType.BARBARIAN_ASSAULT_GAMBLE]: (event, osrsAccountId, timestamp) => adaptBaGambleEvent(event, osrsAccountId, timestamp),
     [DinkEventType.LOGOUT]: (event, osrsAccountId, timestamp) => adaptLogoutEvent(event, osrsAccountId, timestamp),
     [DinkEventType.KILL_COUNT]: (event, osrsAccountId, timestamp) => adaptKillCountAsSpeedrun(event, osrsAccountId, timestamp),
+    [DinkEventType.CHAT]: (event, osrsAccountId, timestamp) => adaptChatEvent(event, osrsAccountId, timestamp),
 };
 /**
  * Converts a Dink event to a UnifiedGameEvent.
@@ -154,6 +155,25 @@ const adaptKillCountAsSpeedrun = (event, osrsAccountId, timestamp) => {
         }
     };
 };
+/**
+ * Converts a chat event to unified format.
+ *
+ * Extracts message content, type, and optional source/clan info from the Dink chat event.
+ * Used for tracking specific game messages like quest completions, achievements, etc.
+ */
+const adaptChatEvent = (event, osrsAccountId, timestamp) => ({
+    eventType: UnifiedEventType.CHAT,
+    playerName: event.playerName,
+    osrsAccountId,
+    timestamp,
+    source: UnifiedEventSource.DINK,
+    data: {
+        message: event.extra.message,
+        messageType: event.extra.type,
+        source: event.extra.source ?? undefined,
+        clanTitle: event.extra.clanTitle ?? undefined
+    }
+});
 /**
  * Parses a time string to total seconds.
  *
