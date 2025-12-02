@@ -501,7 +501,6 @@ router.get('/:eventId', async (req, res: Response) => {
 			status: event.status,
 			startDate: event.startDate,
 			endDate: event.endDate,
-			config: event.config,
 			team: {
 				id: participation.teamId,
 				name: participation.teamName,

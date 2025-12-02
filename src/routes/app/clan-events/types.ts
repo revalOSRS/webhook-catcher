@@ -131,7 +131,6 @@ export interface EventDetail {
 	status: string;
 	startDate: string | null;
 	endDate: string | null;
-	config: unknown;
 	team: {
 		id: string;
 		name: string;
