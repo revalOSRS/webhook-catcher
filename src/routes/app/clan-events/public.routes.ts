@@ -199,11 +199,20 @@ const sanitizeRequirement = (req: any, progressMetadata?: any): PublicRequiremen
 /**
  * Check if tiles should be visible based on event start time
  * Tiles are hidden if more than 3 hours before event start
+ * Tiles are also hidden if no start date is set (event not scheduled)
  */
-const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Date; message?: string } => {
-	if (!startDate) {
-		// No start date set - show tiles
+const shouldShowTiles = (startDate: Date | null, eventStatus: string): { show: boolean; revealAt?: Date; message?: string } => {
+	// If event is active or completed, always show tiles
+	if (eventStatus === 'active' || eventStatus === 'completed') {
 		return { show: true };
+	}
+	
+	if (!startDate) {
+		// No start date set - hide tiles until event is scheduled/active
+		return { 
+			show: false,
+			message: 'Tiles will be revealed when the event is scheduled'
+		};
 	}
 	
 	const now = new Date();
@@ -413,8 +422,11 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			}
 		}
 
-		// Check if tiles should be visible based on event start time
-		const tileVisibility = shouldShowTiles(event.startDate ? new Date(event.startDate) : null);
+		// Check if tiles should be visible based on event start time and status
+		const tileVisibility = shouldShowTiles(
+			event.startDate ? new Date(event.startDate) : null,
+			event.status
+		);
 
 		// Group boards and tiles by team
 		const boardsByTeam: Record<string, { 
@@ -544,13 +556,17 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				eventType: event.eventType,
 				status: event.status,
 				startDate: event.startDate,
-				endDate: event.endDate,
-				config: event.config
+				endDate: event.endDate
 			},
 			teams: publicTeams,
 			summary: {
 				totalTeams: publicTeams.length,
 				totalCompletedTiles: publicTeams.reduce((sum, t) => sum + t.completedTiles, 0)
+			},
+			visibility: {
+				tilesVisible: tileVisibility.show,
+				tilesRevealAt: tileVisibility.revealAt?.toISOString(),
+				message: tileVisibility.message
 			}
 		};
 
