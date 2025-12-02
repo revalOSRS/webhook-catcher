@@ -53,9 +53,45 @@ interface PublicBoard {
 	id: string;
 	rows: number;
 	columns: number;
-	tiles: PublicBoardTile[];
+	/** Tiles are only visible within 3 hours of event start */
+	tiles: PublicBoardTile[] | null;
+	/** Whether tiles are currently hidden (more than 3 hours before start) */
+	tilesHidden: boolean;
+	/** Message explaining why tiles are hidden */
+	tilesHiddenMessage?: string;
+	/** When tiles will be revealed (ISO timestamp) */
+	tilesRevealAt?: string;
 	rowEffects: PublicLineEffect[];
 	columnEffects: PublicLineEffect[];
+}
+
+/**
+ * Public requirement info (sanitized - no hidden details for puzzles)
+ */
+interface PublicRequirementInfo {
+	type: string;
+	/** For PUZZLE type, this contains the display info */
+	puzzle?: {
+		displayName: string;
+		displayDescription: string;
+		displayHint?: string;
+		displayIcon?: string;
+		puzzleCategory?: string;
+		isSolved: boolean;
+		revealAnswer?: boolean;
+	};
+	/** For non-puzzle types, basic info about what's tracked */
+	description?: string;
+}
+
+/**
+ * Public tier info
+ */
+interface PublicTierInfo {
+	tier: number;
+	points: number;
+	isCompleted: boolean;
+	requirement: PublicRequirementInfo;
 }
 
 /**
@@ -73,20 +109,12 @@ interface PublicBoardTile {
 	points: number;
 	progress: PublicTileProgress | null;
 	effects: PublicEffect[];
-	/** If true, this is a puzzle tile with hidden requirements */
-	isPuzzle?: boolean;
-	/** Puzzle display info (only present for puzzle tiles) */
-	puzzle?: {
-		displayName: string;
-		displayDescription: string;
-		displayHint?: string;
-		displayIcon?: string;
-		puzzleCategory?: string;
-		/** Whether the puzzle has been solved */
-		isSolved: boolean;
-		/** Whether to reveal the answer (only after completion if configured) */
-		revealAnswer?: boolean;
-	};
+	/** Base requirements (sanitized for public view) */
+	requirements: PublicRequirementInfo[];
+	/** Tier requirements (if tile has tiers) */
+	tiers?: PublicTierInfo[];
+	/** Whether any requirement is a puzzle */
+	hasPuzzle: boolean;
 }
 
 /**
@@ -112,11 +140,97 @@ interface PublicEffect {
 }
 
 /**
+ * Sanitize a requirement for public view
+ * Hides actual tracking details for PUZZLE types
+ */
+const sanitizeRequirement = (req: any, progressMetadata?: any): PublicRequirementInfo => {
+	if (req.type === 'PUZZLE') {
+		const isSolved = progressMetadata?.isSolved || false;
+		return {
+			type: 'PUZZLE',
+			puzzle: {
+				displayName: req.displayName,
+				displayDescription: req.displayDescription,
+				displayHint: req.displayHint,
+				displayIcon: req.displayIcon,
+				puzzleCategory: req.puzzleCategory,
+				isSolved,
+				revealAnswer: req.revealOnComplete && isSolved
+			}
+		};
+	}
+	
+	// For non-puzzle types, provide a basic description without revealing specific targets
+	let description = '';
+	switch (req.type) {
+		case 'ITEM_DROP':
+			description = req.items?.length > 1 
+				? `Obtain ${req.items.length} different items`
+				: 'Obtain an item';
+			break;
+		case 'PET':
+			description = `Obtain a pet: ${req.petName || 'Any'}`;
+			break;
+		case 'VALUE_DROP':
+			description = `Get a valuable drop (${(req.value || 0).toLocaleString()}+ gp)`;
+			break;
+		case 'SPEEDRUN':
+			description = `Complete ${req.location || 'content'} speedrun`;
+			break;
+		case 'EXPERIENCE':
+			description = `Gain ${(req.experience || 0).toLocaleString()} ${req.skill || ''} XP`;
+			break;
+		case 'BA_GAMBLES':
+			description = `Complete ${req.amount || 0} BA gambles`;
+			break;
+		case 'CHAT':
+			description = 'Receive a specific game message';
+			break;
+		default:
+			description = 'Complete the task';
+	}
+	
+	return {
+		type: req.type,
+		description
+	};
+};
+
+/**
+ * Check if tiles should be visible based on event start time
+ * Tiles are hidden if more than 3 hours before event start
+ */
+const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Date; message?: string } => {
+	if (!startDate) {
+		// No start date set - show tiles
+		return { show: true };
+	}
+	
+	const now = new Date();
+	const threeHoursBefore = new Date(startDate.getTime() - (3 * 60 * 60 * 1000));
+	
+	if (now >= threeHoursBefore) {
+		// Within 3 hours of start or after - show tiles
+		return { show: true };
+	}
+	
+	// More than 3 hours before start - hide tiles
+	return {
+		show: false,
+		revealAt: threeHoursBefore,
+		message: 'Tiles will be revealed 3 hours before the event starts'
+	};
+};
+
+/**
  * GET /api/public/bingo/:eventId
  * Get public bingo event data for spectator/landing page view
  * 
  * Returns event info, all teams with scores, and board state for each team.
  * No authentication required.
+ * 
+ * Note: Tiles are hidden if more than 3 hours before event start.
+ * Only row/column effects are visible during this time.
  */
 router.get('/:eventId', async (req: Request, res: Response) => {
 	try {
@@ -299,6 +413,9 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			}
 		}
 
+		// Check if tiles should be visible based on event start time
+		const tileVisibility = shouldShowTiles(event.startDate ? new Date(event.startDate) : null);
+
 		// Group boards and tiles by team
 		const boardsByTeam: Record<string, { 
 			boardId: string; 
@@ -319,6 +436,11 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				};
 			}
 
+			// Only build tile data if tiles should be visible
+			if (!tileVisibility.show) {
+				continue; // Skip tile building - tiles are hidden
+			}
+
 			// Extract progress info
 			let progress: PublicTileProgress | null = null;
 			if (row.progressValue !== null || row.progressMetadata) {
@@ -331,51 +453,51 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				};
 			}
 
-			// Check if this is a puzzle tile and sanitize accordingly
+			// Get requirements and sanitize them
 			const requirements = row.requirements || {};
 			const baseRequirements = requirements.requirements || [];
-			const puzzleReq = baseRequirements.find((r: any) => r.type === 'PUZZLE');
+			const tiers = requirements.tiers || [];
+			const progressMetadata = row.progressMetadata || {};
 			
-			// Build the base tile data
-			const tileData: any = {
+			// Sanitize all base requirements
+			const sanitizedRequirements: PublicRequirementInfo[] = baseRequirements.map((req: any) => 
+				sanitizeRequirement(req, progressMetadata)
+			);
+			
+			// Check if any requirement is a puzzle
+			const hasPuzzle = baseRequirements.some((r: any) => r.type === 'PUZZLE');
+			
+			// Sanitize and build tier info
+			const completedTierNumbers = (progressMetadata.completedTiers || []).map((t: any) => t.tier);
+			const sanitizedTiers: PublicTierInfo[] = tiers.map((tier: any) => ({
+				tier: tier.tier,
+				points: tier.points || 0,
+				isCompleted: completedTierNumbers.includes(tier.tier),
+				requirement: sanitizeRequirement(tier.requirement, progressMetadata)
+			}));
+			
+			// Determine task name - use first puzzle's displayName if exists
+			const firstPuzzle = baseRequirements.find((r: any) => r.type === 'PUZZLE');
+			const displayTask = firstPuzzle?.displayName || row.task;
+			const displayIcon = firstPuzzle?.displayIcon || row.icon;
+			
+			// Build the tile data
+			const tileData: PublicBoardTile = {
 				id: row.tileId,
 				position: row.position,
 				isCompleted: row.isCompleted,
 				completedAt: row.completedAt,
-				task: row.task,
+				task: displayTask,
 				category: row.category,
 				difficulty: row.difficulty,
-				icon: row.icon,
+				icon: displayIcon,
 				points: row.points,
 				progress,
-				effects: effectsByTile[row.tileId] || []
+				effects: effectsByTile[row.tileId] || [],
+				requirements: sanitizedRequirements,
+				tiers: sanitizedTiers.length > 0 ? sanitizedTiers : undefined,
+				hasPuzzle
 			};
-
-			// If this is a puzzle tile, add puzzle info and sanitize
-			if (puzzleReq) {
-				const progressMetadata = row.progressMetadata || {};
-				const isSolved = progressMetadata.isSolved || row.isCompleted;
-				
-				tileData.isPuzzle = true;
-				tileData.puzzle = {
-					displayName: puzzleReq.displayName,
-					displayDescription: puzzleReq.displayDescription,
-					displayHint: puzzleReq.displayHint,
-					displayIcon: puzzleReq.displayIcon,
-					puzzleCategory: puzzleReq.puzzleCategory,
-					isSolved,
-					// Only reveal answer if configured and puzzle is solved
-					revealAnswer: puzzleReq.revealOnComplete && isSolved
-				};
-				
-				// Override task with puzzle display name for public view
-				tileData.task = puzzleReq.displayName;
-				
-				// Override icon if puzzle has custom icon
-				if (puzzleReq.displayIcon) {
-					tileData.icon = puzzleReq.displayIcon;
-				}
-			}
 
 			boardsByTeam[teamId].tiles.push(tileData);
 		}
@@ -391,7 +513,10 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 					id: boardData.boardId,
 					rows: boardData.rows,
 					columns: boardData.columns,
-					tiles: boardData.tiles,
+					tiles: tileVisibility.show ? boardData.tiles : null,
+					tilesHidden: !tileVisibility.show,
+					tilesHiddenMessage: tileVisibility.message,
+					tilesRevealAt: tileVisibility.revealAt?.toISOString(),
 					rowEffects: boardLineEffects.row,
 					columnEffects: boardLineEffects.column
 				};

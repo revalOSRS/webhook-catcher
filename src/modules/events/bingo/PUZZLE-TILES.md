@@ -1,4 +1,4 @@
-# Puzzle Tiles - Frontend Documentation
+# Puzzle Tiles & Public API - Frontend Documentation
 
 ## Overview
 
@@ -15,7 +15,29 @@ This enables creative, engaging gameplay mechanics like:
 
 ### Public API (`GET /api/public/bingo/:eventId`)
 
-For puzzle tiles, the response includes additional fields:
+#### Time-Based Tile Visibility
+
+**Important**: Tiles are **hidden** if the current time is more than 3 hours before the event start time. During this period:
+- `board.tiles` will be `null`
+- `board.tilesHidden` will be `true`
+- Row and column effects are still visible
+- Team info (scores, members) is still visible
+
+```typescript
+interface PublicBoard {
+  id: string;
+  rows: number;
+  columns: number;
+  tiles: PublicBoardTile[] | null;  // null if hidden
+  tilesHidden: boolean;              // true if tiles are hidden
+  tilesHiddenMessage?: string;       // "Tiles will be revealed 3 hours before the event starts"
+  tilesRevealAt?: string;            // ISO timestamp when tiles will be revealed
+  rowEffects: PublicLineEffect[];    // Always visible
+  columnEffects: PublicLineEffect[]; // Always visible
+}
+```
+
+#### Tile Structure (when visible)
 
 ```typescript
 interface PublicBoardTile {
@@ -23,117 +45,301 @@ interface PublicBoardTile {
   position: string;
   isCompleted: boolean;
   completedAt: string | null;
-  task: string;              // Overridden with puzzle.displayName for puzzles
+  task: string;                      // Overridden with first puzzle's displayName if exists
   category: string;
   difficulty: string;
-  icon: string | null;       // Overridden with puzzle.displayIcon if provided
+  icon: string | null;               // Overridden with first puzzle's displayIcon if exists
   points: number;
   progress: PublicTileProgress | null;
   effects: PublicEffect[];
   
-  // PUZZLE-SPECIFIC FIELDS (only present for puzzle tiles)
-  isPuzzle?: boolean;        // true if this is a puzzle tile
+  // ALL requirements (sanitized for public view)
+  requirements: PublicRequirementInfo[];
+  
+  // Tier info (if tile has tiers)
+  tiers?: PublicTierInfo[];
+  
+  // Whether any requirement is a puzzle
+  hasPuzzle: boolean;
+}
+
+interface PublicRequirementInfo {
+  type: string;  // 'PUZZLE', 'ITEM_DROP', 'PET', etc.
+  
+  // For PUZZLE type only:
   puzzle?: {
-    displayName: string;         // The puzzle title (e.g., "Solve the Anagram")
-    displayDescription: string;  // The puzzle content (e.g., "NOBGIL LIAM")
-    displayHint?: string;        // Optional hint (e.g., "A small green creature's armor")
-    displayIcon?: string;        // Custom icon for the puzzle
-    puzzleCategory?: string;     // Category: 'anagram', 'riddle', 'scavenger', 'mystery', 'cipher'
-    isSolved: boolean;           // Whether the puzzle has been solved
-    revealAnswer?: boolean;      // If true AND isSolved, the hidden requirement can be shown
+    displayName: string;
+    displayDescription: string;
+    displayHint?: string;
+    displayIcon?: string;
+    puzzleCategory?: string;
+    isSolved: boolean;
+    revealAnswer?: boolean;
   };
+  
+  // For non-puzzle types (basic description without revealing targets):
+  description?: string;  // e.g., "Obtain 3 different items", "Complete speedrun"
+}
+
+interface PublicTierInfo {
+  tier: number;
+  points: number;
+  isCompleted: boolean;
+  requirement: PublicRequirementInfo;
+}
+
+interface PublicTileProgress {
+  progressValue: number;
+  targetValue: number | null;
+  completedTiers: number[];
+  currentTier: number | null;
 }
 ```
 
-### Example Response
+### Example Response - Tiles Hidden (> 3 hours before start)
 
 ```json
 {
-  "id": "tile-uuid",
-  "position": "A1",
-  "isCompleted": true,
-  "completedAt": "2025-12-02T14:30:00.000Z",
-  "task": "Solve the Anagram",
-  "category": "pvm",
-  "difficulty": "easy",
-  "icon": "🧩",
-  "points": 10,
-  "progress": {
-    "progressValue": 1,
-    "targetValue": 1,
-    "completedTiers": [],
-    "currentTier": null
-  },
-  "effects": [],
-  "isPuzzle": true,
-  "puzzle": {
-    "displayName": "Solve the Anagram",
-    "displayDescription": "Unscramble: NOBGIL LIAM",
-    "displayHint": "A piece of armor from a small green creature",
-    "displayIcon": "🧩",
-    "puzzleCategory": "anagram",
-    "isSolved": true,
-    "revealAnswer": true
+  "success": true,
+  "data": {
+    "event": {
+      "id": "event-uuid",
+      "name": "Winter Bingo 2025",
+      "startDate": "2025-12-15T18:00:00.000Z",
+      "status": "scheduled"
+    },
+    "teams": [
+      {
+        "id": "team-uuid",
+        "name": "Team Red",
+        "score": 0,
+        "memberCount": 5,
+        "completedTiles": 0,
+        "members": [{ "osrsName": "Player1" }],
+        "board": {
+          "id": "board-uuid",
+          "rows": 5,
+          "columns": 5,
+          "tiles": null,
+          "tilesHidden": true,
+          "tilesHiddenMessage": "Tiles will be revealed 3 hours before the event starts",
+          "tilesRevealAt": "2025-12-15T15:00:00.000Z",
+          "rowEffects": [
+            {
+              "lineType": "row",
+              "lineIdentifier": "A",
+              "name": "Double Points Row",
+              "description": "All tiles in row A give double points",
+              "icon": "⭐",
+              "type": "buff",
+              "effectType": "points_multiplier",
+              "effectValue": 2.0
+            }
+          ],
+          "columnEffects": []
+        }
+      }
+    ]
+  }
+}
+```
+
+### Example Response - Tiles Visible (within 3 hours of start or after)
+
+```json
+{
+  "success": true,
+  "data": {
+    "event": { "..." },
+    "teams": [
+      {
+        "id": "team-uuid",
+        "name": "Team Red",
+        "board": {
+          "id": "board-uuid",
+          "rows": 5,
+          "columns": 5,
+          "tiles": [
+            {
+              "id": "tile-uuid",
+              "position": "A1",
+              "isCompleted": false,
+              "completedAt": null,
+              "task": "Solve the Anagram",
+              "category": "pvm",
+              "difficulty": "easy",
+              "icon": "🧩",
+              "points": 10,
+              "progress": null,
+              "effects": [],
+              "requirements": [
+                {
+                  "type": "PUZZLE",
+                  "puzzle": {
+                    "displayName": "Solve the Anagram",
+                    "displayDescription": "Unscramble: NOBGIL LIAM",
+                    "displayHint": "A piece of armor from a small green creature",
+                    "displayIcon": "🧩",
+                    "puzzleCategory": "anagram",
+                    "isSolved": false,
+                    "revealAnswer": false
+                  }
+                },
+                {
+                  "type": "ITEM_DROP",
+                  "description": "Obtain an item"
+                }
+              ],
+              "tiers": [
+                {
+                  "tier": 1,
+                  "points": 5,
+                  "isCompleted": false,
+                  "requirement": {
+                    "type": "ITEM_DROP",
+                    "description": "Obtain an item"
+                  }
+                },
+                {
+                  "tier": 2,
+                  "points": 10,
+                  "isCompleted": false,
+                  "requirement": {
+                    "type": "ITEM_DROP",
+                    "description": "Obtain an item"
+                  }
+                }
+              ],
+              "hasPuzzle": true,
+              "tilesHidden": false
+            }
+          ],
+          "tilesHidden": false,
+          "rowEffects": [],
+          "columnEffects": []
+        }
+      }
+    ]
   }
 }
 ```
 
 ## Frontend Implementation Guide
 
-### 1. Detecting Puzzle Tiles
+### 1. Handling Hidden Tiles
 
 ```typescript
-const isPuzzleTile = (tile: PublicBoardTile): boolean => {
-  return tile.isPuzzle === true && tile.puzzle !== undefined;
+const BingoBoard = ({ board }: { board: PublicBoard }) => {
+  // Check if tiles are hidden (more than 3 hours before event start)
+  if (board.tilesHidden) {
+    return (
+      <div className="board-hidden">
+        <div className="hidden-message">
+          <h3>🔒 Tiles Hidden</h3>
+          <p>{board.tilesHiddenMessage}</p>
+          {board.tilesRevealAt && (
+            <p>Reveals at: {new Date(board.tilesRevealAt).toLocaleString()}</p>
+          )}
+        </div>
+        
+        {/* Row/Column effects are still visible */}
+        <EffectsPreview 
+          rowEffects={board.rowEffects} 
+          columnEffects={board.columnEffects} 
+        />
+      </div>
+    );
+  }
+  
+  // Tiles are visible
+  return (
+    <div className="board-grid">
+      {board.tiles?.map(tile => <TileCard key={tile.id} tile={tile} />)}
+    </div>
+  );
 };
 ```
 
-### 2. Rendering Puzzle Tiles
+### 2. Detecting Puzzle Tiles
+
+```typescript
+const isPuzzleTile = (tile: PublicBoardTile): boolean => {
+  return tile.hasPuzzle === true;
+};
+
+// Get all puzzle requirements from a tile
+const getPuzzleRequirements = (tile: PublicBoardTile) => {
+  return tile.requirements.filter(r => r.type === 'PUZZLE');
+};
+```
+
+### 3. Rendering Tiles with Multiple Requirements
 
 ```tsx
 const TileCard = ({ tile }: { tile: PublicBoardTile }) => {
-  if (tile.isPuzzle && tile.puzzle) {
-    return <PuzzleTileCard tile={tile} puzzle={tile.puzzle} />;
-  }
-  return <RegularTileCard tile={tile} />;
+  return (
+    <div className={`tile ${tile.hasPuzzle ? 'has-puzzle' : ''}`}>
+      <h3>{tile.task}</h3>
+      <span className="points">{tile.points} pts</span>
+      
+      {/* Render all requirements */}
+      <div className="requirements">
+        {tile.requirements.map((req, i) => (
+          <RequirementDisplay key={i} requirement={req} />
+        ))}
+      </div>
+      
+      {/* Render tiers if present */}
+      {tile.tiers && tile.tiers.length > 0 && (
+        <div className="tiers">
+          <h4>Bonus Tiers</h4>
+          {tile.tiers.map(tier => (
+            <TierDisplay key={tier.tier} tier={tier} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
-const PuzzleTileCard = ({ tile, puzzle }) => {
+const RequirementDisplay = ({ requirement }: { requirement: PublicRequirementInfo }) => {
+  if (requirement.type === 'PUZZLE' && requirement.puzzle) {
+    return <PuzzleRequirement puzzle={requirement.puzzle} />;
+  }
+  
   return (
-    <div className={`puzzle-tile ${puzzle.puzzleCategory || 'mystery'}`}>
-      {/* Puzzle Icon */}
-      <div className="puzzle-icon">
-        {puzzle.displayIcon || '🧩'}
-      </div>
+    <div className="requirement">
+      <span className="type-badge">{requirement.type}</span>
+      <span className="description">{requirement.description}</span>
+    </div>
+  );
+};
+
+const PuzzleRequirement = ({ puzzle }) => {
+  return (
+    <div className={`puzzle-requirement ${puzzle.puzzleCategory || 'mystery'}`}>
+      <div className="puzzle-icon">{puzzle.displayIcon || '🧩'}</div>
+      <h4>{puzzle.displayName}</h4>
+      <p className="puzzle-description">{puzzle.displayDescription}</p>
       
-      {/* Puzzle Title */}
-      <h3 className="puzzle-title">{puzzle.displayName}</h3>
-      
-      {/* Puzzle Content (the actual puzzle to solve) */}
-      <div className="puzzle-content">
-        <p className="puzzle-description">{puzzle.displayDescription}</p>
-      </div>
-      
-      {/* Optional Hint (can be hidden behind a toggle) */}
       {puzzle.displayHint && (
         <HintSection hint={puzzle.displayHint} />
       )}
       
-      {/* Status */}
       <div className="puzzle-status">
-        {puzzle.isSolved ? (
-          <span className="solved">✅ Solved!</span>
-        ) : (
-          <span className="unsolved">🔒 Unsolved</span>
-        )}
+        {puzzle.isSolved ? '✅ Solved!' : '🔒 Unsolved'}
       </div>
-      
-      {/* Reveal Answer (only if configured and solved) */}
-      {puzzle.revealAnswer && puzzle.isSolved && (
-        <div className="puzzle-answer-reveal">
-          <p>The answer was: Obtain Goblin mail</p>
-        </div>
-      )}
+    </div>
+  );
+};
+
+const TierDisplay = ({ tier }: { tier: PublicTierInfo }) => {
+  return (
+    <div className={`tier ${tier.isCompleted ? 'completed' : ''}`}>
+      <span className="tier-number">Tier {tier.tier}</span>
+      <span className="tier-points">+{tier.points} pts</span>
+      <RequirementDisplay requirement={tier.requirement} />
+      {tier.isCompleted && <span className="checkmark">✓</span>}
     </div>
   );
 };

@@ -253,6 +253,7 @@ const validatePuzzleRequirement = (req) => {
     }
     else {
         // Validate the hidden requirement (but don't allow nested PUZZLE)
+        // Cast to any for runtime check since TypeScript types already prevent this
         if (req.hiddenRequirement.type === 'PUZZLE') {
             errors.push('hiddenRequirement cannot be another PUZZLE (no nesting allowed)');
         }
