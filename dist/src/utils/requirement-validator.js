@@ -117,6 +117,12 @@ const validateSimplifiedRequirement = (requirement) => {
             case 'BA_GAMBLES':
                 errors.push(...validateBaGamblesRequirement(requirement));
                 break;
+            case 'CHAT':
+                errors.push(...validateChatRequirement(requirement));
+                break;
+            case 'PUZZLE':
+                errors.push(...validatePuzzleRequirement(requirement));
+                break;
             default:
                 errors.push(`Unknown requirement type: ${requirement.type}`);
         }
@@ -198,6 +204,107 @@ const validateBaGamblesRequirement = (req) => {
     const errors = [];
     if (!req.amount || typeof req.amount !== 'number' || req.amount < 1) {
         errors.push('amount is required and must be a positive number');
+    }
+    return errors;
+};
+const validateChatRequirement = (req) => {
+    const errors = [];
+    if (!req.message || typeof req.message !== 'string') {
+        errors.push('message is required and must be a string');
+    }
+    if (req.messageType !== undefined && typeof req.messageType !== 'string') {
+        errors.push('messageType must be a string if provided');
+    }
+    if (req.source !== undefined && typeof req.source !== 'string') {
+        errors.push('source must be a string if provided');
+    }
+    if (req.exactMatch !== undefined && typeof req.exactMatch !== 'boolean') {
+        errors.push('exactMatch must be a boolean if provided');
+    }
+    if (req.count !== undefined && (typeof req.count !== 'number' || req.count < 1)) {
+        errors.push('count must be a positive number if provided');
+    }
+    return errors;
+};
+const validatePuzzleRequirement = (req) => {
+    const errors = [];
+    // Validate display fields
+    if (!req.displayName || typeof req.displayName !== 'string') {
+        errors.push('displayName is required and must be a string');
+    }
+    if (!req.displayDescription || typeof req.displayDescription !== 'string') {
+        errors.push('displayDescription is required and must be a string');
+    }
+    if (req.displayHint !== undefined && typeof req.displayHint !== 'string') {
+        errors.push('displayHint must be a string if provided');
+    }
+    if (req.displayIcon !== undefined && typeof req.displayIcon !== 'string') {
+        errors.push('displayIcon must be a string if provided');
+    }
+    if (req.puzzleCategory !== undefined && typeof req.puzzleCategory !== 'string') {
+        errors.push('puzzleCategory must be a string if provided');
+    }
+    if (req.revealOnComplete !== undefined && typeof req.revealOnComplete !== 'boolean') {
+        errors.push('revealOnComplete must be a boolean if provided');
+    }
+    // Validate hidden requirement
+    if (!req.hiddenRequirement || typeof req.hiddenRequirement !== 'object') {
+        errors.push('hiddenRequirement is required and must be an object');
+    }
+    else {
+        // Validate the hidden requirement (but don't allow nested PUZZLE)
+        if (req.hiddenRequirement.type === 'PUZZLE') {
+            errors.push('hiddenRequirement cannot be another PUZZLE (no nesting allowed)');
+        }
+        else {
+            // Recursively validate the hidden requirement
+            const hiddenValidation = validateSimplifiedRequirementInternal(req.hiddenRequirement);
+            if (hiddenValidation.length > 0) {
+                hiddenValidation.forEach(err => {
+                    errors.push(`hiddenRequirement: ${err}`);
+                });
+            }
+        }
+    }
+    return errors;
+};
+/**
+ * Internal validation for hidden requirements (excludes PUZZLE to prevent recursion)
+ */
+const validateSimplifiedRequirementInternal = (requirement) => {
+    const errors = [];
+    if (!requirement || typeof requirement !== 'object') {
+        return ['Requirement must be an object'];
+    }
+    if (!requirement.type) {
+        errors.push('Requirement must have a type field');
+    }
+    else {
+        switch (requirement.type) {
+            case 'ITEM_DROP':
+                errors.push(...validateItemDropRequirement(requirement));
+                break;
+            case 'PET':
+                errors.push(...validatePetRequirement(requirement));
+                break;
+            case 'VALUE_DROP':
+                errors.push(...validateValueDropRequirement(requirement));
+                break;
+            case 'SPEEDRUN':
+                errors.push(...validateSpeedrunRequirement(requirement));
+                break;
+            case 'EXPERIENCE':
+                errors.push(...validateExperienceRequirement(requirement));
+                break;
+            case 'BA_GAMBLES':
+                errors.push(...validateBaGamblesRequirement(requirement));
+                break;
+            case 'CHAT':
+                errors.push(...validateChatRequirement(requirement));
+                break;
+            default:
+                errors.push(`Unknown requirement type: ${requirement.type}`);
+        }
     }
     return errors;
 };
