@@ -15,6 +15,7 @@ const router = Router();
  */
 interface PublicTeamMember {
 	osrsName: string;
+	role: string;
 }
 
 /**
@@ -288,16 +289,19 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			ORDER BY et.score DESC, et.name ASC
 		`, [eventId]);
 
-		// Get all team members with their OSRS account names
+		// Get all team members with their OSRS account names and roles
 		const allMembers = await query(`
 			SELECT 
 				etm.team_id,
+				etm.role,
 				oa.osrs_nickname
 			FROM event_team_members etm
 			JOIN event_teams et ON etm.team_id = et.id
 			LEFT JOIN osrs_accounts oa ON etm.osrs_account_id = oa.id
 			WHERE et.event_id = $1
-			ORDER BY oa.osrs_nickname
+			ORDER BY 
+				CASE WHEN etm.role = 'captain' THEN 0 ELSE 1 END,
+				oa.osrs_nickname
 		`, [eventId]);
 
 		// Group members by team
@@ -308,7 +312,8 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			}
 			if (member.osrsNickname) {
 				membersByTeam[member.teamId].push({
-					osrsName: member.osrsNickname
+					osrsName: member.osrsNickname,
+					role: member.role || 'member'
 				});
 			}
 		}
