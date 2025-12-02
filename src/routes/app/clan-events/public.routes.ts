@@ -201,14 +201,9 @@ const sanitizeRequirement = (req: any, progressMetadata?: any): PublicRequiremen
  * Tiles are hidden if more than 3 hours before event start
  * Tiles are also hidden if no start date is set (event not scheduled)
  */
-const shouldShowTiles = (startDate: Date | null, eventStatus: string): { show: boolean; revealAt?: Date; message?: string } => {
-	// If event is active or completed, always show tiles
-	if (eventStatus === 'active' || eventStatus === 'completed') {
-		return { show: true };
-	}
-	
+const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Date; message?: string } => {
 	if (!startDate) {
-		// No start date set - hide tiles until event is scheduled/active
+		// No start date set - hide tiles until event is scheduled
 		return { 
 			show: false,
 			message: 'Tiles will be revealed when the event is scheduled'
@@ -422,10 +417,10 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			}
 		}
 
-		// Check if tiles should be visible based on event start time and status
+		// Check if tiles should be visible based on event start time
+		// Tiles are hidden until 3 hours before the event starts
 		const tileVisibility = shouldShowTiles(
-			event.startDate ? new Date(event.startDate) : null,
-			event.status
+			event.startDate ? new Date(event.startDate) : null
 		);
 
 		// Group boards and tiles by team
