@@ -333,11 +333,9 @@ export class DinkService {
                         catch (error) {
                             console.error('[DinkService] Error processing tile progress:', error);
                         }
-                        // If player is in an active bingo event, skip Discord entirely
+                        // Bingo participants still get their events processed through regular Discord flow
                         if (isBingoParticipant) {
-                            console.log(`[DinkService] Player ${playerName} is in active bingo event, skipping Discord notification`);
-                            resolve({ status: 'ok', message: 'Webhook received, processed for bingo tracking, skipped Discord' });
-                            return;
+                            console.log(`[DinkService] Player ${playerName} is in active bingo event, processed for bingo tracking, continuing to Discord`);
                         }
                         // Add event to activity cache (before Discord filtering)
                         // Skip CHAT events from activity cache
@@ -396,10 +394,9 @@ export class DinkService {
             catch (error) {
                 console.error('[DinkService] Error processing tile progress:', error);
             }
-            // If player is in an active bingo event, skip Discord entirely
+            // Bingo participants still get their events processed through regular Discord flow
             if (isBingoParticipant) {
-                console.log(`[DinkService] Player ${playerName} is in active bingo event, skipping Discord notification`);
-                return { status: 'ok', message: 'Webhook received, processed for bingo tracking, skipped Discord' };
+                console.log(`[DinkService] Player ${playerName} is in active bingo event, processed for bingo tracking, continuing to Discord`);
             }
             // Add event to activity cache (before Discord filtering)
             // Skip CHAT events from activity cache

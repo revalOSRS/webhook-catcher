@@ -3,7 +3,7 @@
  * Checks if a unified game event matches a tile requirement
  */
 import { UnifiedEventType } from '../types/unified-event.type.js';
-import { BingoTileMatchType, BingoTileRequirementType } from '../types/bingo-requirements.type.js';
+import { BingoTileMatchType, BingoTileRequirementType, ALLOWED_CHAT_SOURCES } from '../types/bingo-requirements.type.js';
 /**
  * Checks if an event matches tile requirements.
  *
@@ -58,6 +58,7 @@ export const matchesRequirement = (event, requirements) => {
  * - EXPERIENCE → matchesExperience
  * - BA_GAMBLES → matchesBaGambles
  * - CHAT → matchesChat
+ * - PUZZLE → matchesPuzzle (delegates to hidden requirement)
  *
  * Returns false for unknown requirement types.
  */
@@ -77,6 +78,8 @@ const matchesSimplifiedRequirement = (event, requirement) => {
             return matchesBaGambles(event, requirement);
         case BingoTileRequirementType.CHAT:
             return matchesChat(event, requirement);
+        case BingoTileRequirementType.PUZZLE:
+            return matchesPuzzle(event, requirement);
         default:
             return false;
     }
@@ -217,8 +220,11 @@ const matchesBaGambles = (event, requirement) => {
  * Checks if a chat event matches the required message pattern.
  *
  * Matching logic:
- * 1. First checks if the message type matches (if specified)
- * 2. Then checks if the message content matches:
+ * 1. First checks if the chat source is allowed (GAMEMESSAGE or ENGINE only)
+ *    This prevents tracking player chat messages, only game-generated messages.
+ * 2. If source is specified in requirement, checks if it matches
+ * 3. Checks if the message type matches (if specified)
+ * 4. Then checks if the message content matches:
  *    - If exactMatch is true: message must equal the requirement exactly (case-insensitive)
  *    - If exactMatch is false (default): message must contain the requirement (case-insensitive)
  *
@@ -226,12 +232,23 @@ const matchesBaGambles = (event, requirement) => {
  * - Message "You've completed Monkey Madness!" matches requirement "completed Monkey Madness"
  * - With exactMatch: true, "hello" only matches "hello", not "hello world"
  *
- * Returns false if event is not a CHAT event.
+ * Returns false if event is not a CHAT event or if source is not allowed.
  */
 const matchesChat = (event, requirement) => {
     if (event.eventType !== UnifiedEventType.CHAT)
         return false;
     const chatData = event.data;
+    // Only allow GAMEMESSAGE and ENGINE sources (no player chat)
+    const eventSource = chatData.source?.toUpperCase();
+    if (!eventSource || !ALLOWED_CHAT_SOURCES.includes(eventSource)) {
+        return false;
+    }
+    // Check specific source if specified in requirement
+    if (requirement.source) {
+        if (eventSource !== requirement.source.toUpperCase()) {
+            return false;
+        }
+    }
     // Check message type if specified
     if (requirement.messageType) {
         if (chatData.messageType.toUpperCase() !== requirement.messageType.toUpperCase()) {
@@ -247,4 +264,22 @@ const matchesChat = (event, requirement) => {
     else {
         return eventMessage.includes(requiredMessage);
     }
+};
+/**
+ * Checks if a puzzle's hidden requirement matches the event.
+ *
+ * A puzzle is a wrapper around another requirement type that hides
+ * the actual tracking logic from users. This matcher simply delegates
+ * to the hidden requirement's matcher.
+ *
+ * The hidden requirement can be any requirement type except PUZZLE
+ * (no nested puzzles allowed).
+ *
+ * @param event - The unified game event
+ * @param requirement - The puzzle requirement containing the hidden requirement
+ * @returns true if the event matches the hidden requirement
+ */
+const matchesPuzzle = (event, requirement) => {
+    // Delegate to the hidden requirement's matcher
+    return matchesSimplifiedRequirement(event, requirement.hiddenRequirement);
 };

@@ -126,6 +126,7 @@ export const calculatePuzzleProgress = async (
         event,
         hiddenReq as SpeedrunRequirement,
         hiddenExisting,
+        memberId,
         osrsAccountId,
         playerName
       );

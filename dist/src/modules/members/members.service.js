@@ -314,7 +314,7 @@ export class MembersService {
        FROM osrs_accounts oa
        JOIN members m ON oa.discord_id = m.discord_id
        WHERE oa.dink_hash = $1`, [dinkHash]);
-        return result?.is_valid ?? false;
+        return result?.isValid ?? false;
     }
     /**
      * Create tables for members module

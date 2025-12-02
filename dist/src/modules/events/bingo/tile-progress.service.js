@@ -20,6 +20,7 @@ import { calculateSpeedrunProgress } from './calculators/speedrun.calculator.js'
 import { calculateBaGamblesProgress } from './calculators/ba-gambles.calculator.js';
 import { calculateExperienceProgress } from './calculators/experience.calculator.js';
 import { calculateChatProgress } from './calculators/chat.calculator.js';
+import { calculatePuzzleProgress } from './calculators/puzzle.calculator.js';
 import { DiscordNotificationsService } from './discord-notifications.service.js';
 import { EffectsService } from './effects.service.js';
 import { BingoTileMatchType, BingoTileRequirementType } from './types/bingo-requirements.type.js';
@@ -284,7 +285,15 @@ export class TileProgressService {
             return existingProgress.completedByOsrsAccountId;
         }
         // Check if only one player has contributed
-        const contributions = updatedProgress.progressMetadata.playerContributions;
+        // For PUZZLE types, get contributions from the hidden metadata
+        let contributions;
+        if (updatedProgress.progressMetadata.requirementType === BingoTileRequirementType.PUZZLE) {
+            const puzzleMeta = updatedProgress.progressMetadata;
+            contributions = puzzleMeta.hiddenProgressMetadata?.playerContributions;
+        }
+        else {
+            contributions = updatedProgress.progressMetadata.playerContributions;
+        }
         if (contributions?.length === 1 && updatedProgress.isCompleted) {
             return contributions[0].osrsAccountId;
         }
@@ -293,24 +302,37 @@ export class TileProgressService {
     /**
      * Determine if a tile is completed based on requirements and progress.
      *
-     * Match types:
-     * - ALL: Every requirement must be completed
-     * - ANY: At least one requirement must be completed
-     *
-     * For tiered requirements, completion means at least one tier is done.
+     * Completion logic:
+     * - Base requirements only: Complete when progress.isCompleted is true
+     * - Tiers only: Complete when at least one tier is done
+     * - Both base requirements AND tiers: Complete when EITHER is satisfied
+     *   (allows base requirement to complete tile before any bonus tiers)
      *
      * @param requirements - Tile requirement configuration
      * @param progress - Current progress result
      * @returns true if tile completion criteria is met
      */
     determineTileCompletion = (requirements, progress) => {
-        // For tiered requirements, check if at least one tier is complete
+        // Check if base requirements are complete
+        const baseComplete = progress.isCompleted;
+        // Check if any tier is complete
+        const completedTiers = progress.completedTiers || progress.progressMetadata.completedTiers;
+        const tiersComplete = (completedTiers?.length || 0) > 0;
+        // Tile is complete if:
+        // - Base requirements are complete (if they exist), OR
+        // - At least one tier is complete (for tiered tiles)
+        // This allows tiles with both base requirements AND tiers to be completed
+        // when the base requirement is satisfied, even before any tier is done.
         if (requirements.tiers && requirements.tiers.length > 0) {
-            const completedTiers = progress.completedTiers || progress.progressMetadata.completedTiers;
-            return (completedTiers?.length || 0) > 0;
+            // If tile has both base requirements and tiers, either can complete it
+            if (requirements.requirements && requirements.requirements.length > 0) {
+                return baseComplete || tiersComplete;
+            }
+            // Tier-only tiles: need at least one tier complete
+            return tiersComplete;
         }
-        // For regular requirements, use the isCompleted flag from progress calculation
-        return progress.isCompleted;
+        // For regular requirements without tiers, use the isCompleted flag
+        return baseComplete;
     };
     /**
      * Calculate progress for requirements (tiered or regular).
@@ -423,6 +445,14 @@ export class TileProgressService {
                 return { ...base, requirementType: type, currentTotalGambles: 0 };
             case BingoTileRequirementType.CHAT:
                 return { ...base, requirementType: type, targetCount: 0, currentTotalCount: 0 };
+            case BingoTileRequirementType.PUZZLE:
+                return {
+                    ...base,
+                    requirementType: type,
+                    hiddenRequirementType: BingoTileRequirementType.ITEM_DROP,
+                    hiddenProgressMetadata: { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 },
+                    isSolved: false
+                };
             default:
                 return { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 };
         }
@@ -746,6 +776,8 @@ export class TileProgressService {
                 return await calculateExperienceProgress(event, req, existing, eventStartDate, memberId, osrsAccountId, playerName);
             case BingoTileRequirementType.CHAT:
                 return calculateChatProgress(event, req, existing, memberId, osrsAccountId, playerName);
+            case BingoTileRequirementType.PUZZLE:
+                return await calculatePuzzleProgress(event, req, existing, eventStartDate, memberId, osrsAccountId, playerName);
             default:
                 return this.buildEmptyProgress(null, { matchType: BingoTileMatchType.ALL, requirements: [req], tiers: [] });
         }

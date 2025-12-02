@@ -39,27 +39,28 @@ router.get('/', async (req, res) => {
             });
         }
         // Format the response to match the expected structure
+        // Note: db.queryOne auto-converts snake_case to camelCase
         const statistics = {
-            groupName: snapshot.group_name,
-            totalMembers: snapshot.total_members,
-            averageLevel: snapshot.average_level,
-            averageXP: snapshot.average_xp,
+            groupName: snapshot.groupName,
+            totalMembers: snapshot.totalMembers,
+            averageLevel: snapshot.averageLevel,
+            averageXP: snapshot.averageXp,
             maxedPlayers: {
-                count: snapshot.maxed_count,
-                percentage: parseFloat(snapshot.maxed_percentage)
+                count: snapshot.maxedCount,
+                percentage: parseFloat(snapshot.maxedPercentage)
             },
             totalStats: {
-                clues: snapshot.total_clues,
-                bossKills: snapshot.total_boss_kills,
-                cox: snapshot.total_cox,
-                toa: snapshot.total_toa,
-                tob: snapshot.total_tob,
-                ehp: snapshot.total_ehp,
-                ehb: snapshot.total_ehb
+                clues: snapshot.totalClues,
+                bossKills: snapshot.totalBossKills,
+                cox: snapshot.totalCox,
+                toa: snapshot.totalToa,
+                tob: snapshot.totalTob,
+                ehp: snapshot.totalEhp,
+                ehb: snapshot.totalEhb
             },
-            snapshotDate: snapshot.snapshot_date,
-            lastUpdated: snapshot.created_at,
-            failedMembers: snapshot.failed_members
+            snapshotDate: snapshot.snapshotDate,
+            lastUpdated: snapshot.createdAt,
+            failedMembers: snapshot.failedMembers
         };
         res.status(200).json({
             status: 'success',
