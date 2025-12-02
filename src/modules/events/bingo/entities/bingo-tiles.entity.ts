@@ -40,7 +40,8 @@ export enum BingoTileRequirementType {
   SPEEDRUN = 'SPEEDRUN',
   EXPERIENCE = 'EXPERIENCE',
   BA_GAMBLES = 'BA_GAMBLES',
-  CHAT = 'CHAT'
+  CHAT = 'CHAT',
+  PUZZLE = 'PUZZLE'
 }
 
 /**
@@ -114,6 +115,11 @@ export interface BaGamblesRequirementDef {
  * - CLAN_GUEST_CHAT: Guest clan chat
  * - BROADCAST: Broadcast messages
  * - UNKNOWN: Other message types
+ * 
+ * Common sources from Dink:
+ * - GAMEMESSAGE: In-game system messages
+ * - ENGINE: Engine-generated messages (quest completion, etc.)
+ * - CommandExecuted: Chat commands
  */
 export interface ChatRequirementDef {
   type: BingoTileRequirementType.CHAT;
@@ -121,10 +127,91 @@ export interface ChatRequirementDef {
   message: string;
   /** Optional: specific message type to match (e.g., GAMEMESSAGE, BROADCAST) */
   messageType?: string;
+  /** Optional: specific source to match (e.g., GAMEMESSAGE, ENGINE) */
+  source?: string;
   /** If true, requires exact message match instead of partial */
   exactMatch?: boolean;
   /** Number of times this message must be received (default: 1) */
   count?: number;
+}
+
+/**
+ * Allowed chat sources for puzzle tracking (game messages only, no player chat)
+ */
+export const ALLOWED_CHAT_SOURCES = ['GAMEMESSAGE', 'ENGINE'] as const;
+export type AllowedChatSource = typeof ALLOWED_CHAT_SOURCES[number];
+
+/**
+ * Hidden requirement types that can be wrapped by PUZZLE
+ * Excludes PUZZLE itself to prevent circular references
+ */
+export type HiddenRequirementDef = Exclude<BingoTileRequirementDef, PuzzleRequirementDef>;
+
+/**
+ * Puzzle requirement definition
+ * 
+ * A wrapper requirement that hides the actual tracking logic from users.
+ * Users see only the display name and description (e.g., an anagram to solve),
+ * while the system tracks progress using the hidden requirement.
+ * 
+ * Use cases:
+ * - Anagram puzzles: Display scrambled text, track item drop for the answer
+ * - Riddles: Display riddle, track chat message or NPC interaction
+ * - Scavenger hunts: Display cryptic clue, track item/location discovery
+ * - Mystery tasks: Hide the actual objective entirely
+ * 
+ * @example
+ * ```typescript
+ * {
+ *   type: 'PUZZLE',
+ *   displayName: 'Solve the Anagram',
+ *   displayDescription: 'Unscramble: NOBGIL LIAM',
+ *   displayHint: 'A piece of armor from a small green creature',
+ *   hiddenRequirement: {
+ *     type: 'ITEM_DROP',
+ *     items: [{ itemId: 288, itemName: 'Goblin mail', itemAmount: 1 }]
+ *   }
+ * }
+ * ```
+ */
+export interface PuzzleRequirementDef {
+  type: BingoTileRequirementType.PUZZLE;
+  /** 
+   * Display name shown to users instead of the actual requirement
+   * Example: "Solve the Anagram", "Find the Hidden Treasure"
+   */
+  displayName: string;
+  /** 
+   * Description/puzzle text shown to users
+   * Example: "NOBGIL LIAM" (anagram for Goblin mail)
+   */
+  displayDescription: string;
+  /**
+   * Optional hint to help users (can be revealed progressively)
+   * Example: "A piece of armor from a small green creature"
+   */
+  displayHint?: string;
+  /**
+   * Optional icon override for the puzzle display
+   * If not provided, uses a generic puzzle icon
+   */
+  displayIcon?: string;
+  /**
+   * The actual requirement being tracked (hidden from users)
+   * Can be any requirement type except PUZZLE (no nesting)
+   */
+  hiddenRequirement: HiddenRequirementDef;
+  /**
+   * Whether to reveal the answer after completion
+   * If true, shows what the hidden requirement was after tile is completed
+   * Default: false
+   */
+  revealOnComplete?: boolean;
+  /**
+   * Optional category for puzzle type (for filtering/display)
+   * Examples: 'anagram', 'riddle', 'scavenger', 'mystery', 'cipher'
+   */
+  puzzleCategory?: string;
 }
 
 /**
@@ -137,7 +224,8 @@ export type BingoTileRequirementDef =
   | SpeedrunRequirementDef
   | ExperienceRequirementDef
   | BaGamblesRequirementDef
-  | ChatRequirementDef;
+  | ChatRequirementDef
+  | PuzzleRequirementDef;
 
 /**
  * Tiered requirement with points

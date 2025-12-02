@@ -21,6 +21,7 @@ import { calculateSpeedrunProgress } from './calculators/speedrun.calculator.js'
 import { calculateBaGamblesProgress } from './calculators/ba-gambles.calculator.js';
 import { calculateExperienceProgress } from './calculators/experience.calculator.js';
 import { calculateChatProgress } from './calculators/chat.calculator.js';
+import { calculatePuzzleProgress } from './calculators/puzzle.calculator.js';
 import { DiscordNotificationsService } from './discord-notifications.service.js';
 import { EffectsService } from './effects.service.js';
 import type { UnifiedGameEvent } from './types/unified-event.type.js';
@@ -35,6 +36,7 @@ import type {
   ExperienceRequirement,
   BaGamblesRequirement,
   ChatRequirement,
+  PuzzleRequirement,
   BingoTileRequirementDef,
   ProgressMetadata,
   TierCompletion,
@@ -386,7 +388,16 @@ export class TileProgressService {
     }
 
     // Check if only one player has contributed
-    const contributions = updatedProgress.progressMetadata.playerContributions;
+    // For PUZZLE types, get contributions from the hidden metadata
+    let contributions: Array<{ osrsAccountId: number }> | undefined;
+    
+    if (updatedProgress.progressMetadata.requirementType === BingoTileRequirementType.PUZZLE) {
+      const puzzleMeta = updatedProgress.progressMetadata as import('./types/bingo-requirements.type.js').PuzzleProgressMetadata;
+      contributions = (puzzleMeta.hiddenProgressMetadata as any)?.playerContributions;
+    } else {
+      contributions = (updatedProgress.progressMetadata as any).playerContributions;
+    }
+    
     if (contributions?.length === 1 && updatedProgress.isCompleted) {
       return contributions[0].osrsAccountId;
     }
@@ -580,6 +591,14 @@ export class TileProgressService {
         return { ...base, requirementType: type, currentTotalGambles: 0 } as ProgressMetadata;
       case BingoTileRequirementType.CHAT:
         return { ...base, requirementType: type, targetCount: 0, currentTotalCount: 0 } as ProgressMetadata;
+      case BingoTileRequirementType.PUZZLE:
+        return { 
+          ...base, 
+          requirementType: type, 
+          hiddenRequirementType: BingoTileRequirementType.ITEM_DROP,
+          hiddenProgressMetadata: { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 },
+          isSolved: false
+        } as ProgressMetadata;
       default:
         return { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 } as ProgressMetadata;
     }
@@ -1011,6 +1030,8 @@ export class TileProgressService {
         return await calculateExperienceProgress(event, req as ExperienceRequirement, existing, eventStartDate, memberId, osrsAccountId, playerName);
       case BingoTileRequirementType.CHAT:
         return calculateChatProgress(event, req as ChatRequirement, existing, memberId, osrsAccountId, playerName);
+      case BingoTileRequirementType.PUZZLE:
+        return await calculatePuzzleProgress(event, req as PuzzleRequirement, existing, eventStartDate, memberId, osrsAccountId, playerName);
       default:
         return this.buildEmptyProgress(null, { matchType: BingoTileMatchType.ALL, requirements: [req], tiers: [] });
     }

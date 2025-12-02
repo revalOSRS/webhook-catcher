@@ -15,7 +15,11 @@ import {
   type SpeedrunRequirementDef,
   type ExperienceRequirementDef,
   type BaGamblesRequirementDef,
-  type ChatRequirementDef
+  type ChatRequirementDef,
+  type PuzzleRequirementDef,
+  type HiddenRequirementDef,
+  ALLOWED_CHAT_SOURCES,
+  type AllowedChatSource
 } from '../entities/bingo-tiles.entity.js';
 
 // Re-export everything for convenience
@@ -24,7 +28,8 @@ export {
   BingoTileMatchType,
   BingoTileRequirements,
   BingoTileRequirementDef,
-  TieredRequirementDef
+  TieredRequirementDef,
+  ALLOWED_CHAT_SOURCES
 };
 
 // Type aliases for backwards compatibility
@@ -37,6 +42,9 @@ export type SpeedrunRequirement = SpeedrunRequirementDef;
 export type ExperienceRequirement = ExperienceRequirementDef;
 export type BaGamblesRequirement = BaGamblesRequirementDef;
 export type ChatRequirement = ChatRequirementDef;
+export type PuzzleRequirement = PuzzleRequirementDef;
+export type HiddenRequirement = HiddenRequirementDef;
+export type { AllowedChatSource };
 
 // ============================================================================
 // PROGRESS METADATA TYPES (tracking individual player contributions)
@@ -306,6 +314,28 @@ export interface ChatProgressMetadata extends BaseProgressMetadata {
 }
 
 // ============================================================================
+// PUZZLE METADATA
+// ============================================================================
+
+/**
+ * Progress metadata for PUZZLE requirements
+ * Wraps the hidden requirement's metadata and adds puzzle-specific tracking
+ */
+export interface PuzzleProgressMetadata extends BaseProgressMetadata {
+  requirementType: BingoTileRequirementType.PUZZLE;
+  /** The type of the hidden requirement being tracked */
+  hiddenRequirementType: BingoTileRequirementType;
+  /** The actual progress metadata from the hidden requirement */
+  hiddenProgressMetadata: Exclude<ProgressMetadata, PuzzleProgressMetadata>;
+  /** Whether the puzzle has been solved (hidden requirement completed) */
+  isSolved: boolean;
+  /** Timestamp when the puzzle was solved */
+  solvedAt?: string;
+  /** The puzzle category (for display/filtering) */
+  puzzleCategory?: string;
+}
+
+// ============================================================================
 // UNION TYPE FOR ALL PROGRESS METADATA
 // ============================================================================
 
@@ -320,7 +350,8 @@ export type ProgressMetadata =
   | PetProgressMetadata
   | ExperienceProgressMetadata
   | BaGamblesProgressMetadata
-  | ChatProgressMetadata;
+  | ChatProgressMetadata
+  | PuzzleProgressMetadata;
 
 // ============================================================================
 // CALCULATOR TYPES (for progress calculation functions)

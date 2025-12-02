@@ -73,6 +73,20 @@ interface PublicBoardTile {
 	points: number;
 	progress: PublicTileProgress | null;
 	effects: PublicEffect[];
+	/** If true, this is a puzzle tile with hidden requirements */
+	isPuzzle?: boolean;
+	/** Puzzle display info (only present for puzzle tiles) */
+	puzzle?: {
+		displayName: string;
+		displayDescription: string;
+		displayHint?: string;
+		displayIcon?: string;
+		puzzleCategory?: string;
+		/** Whether the puzzle has been solved */
+		isSolved: boolean;
+		/** Whether to reveal the answer (only after completion if configured) */
+		revealAnswer?: boolean;
+	};
 }
 
 /**
@@ -182,6 +196,7 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 		}
 
 		// Get all boards and tiles for all teams in one query
+		// Include requirements to detect puzzle tiles and sanitize them
 		const allBoards = await query(`
 			SELECT 
 				bb.id as board_id,
@@ -316,7 +331,13 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				};
 			}
 
-			boardsByTeam[teamId].tiles.push({
+			// Check if this is a puzzle tile and sanitize accordingly
+			const requirements = row.requirements || {};
+			const baseRequirements = requirements.requirements || [];
+			const puzzleReq = baseRequirements.find((r: any) => r.type === 'PUZZLE');
+			
+			// Build the base tile data
+			const tileData: any = {
 				id: row.tileId,
 				position: row.position,
 				isCompleted: row.isCompleted,
@@ -328,7 +349,35 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				points: row.points,
 				progress,
 				effects: effectsByTile[row.tileId] || []
-			});
+			};
+
+			// If this is a puzzle tile, add puzzle info and sanitize
+			if (puzzleReq) {
+				const progressMetadata = row.progressMetadata || {};
+				const isSolved = progressMetadata.isSolved || row.isCompleted;
+				
+				tileData.isPuzzle = true;
+				tileData.puzzle = {
+					displayName: puzzleReq.displayName,
+					displayDescription: puzzleReq.displayDescription,
+					displayHint: puzzleReq.displayHint,
+					displayIcon: puzzleReq.displayIcon,
+					puzzleCategory: puzzleReq.puzzleCategory,
+					isSolved,
+					// Only reveal answer if configured and puzzle is solved
+					revealAnswer: puzzleReq.revealOnComplete && isSolved
+				};
+				
+				// Override task with puzzle display name for public view
+				tileData.task = puzzleReq.displayName;
+				
+				// Override icon if puzzle has custom icon
+				if (puzzleReq.displayIcon) {
+					tileData.icon = puzzleReq.displayIcon;
+				}
+			}
+
+			boardsByTeam[teamId].tiles.push(tileData);
 		}
 
 		// Build public teams response
