@@ -16,6 +16,41 @@ import {
 const router = Router();
 
 /**
+ * Sanitize requirements to hide puzzle hidden requirements from regular users
+ * Only admin endpoints should show the full hiddenRequirement
+ */
+const sanitizeRequirements = (requirements: any): any => {
+	if (!requirements) return requirements;
+	
+	const sanitized = { ...requirements };
+	
+	// Sanitize base requirements array
+	if (sanitized.requirements && Array.isArray(sanitized.requirements)) {
+		sanitized.requirements = sanitized.requirements.map((req: any) => {
+			if (req.type === 'PUZZLE') {
+				// Remove hiddenRequirement, keep only public display fields
+				const { hiddenRequirement, ...publicFields } = req;
+				return publicFields;
+			}
+			return req;
+		});
+	}
+	
+	// Sanitize tier requirements
+	if (sanitized.tiers && Array.isArray(sanitized.tiers)) {
+		sanitized.tiers = sanitized.tiers.map((tier: any) => {
+			if (tier.requirement?.type === 'PUZZLE') {
+				const { hiddenRequirement, ...publicFields } = tier.requirement;
+				return { ...tier, requirement: publicFields };
+			}
+			return tier;
+		});
+	}
+	
+	return sanitized;
+};
+
+/**
  * GET /api/app/clan-events/events
  * Get list of all active events
  * Shows team information only for events where the user is participating
@@ -436,7 +471,8 @@ router.get('/:eventId', async (req, res: Response) => {
 					icon: tile.icon,
 					description: tile.description,
 					points: tile.points,
-					requirements: tile.requirements,
+					// Sanitize requirements to hide puzzle hiddenRequirement from regular users
+					requirements: sanitizeRequirements(tile.requirements),
 					progressEntries,
 					teamTotalXpGained: tile.teamTotalXpGained,
 					tileEffects: tileEffectsByTile[tile.id] || undefined
