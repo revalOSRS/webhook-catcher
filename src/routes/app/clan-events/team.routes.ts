@@ -44,18 +44,19 @@ router.get('/progress', async (req, res: Response) => {
 			WHERE bb.team_id = $1 AND bb.event_id = $2
 		`, [participation.teamId, eventId]);
 
-		const progress = stats[0] || { total_tiles: 0, completed_tiles: 0, team_score: 0 };
-		const completionPercentage = progress.total_tiles > 0
-			? (parseInt(progress.completed_tiles) / parseInt(progress.total_tiles)) * 100
+		// Note: query() auto-converts snake_case to camelCase
+		const progress = stats[0] || { totalTiles: 0, completedTiles: 0, teamScore: 0 };
+		const completionPercentage = progress.totalTiles > 0
+			? (parseInt(progress.completedTiles) / parseInt(progress.totalTiles)) * 100
 			: 0;
 
 		res.json({
 			success: true,
 			data: {
-				totalTiles: parseInt(progress.total_tiles),
-				completedTiles: parseInt(progress.completed_tiles),
+				totalTiles: parseInt(progress.totalTiles),
+				completedTiles: parseInt(progress.completedTiles),
 				completionPercentage: Math.round(completionPercentage * 100) / 100,
-				teamScore: parseInt(progress.team_score) || 0
+				teamScore: parseInt(progress.teamScore) || 0
 			}
 		});
 	} catch (error: any) {
@@ -122,17 +123,18 @@ router.get('/leaderboard', async (req, res: Response) => {
 					score: participation.score
 				},
 				myMemberId: member.id,
+				// Note: query() auto-converts snake_case to camelCase
 				leaderboard: leaderboard.map((m: any, index: number) => ({
 					rank: index + 1,
 					id: m.id,
-					memberId: m.member_id,
-					discordTag: m.discord_tag,
-					osrsAccountName: m.osrs_account_name,
+					memberId: m.memberId,
+					discordTag: m.discordTag,
+					osrsAccountName: m.osrsAccountName,
 					role: m.role,
-					individualScore: m.individual_score,
-					tilesCompleted: parseInt(m.tiles_completed),
-					totalProgress: parseFloat(m.total_progress),
-					isMe: m.member_id === member.id
+					individualScore: m.individualScore,
+					tilesCompleted: parseInt(m.tilesCompleted),
+					totalProgress: parseFloat(m.totalProgress),
+					isMe: m.memberId === member.id
 				}))
 			}
 		});
@@ -197,22 +199,23 @@ router.get('/activity', async (req, res: Response) => {
 			LIMIT $3
 		`, [participation.teamId, eventId, parseInt(limit as string)]);
 
+		// Note: query() auto-converts snake_case to camelCase
 		res.json({
 			success: true,
 			data: activity.map((a: any) => ({
 				id: a.id,
-				boardTileId: a.board_tile_id,
+				boardTileId: a.boardTileId,
 				position: a.position,
 				task: a.task,
 				category: a.category,
 				icon: a.icon,
-				progressValue: a.progress_value,
-				progressMetadata: a.progress_metadata,
-				completionType: a.completion_type,
-				completedAt: a.completed_at,
-				updatedAt: a.updated_at,
-				playerName: a.player_name,
-				type: a.completed_at ? 'completion' : 'progress'
+				progressValue: a.progressValue,
+				progressMetadata: a.progressMetadata,
+				completionType: a.completionType,
+				completedAt: a.completedAt,
+				updatedAt: a.updatedAt,
+				playerName: a.playerName,
+				type: a.completedAt ? 'completion' : 'progress'
 			}))
 		});
 	} catch (error: any) {

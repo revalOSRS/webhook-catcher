@@ -63,6 +63,7 @@ router.get('/', async (req, res: Response) => {
 			data: {
 				event: events[0],
 				myTeamId,
+				// Note: query() auto-converts snake_case to camelCase
 				leaderboard: leaderboard.map((team: any, index: number) => ({
 					rank: index + 1,
 					id: team.id,
@@ -70,9 +71,9 @@ router.get('/', async (req, res: Response) => {
 					color: team.color,
 					icon: team.icon,
 					score: team.score,
-					memberCount: parseInt(team.member_count),
-					tilesCompleted: parseInt(team.tiles_completed),
-					totalTiles: parseInt(team.total_tiles),
+					memberCount: parseInt(team.memberCount),
+					tilesCompleted: parseInt(team.tilesCompleted),
+					totalTiles: parseInt(team.totalTiles),
 					isMyTeam: team.id === myTeamId
 				}))
 			}

@@ -127,18 +127,19 @@ export class BingoService {
       ORDER BY bbt.position
     `, [boardId]);
 
+    // Note: query() auto-converts snake_case to camelCase
     return tiles.map((row: Record<string, unknown>) => ({
       id: row.id as string,
-      boardId: row.board_id as string,
-      tileId: row.tile_id as string,
+      boardId: row.boardId as string,
+      tileId: row.tileId as string,
       position: row.position as string,
-      isCompleted: row.is_completed as boolean,
-      completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
+      isCompleted: row.isCompleted as boolean,
+      completedAt: row.completedAt ? new Date(row.completedAt as string) : undefined,
       metadata: (row.metadata || {}) as Record<string, unknown>,
-      createdAt: new Date(row.created_at as string),
-      updatedAt: new Date(row.updated_at as string),
+      createdAt: new Date(row.createdAt as string),
+      updatedAt: new Date(row.updatedAt as string),
       tile: {
-        id: row.tile_lib_id as string,
+        id: row.tileLibId as string,
         task: row.task as string,
         category: row.category as BingoTileCategory,
         difficulty: row.difficulty as BingoTileDifficulty,
@@ -170,11 +171,12 @@ export class BingoService {
    * Check if a tile is completed on a board
    */
   static isTileCompleted = async (boardId: string, position: string): Promise<boolean> => {
-    const result = await query<{ is_completed: boolean }>(
+    // Note: query() auto-converts snake_case to camelCase
+    const result = await query<{ isCompleted: boolean }>(
       'SELECT is_completed FROM bingo_board_tiles WHERE board_id = $1 AND position = $2',
       [boardId, position]
     );
-    return result[0]?.is_completed ?? false;
+    return result[0]?.isCompleted ?? false;
   };
 
   // ============================================================================
@@ -201,13 +203,14 @@ export class BingoService {
 
     if (result.length === 0) return null;
 
+    // Note: query() auto-converts snake_case to camelCase
     const row = result[0];
     return {
-      progressValue: parseFloat(row.progress_value as string) || 0,
-      metadata: (row.progress_metadata || {}) as Record<string, unknown>,
-      completionType: row.completion_type as BingoTileProgress['completionType'],
-      completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
-      completedByOsrsAccountId: row.completed_by_osrs_account_id as number | undefined
+      progressValue: parseFloat(row.progressValue as string) || 0,
+      metadata: (row.progressMetadata || {}) as Record<string, unknown>,
+      completionType: row.completionType as BingoTileProgress['completionType'],
+      completedAt: row.completedAt ? new Date(row.completedAt as string) : undefined,
+      completedByOsrsAccountId: row.completedByOsrsAccountId as number | undefined
     };
   };
 
@@ -234,12 +237,13 @@ export class BingoService {
       ORDER BY bbt.position
     `, [boardId]);
 
+    // Note: query() auto-converts snake_case to camelCase
     return result.map((row: Record<string, unknown>) => ({
-      boardTileId: row.board_tile_id as string,
+      boardTileId: row.boardTileId as string,
       position: row.position as string,
-      progressValue: parseFloat(row.progress_value as string) || 0,
-      isCompleted: row.is_completed as boolean,
-      metadata: (row.progress_metadata || {}) as Record<string, unknown>
+      progressValue: parseFloat(row.progressValue as string) || 0,
+      isCompleted: row.isCompleted as boolean,
+      metadata: (row.progressMetadata || {}) as Record<string, unknown>
     }));
   };
 
@@ -269,17 +273,18 @@ export class BingoService {
       ORDER BY bbt.completed_at DESC NULLS LAST
     `, [osrsAccountId]);
 
+    // Note: query() auto-converts snake_case to camelCase
     return result.map((row: Record<string, unknown>) => ({
-      boardTileId: row.board_tile_id as string,
-      tileId: row.tile_id as string,
+      boardTileId: row.boardTileId as string,
+      tileId: row.tileId as string,
       position: row.position as string,
       task: row.task as string,
       category: row.category as string,
       difficulty: row.difficulty as string,
-      progressValue: parseFloat(row.progress_value as string) || 0,
-      isCompleted: row.is_completed as boolean,
-      completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
-      metadata: (row.progress_metadata || {}) as Record<string, unknown>
+      progressValue: parseFloat(row.progressValue as string) || 0,
+      isCompleted: row.isCompleted as boolean,
+      completedAt: row.completedAt ? new Date(row.completedAt as string) : undefined,
+      metadata: (row.progressMetadata || {}) as Record<string, unknown>
     }));
   };
 
@@ -311,17 +316,18 @@ export class BingoService {
 
     if (stats.length === 0) return null;
 
+    // Note: query() auto-converts snake_case to camelCase
     const row = stats[0];
-    const totalTiles = parseInt(row.total_tiles as string) || 0;
-    const completedTiles = parseInt(row.completed_tiles as string) || 0;
+    const totalTiles = parseInt(row.totalTiles as string) || 0;
+    const completedTiles = parseInt(row.completedTiles as string) || 0;
 
     return {
-      teamId: row.team_id as string,
-      teamName: row.team_name as string,
+      teamId: row.teamId as string,
+      teamName: row.teamName as string,
       totalTiles,
       completedTiles,
       completionPercentage: totalTiles > 0 ? (completedTiles / totalTiles) * 100 : 0,
-      totalPoints: parseInt(row.total_points as string) || 0
+      totalPoints: parseInt(row.totalPoints as string) || 0
     };
   };
 
@@ -345,17 +351,18 @@ export class BingoService {
       ORDER BY total_points DESC, completed_tiles DESC
     `, [eventId]);
 
+    // Note: query() auto-converts snake_case to camelCase
     return result.map((row: Record<string, unknown>) => {
-      const totalTiles = parseInt(row.total_tiles as string) || 0;
-      const completedTiles = parseInt(row.completed_tiles as string) || 0;
+      const totalTiles = parseInt(row.totalTiles as string) || 0;
+      const completedTiles = parseInt(row.completedTiles as string) || 0;
 
       return {
-        teamId: row.team_id as string,
-        teamName: row.team_name as string,
+        teamId: row.teamId as string,
+        teamName: row.teamName as string,
         totalTiles,
         completedTiles,
         completionPercentage: totalTiles > 0 ? (completedTiles / totalTiles) * 100 : 0,
-        totalPoints: parseInt(row.total_points as string) || 0
+        totalPoints: parseInt(row.totalPoints as string) || 0
       };
     });
   };

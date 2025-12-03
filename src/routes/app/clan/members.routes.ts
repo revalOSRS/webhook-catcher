@@ -74,11 +74,13 @@ router.get('/', async (req: Request, res: Response) => {
       `, [womIds])
 
       snapshots.forEach((snap: any) => {
-        snapshotsMap.set(snap.player_id, snap)
+        // Note: query() auto-converts snake_case to camelCase
+        snapshotsMap.set(snap.playerId, snap)
       })
 
       // Get activities for these snapshots
-      const snapshotDbIds = snapshots.map((s: any) => s.snapshot_id)
+      // Note: query() auto-converts snake_case to camelCase
+      const snapshotDbIds = snapshots.map((s: any) => s.snapshotId)
       if (snapshotDbIds.length > 0) {
         const activities = await query(`
           SELECT 
@@ -96,7 +98,8 @@ router.get('/', async (req: Request, res: Response) => {
         `, [snapshotDbIds])
 
         activities.forEach((act: any) => {
-          const snap = snapshotsMap.get(act.player_id)
+          // Note: query() auto-converts snake_case to camelCase
+          const snap = snapshotsMap.get(act.playerId)
           if (snap) {
             snap.activities = act.activities
           }
@@ -120,7 +123,8 @@ router.get('/', async (req: Request, res: Response) => {
         `, [snapshotDbIds])
 
         bosses.forEach((boss: any) => {
-          const snap = snapshotsMap.get(boss.player_id)
+          // Note: query() auto-converts snake_case to camelCase
+          const snap = snapshotsMap.get(boss.playerId)
           if (snap) {
             snap.bosses = boss.bosses
           }
@@ -142,12 +146,13 @@ router.get('/', async (req: Request, res: Response) => {
         role: wm.role,
         joined_at: wm.createdAt,
         snapshot: snapshot ? {
-          total_level: Number(snapshot.total_level),
-          total_xp: Number(snapshot.total_xp),
+          // Note: query() auto-converts snake_case to camelCase
+          total_level: Number(snapshot.totalLevel),
+          total_xp: Number(snapshot.totalXp),
           ehp: Number(snapshot.ehp),
           ehb: Number(snapshot.ehb),
-          last_changed: snapshot.last_changed,
-          last_imported_at: snapshot.last_imported_at,
+          last_changed: snapshot.lastChanged,
+          last_imported_at: snapshot.lastImportedAt,
           activities: snapshot.activities || null,
           bosses: snapshot.bosses || null
         } : null

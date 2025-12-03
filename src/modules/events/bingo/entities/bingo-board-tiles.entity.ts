@@ -229,18 +229,19 @@ export class BingoBoardTilesEntity extends BaseEntity<BingoBoardTile, string> {
 
   /**
    * Map database row to BingoBoardTile
+   * Note: query() auto-converts snake_case to camelCase
    */
   private mapRow(row: any): BingoBoardTile {
     return {
       id: row.id,
-      boardId: row.board_id,
-      tileId: row.tile_id,
+      boardId: row.boardId,
+      tileId: row.tileId,
       position: row.position,
-      isCompleted: row.is_completed,
-      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      isCompleted: row.isCompleted,
+      completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
       metadata: row.metadata,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt)
     };
   }
 }

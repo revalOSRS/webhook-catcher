@@ -326,18 +326,19 @@ export class BingoTileProgressEntity extends BaseEntity<BingoTileProgress, strin
 
   /**
    * Map database row to BingoTileProgress
+   * Note: query() auto-converts snake_case to camelCase
    */
   private mapRow = (row: Record<string, unknown>): BingoTileProgress => {
     return {
       id: row.id as string,
-      boardTileId: row.board_tile_id as string,
-      progressValue: parseFloat(row.progress_value as string) || 0,
-      progressMetadata: row.progress_metadata as ProgressMetadata,
-      completionType: row.completion_type as BingoTileCompletionType | undefined,
-      completedByOsrsAccountId: row.completed_by_osrs_account_id as number | undefined,
-      completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
-      createdAt: new Date(row.created_at as string),
-      updatedAt: new Date(row.updated_at as string)
+      boardTileId: row.boardTileId as string,
+      progressValue: parseFloat(row.progressValue as string) || 0,
+      progressMetadata: row.progressMetadata as ProgressMetadata,
+      completionType: row.completionType as BingoTileCompletionType | undefined,
+      completedByOsrsAccountId: row.completedByOsrsAccountId as number | undefined,
+      completedAt: row.completedAt ? new Date(row.completedAt as string) : undefined,
+      createdAt: new Date(row.createdAt as string),
+      updatedAt: new Date(row.updatedAt as string)
     };
   };
 }

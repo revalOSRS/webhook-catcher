@@ -462,6 +462,7 @@ export class BingoTilesEntity extends BaseEntity<BingoTile, string> {
    * Map database row to BingoTile
    */
   private mapRow(row: any): BingoTile {
+    // Note: query() auto-converts snake_case to camelCase
     return {
       id: row.id,
       task: row.task,
@@ -471,8 +472,8 @@ export class BingoTilesEntity extends BaseEntity<BingoTile, string> {
       icon: row.icon,
       requirements: row.requirements as BingoTileRequirements,
       points: row.points,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt)
     };
   }
 }

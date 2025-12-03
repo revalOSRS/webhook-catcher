@@ -116,9 +116,10 @@ export class MembersService {
 
   /**
    * Get donation statistics for a member
+   * Note: queryOne() auto-converts snake_case to camelCase
    */
   static async getDonationStats(discordId: string): Promise<{ total_approved: number; total_pending: number }> {
-    const result = await queryOne<{ total_approved: string; total_pending: string }>(
+    const result = await queryOne<{ totalApproved: string; totalPending: string }>(
       `SELECT
          COALESCE(SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END), 0) as total_approved,
          COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) as total_pending
@@ -128,8 +129,8 @@ export class MembersService {
     )
 
     return {
-      total_approved: result ? Number(result.total_approved) : 0,
-      total_pending: result ? Number(result.total_pending) : 0,
+      total_approved: result ? Number(result.totalApproved) : 0,
+      total_pending: result ? Number(result.totalPending) : 0,
     }
   }
 
