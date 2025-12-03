@@ -473,8 +473,8 @@ export class WiseOldManService {
         const playerTotalLevel = skills.overall?.level || 0
         totalLevel += playerTotalLevel
 
-        // Check if maxed (2277 total level)
-        if (playerTotalLevel >= 2277) {
+        // Check if maxed (2376 total level - all skills at 99)
+        if (playerTotalLevel >= 2376) {
           maxedCount++
         }
 
