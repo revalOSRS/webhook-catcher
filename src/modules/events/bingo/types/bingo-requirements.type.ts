@@ -69,6 +69,15 @@ export interface TierCompletion {
 }
 
 /**
+ * Progress tracking for a single requirement (for multi-requirement tiles)
+ */
+export interface RequirementProgressEntry {
+  isCompleted: boolean;
+  progressValue: number;
+  progressMetadata: unknown;
+}
+
+/**
  * Base metadata fields shared across all requirement types
  */
 interface BaseProgressMetadata {
@@ -79,6 +88,12 @@ interface BaseProgressMetadata {
   completedTiers?: TierCompletion[];
   /** Highest completed tier number */
   currentTier?: number;
+  /** For matchType "all" - indices of requirements that are complete */
+  completedRequirementIndices?: number[];
+  /** Progress state for each requirement (keyed by index) */
+  requirementProgress?: Record<number, RequirementProgressEntry>;
+  /** Total number of requirements in the tile */
+  totalRequirements?: number;
 }
 
 // ============================================================================

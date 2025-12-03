@@ -409,10 +409,10 @@ export class TileProgressService {
    * Determine if a tile is completed based on requirements and progress.
    * 
    * Completion logic:
-   * - Base requirements only: Complete when progress.isCompleted is true
-   * - Tiers only: Complete when at least one tier is done
-   * - Both base requirements AND tiers: Complete when EITHER is satisfied
-   *   (allows base requirement to complete tile before any bonus tiers)
+   * - matchType "all": ALL requirements must be completed
+   * - matchType "any": ANY single requirement being complete is sufficient
+   * - Tiers: At least one tier must be complete
+   * - Both base requirements AND tiers: EITHER can complete the tile
    * 
    * @param requirements - Tile requirement configuration
    * @param progress - Current progress result
@@ -422,18 +422,30 @@ export class TileProgressService {
     requirements: BingoTileRequirements,
     progress: ProgressResult
   ): boolean => {
-    // Check if base requirements are complete
-    const baseComplete = progress.isCompleted;
-
     // Check if any tier is complete
     const completedTiers = progress.completedTiers || progress.progressMetadata.completedTiers;
     const tiersComplete = (completedTiers?.length || 0) > 0;
 
+    // Check base requirements completion
+    let baseComplete = false;
+    
+    if (requirements.requirements && requirements.requirements.length > 0) {
+      if (requirements.matchType === BingoTileMatchType.ALL) {
+        // ALL mode: check if all requirement indices are in the completed list
+        const completedIndices = progress.progressMetadata.completedRequirementIndices || [];
+        baseComplete = completedIndices.length >= requirements.requirements.length;
+      } else {
+        // ANY mode: just check if isCompleted flag is set (single requirement completed)
+        baseComplete = progress.isCompleted;
+      }
+    } else {
+      // No base requirements - use isCompleted flag
+      baseComplete = progress.isCompleted;
+    }
+
     // Tile is complete if:
     // - Base requirements are complete (if they exist), OR
     // - At least one tier is complete (for tiered tiles)
-    // This allows tiles with both base requirements AND tiers to be completed
-    // when the base requirement is satisfied, even before any tier is done.
     if (requirements.tiers && requirements.tiers.length > 0) {
       // If tile has both base requirements and tiers, either can complete it
       if (requirements.requirements && requirements.requirements.length > 0) {
@@ -443,7 +455,7 @@ export class TileProgressService {
       return tiersComplete;
     }
 
-    // For regular requirements without tiers, use the isCompleted flag
+    // For regular requirements without tiers
     return baseComplete;
   };
 
@@ -493,14 +505,19 @@ export class TileProgressService {
         return matchesRequirement(event, tierReq);
       });
 
-    // Check if event matches any base requirement
-    const matchingBaseReq = requirements.requirements?.find(req => {
+    // Check if event matches any base requirement and find its index
+    let matchingReqIndex = -1;
+    const matchingBaseReq = requirements.requirements?.find((req, index) => {
       const singleReq: BingoTileRequirements = {
         matchType: BingoTileMatchType.ALL,
         requirements: [req],
         tiers: []
       };
-      return matchesRequirement(event, singleReq);
+      if (matchesRequirement(event, singleReq)) {
+        matchingReqIndex = index;
+        return true;
+      }
+      return false;
     });
 
     // If event matches a tier, process tiered progress
@@ -511,8 +528,8 @@ export class TileProgressService {
     }
 
     // If event matches a base requirement, process it
-    if (matchingBaseReq) {
-      return await this.calculateRequirementProgress(
+    if (matchingBaseReq && matchingReqIndex >= 0) {
+      const result = await this.calculateRequirementProgress(
         event,
         matchingBaseReq,
         existingForCalc,
@@ -522,6 +539,38 @@ export class TileProgressService {
         osrsAccountId,
         playerName
       );
+
+      // Track which requirements are completed for matchType "all" logic
+      const existingCompleted = existingForCalc?.progressMetadata?.completedRequirementIndices || [];
+      const completedRequirementIndices = [...new Set([...existingCompleted])]; // Clone existing
+      
+      // If this requirement is now complete, add its index to the list
+      if (result.isCompleted && !completedRequirementIndices.includes(matchingReqIndex)) {
+        completedRequirementIndices.push(matchingReqIndex);
+      }
+
+      // Store the completed indices and per-requirement progress
+      const requirementProgress = existingForCalc?.progressMetadata?.requirementProgress || {};
+      requirementProgress[matchingReqIndex] = {
+        isCompleted: result.isCompleted,
+        progressValue: result.progressValue,
+        progressMetadata: result.progressMetadata
+      };
+
+      // Update the result metadata with tracking info
+      result.progressMetadata = {
+        ...result.progressMetadata,
+        completedRequirementIndices,
+        requirementProgress,
+        totalRequirements: requirements.requirements?.length || 1
+      };
+
+      // For matchType "all", only mark as complete when ALL requirements are done
+      if (requirements.matchType === BingoTileMatchType.ALL && requirements.requirements) {
+        result.isCompleted = completedRequirementIndices.length >= requirements.requirements.length;
+      }
+
+      return result;
     }
 
     // No matching requirement found - return existing or empty progress
