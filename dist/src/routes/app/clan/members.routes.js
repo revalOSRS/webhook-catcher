@@ -62,10 +62,12 @@ router.get('/', async (req, res) => {
         ORDER BY ps.player_id, ps.snapshot_date DESC, ps.last_imported_at DESC
       `, [womIds]);
             snapshots.forEach((snap) => {
-                snapshotsMap.set(snap.player_id, snap);
+                // Note: query() auto-converts snake_case to camelCase
+                snapshotsMap.set(snap.playerId, snap);
             });
             // Get activities for these snapshots
-            const snapshotDbIds = snapshots.map((s) => s.snapshot_id);
+            // Note: query() auto-converts snake_case to camelCase
+            const snapshotDbIds = snapshots.map((s) => s.snapshotId);
             if (snapshotDbIds.length > 0) {
                 const activities = await query(`
           SELECT 
@@ -82,7 +84,8 @@ router.get('/', async (req, res) => {
           GROUP BY ps.player_id
         `, [snapshotDbIds]);
                 activities.forEach((act) => {
-                    const snap = snapshotsMap.get(act.player_id);
+                    // Note: query() auto-converts snake_case to camelCase
+                    const snap = snapshotsMap.get(act.playerId);
                     if (snap) {
                         snap.activities = act.activities;
                     }
@@ -104,7 +107,8 @@ router.get('/', async (req, res) => {
           GROUP BY ps.player_id
         `, [snapshotDbIds]);
                 bosses.forEach((boss) => {
-                    const snap = snapshotsMap.get(boss.player_id);
+                    // Note: query() auto-converts snake_case to camelCase
+                    const snap = snapshotsMap.get(boss.playerId);
                     if (snap) {
                         snap.bosses = boss.bosses;
                     }
@@ -124,12 +128,13 @@ router.get('/', async (req, res) => {
                 role: wm.role,
                 joined_at: wm.createdAt,
                 snapshot: snapshot ? {
-                    total_level: Number(snapshot.total_level),
-                    total_xp: Number(snapshot.total_xp),
+                    // Note: query() auto-converts snake_case to camelCase
+                    total_level: Number(snapshot.totalLevel),
+                    total_xp: Number(snapshot.totalXp),
                     ehp: Number(snapshot.ehp),
                     ehb: Number(snapshot.ehb),
-                    last_changed: snapshot.last_changed,
-                    last_imported_at: snapshot.last_imported_at,
+                    last_changed: snapshot.lastChanged,
+                    last_imported_at: snapshot.lastImportedAt,
                     activities: snapshot.activities || null,
                     bosses: snapshot.bosses || null
                 } : null

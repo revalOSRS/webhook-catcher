@@ -75,6 +75,7 @@ export class MembersService {
     }
     /**
      * Get donation statistics for a member
+     * Note: queryOne() auto-converts snake_case to camelCase
      */
     static async getDonationStats(discordId) {
         const result = await queryOne(`SELECT
@@ -83,8 +84,8 @@ export class MembersService {
        FROM donations
        WHERE player_discord_id = $1`, [discordId]);
         return {
-            total_approved: result ? Number(result.total_approved) : 0,
-            total_pending: result ? Number(result.total_pending) : 0,
+            total_approved: result ? Number(result.totalApproved) : 0,
+            total_pending: result ? Number(result.totalPending) : 0,
         };
     }
     /**

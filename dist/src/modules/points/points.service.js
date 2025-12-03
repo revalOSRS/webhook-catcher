@@ -89,7 +89,8 @@ export class PointsService {
         const result = await query(`
       SELECT points_rank FROM osrs_accounts WHERE id = $1
     `, [accountId]);
-        return result[0]?.points_rank ? Number(result[0].points_rank) : null;
+        // Note: query() auto-converts snake_case to camelCase
+        return result[0]?.pointsRank ? Number(result[0].pointsRank) : null;
     }
     // Leaderboard Management
     /**
@@ -114,15 +115,16 @@ export class PointsService {
       ORDER BY total_points DESC
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
+        // Note: query() auto-converts snake_case to camelCase
         return result.map(row => ({
             id: Number(row.id),
-            osrsNickname: row.osrs_nickname,
-            discordId: row.discord_id,
-            totalPoints: Number(row.total_points),
-            questPoints: Number(row.quest_points || 0),
-            combatAchievementCount: Number(row.ca_total_count || 0),
-            diaryCount: Number(row.diary_total_count || 0),
-            collectionLogItems: Number(row.clog_items_obtained || 0),
+            osrsNickname: row.osrsNickname,
+            discordId: row.discordId,
+            totalPoints: Number(row.totalPoints),
+            questPoints: Number(row.questPoints || 0),
+            combatAchievementCount: Number(row.caTotalCount || 0),
+            diaryCount: Number(row.diaryTotalCount || 0),
+            collectionLogItems: Number(row.clogItemsObtained || 0),
             ehp: Number(row.ehp || 0),
             ehb: Number(row.ehb || 0),
             rank: Number(row.rank)
@@ -177,11 +179,12 @@ export class PointsService {
       ORDER BY points_earned DESC
       LIMIT $3
     `, [startDate, endDate, limit]);
+        // Note: query() auto-converts snake_case to camelCase
         return result.map(row => ({
-            osrsNickname: row.osrs_nickname,
-            discordId: row.discord_id,
-            pointsEarned: Number(row.points_earned),
-            eventsCount: Number(row.events_count)
+            osrsNickname: row.osrsNickname,
+            discordId: row.discordId,
+            pointsEarned: Number(row.pointsEarned),
+            eventsCount: Number(row.eventsCount)
         }));
     }
     /**

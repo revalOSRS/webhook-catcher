@@ -303,26 +303,39 @@ export class TileProgressService {
      * Determine if a tile is completed based on requirements and progress.
      *
      * Completion logic:
-     * - Base requirements only: Complete when progress.isCompleted is true
-     * - Tiers only: Complete when at least one tier is done
-     * - Both base requirements AND tiers: Complete when EITHER is satisfied
-     *   (allows base requirement to complete tile before any bonus tiers)
+     * - matchType "all": ALL requirements must be completed
+     * - matchType "any": ANY single requirement being complete is sufficient
+     * - Tiers: At least one tier must be complete
+     * - Both base requirements AND tiers: EITHER can complete the tile
      *
      * @param requirements - Tile requirement configuration
      * @param progress - Current progress result
      * @returns true if tile completion criteria is met
      */
     determineTileCompletion = (requirements, progress) => {
-        // Check if base requirements are complete
-        const baseComplete = progress.isCompleted;
         // Check if any tier is complete
         const completedTiers = progress.completedTiers || progress.progressMetadata.completedTiers;
         const tiersComplete = (completedTiers?.length || 0) > 0;
+        // Check base requirements completion
+        let baseComplete = false;
+        if (requirements.requirements && requirements.requirements.length > 0) {
+            if (requirements.matchType === BingoTileMatchType.ALL) {
+                // ALL mode: check if all requirement indices are in the completed list
+                const completedIndices = progress.progressMetadata.completedRequirementIndices || [];
+                baseComplete = completedIndices.length >= requirements.requirements.length;
+            }
+            else {
+                // ANY mode: just check if isCompleted flag is set (single requirement completed)
+                baseComplete = progress.isCompleted;
+            }
+        }
+        else {
+            // No base requirements - use isCompleted flag
+            baseComplete = progress.isCompleted;
+        }
         // Tile is complete if:
         // - Base requirements are complete (if they exist), OR
         // - At least one tier is complete (for tiered tiles)
-        // This allows tiles with both base requirements AND tiers to be completed
-        // when the base requirement is satisfied, even before any tier is done.
         if (requirements.tiers && requirements.tiers.length > 0) {
             // If tile has both base requirements and tiers, either can complete it
             if (requirements.requirements && requirements.requirements.length > 0) {
@@ -331,7 +344,7 @@ export class TileProgressService {
             // Tier-only tiles: need at least one tier complete
             return tiersComplete;
         }
-        // For regular requirements without tiers, use the isCompleted flag
+        // For regular requirements without tiers
         return baseComplete;
     };
     /**
@@ -370,22 +383,65 @@ export class TileProgressService {
                 };
                 return matchesRequirement(event, tierReq);
             });
-        // Check if event matches any base requirement
-        const matchingBaseReq = requirements.requirements?.find(req => {
+        // Check if event matches any base requirement and find its index
+        let matchingReqIndex = -1;
+        const matchingBaseReq = requirements.requirements?.find((req, index) => {
             const singleReq = {
                 matchType: BingoTileMatchType.ALL,
                 requirements: [req],
                 tiers: []
             };
-            return matchesRequirement(event, singleReq);
+            if (matchesRequirement(event, singleReq)) {
+                matchingReqIndex = index;
+                return true;
+            }
+            return false;
         });
         // If event matches a tier, process tiered progress
         if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
             return this.calculateTieredProgress(event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName);
         }
         // If event matches a base requirement, process it
-        if (matchingBaseReq) {
-            return await this.calculateRequirementProgress(event, matchingBaseReq, existingForCalc, eventStartDate, undefined, memberId, osrsAccountId, playerName);
+        if (matchingBaseReq && matchingReqIndex >= 0) {
+            // For multi-requirement tiles, get the specific progress for THIS requirement
+            // Otherwise the calculator would use the wrong requirement's existing progress
+            const existingReqProgress = existingForCalc?.progressMetadata?.requirementProgress?.[matchingReqIndex];
+            const existingForThisReq = existingReqProgress
+                ? {
+                    progressValue: existingReqProgress.progressValue,
+                    progressMetadata: existingReqProgress.progressMetadata
+                }
+                : null;
+            const result = await this.calculateRequirementProgress(event, matchingBaseReq, existingForThisReq, // Pass specific requirement's progress, not the whole tile
+            eventStartDate, undefined, memberId, osrsAccountId, playerName);
+            // Track which requirements are completed for matchType "all" logic
+            // Read from the TILE's existing progress, not the individual requirement
+            const existingCompleted = existingForCalc?.progressMetadata?.completedRequirementIndices || [];
+            const completedRequirementIndices = [...new Set([...existingCompleted])]; // Clone existing
+            // If this requirement is now complete, add its index to the list
+            if (result.isCompleted && !completedRequirementIndices.includes(matchingReqIndex)) {
+                completedRequirementIndices.push(matchingReqIndex);
+            }
+            // Preserve existing requirement progress and add/update the current one
+            const existingReqProgressMap = existingForCalc?.progressMetadata?.requirementProgress || {};
+            const requirementProgress = { ...existingReqProgressMap }; // Clone to preserve others
+            requirementProgress[matchingReqIndex] = {
+                isCompleted: result.isCompleted,
+                progressValue: result.progressValue,
+                progressMetadata: result.progressMetadata
+            };
+            // Update the result metadata with tracking info
+            result.progressMetadata = {
+                ...result.progressMetadata,
+                completedRequirementIndices,
+                requirementProgress,
+                totalRequirements: requirements.requirements?.length || 1
+            };
+            // For matchType "all", only mark as complete when ALL requirements are done
+            if (requirements.matchType === BingoTileMatchType.ALL && requirements.requirements) {
+                result.isCompleted = completedRequirementIndices.length >= requirements.requirements.length;
+            }
+            return result;
         }
         // No matching requirement found - return existing or empty progress
         return this.buildEmptyProgress(existing, requirements);
@@ -554,7 +610,11 @@ export class TileProgressService {
             lastUpdateAt: new Date().toISOString(),
             completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
             currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined,
-            playerContributions
+            playerContributions,
+            // Preserve multi-requirement tracking fields from existing progress
+            completedRequirementIndices: existing?.progressMetadata?.completedRequirementIndices,
+            requirementProgress: existing?.progressMetadata?.requirementProgress,
+            totalRequirements: existing?.progressMetadata?.totalRequirements
         };
         return {
             progressValue: bestTime,
@@ -660,11 +720,15 @@ export class TileProgressService {
         }
         // Sort completed tiers by tier number
         newCompletedTiers.sort((a, b) => a.tier - b.tier);
-        // Update metadata with tier info
+        // Update metadata with tier info, preserving base requirement tracking
         const updatedMetadata = {
             ...tierResult.progressMetadata,
             completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
-            currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
+            currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined,
+            // Preserve multi-requirement tracking fields from existing progress
+            completedRequirementIndices: existing?.progressMetadata?.completedRequirementIndices,
+            requirementProgress: existing?.progressMetadata?.requirementProgress,
+            totalRequirements: existing?.progressMetadata?.totalRequirements
         };
         return {
             progressValue: tierResult.progressValue,
@@ -798,6 +862,7 @@ export class TileProgressService {
      * @returns Current progress or null if none exists
      */
     getExistingProgress = async (boardTileId) => {
+        // Note: query() auto-converts snake_case to camelCase
         const result = await query(`
       SELECT id, board_tile_id, progress_value, progress_metadata, completion_type,
         completed_at, completed_by_osrs_account_id, created_at, updated_at
@@ -808,14 +873,14 @@ export class TileProgressService {
         const row = result[0];
         return {
             id: row.id,
-            boardTileId: row.board_tile_id,
-            progressValue: parseFloat(row.progress_value) || 0,
-            progressMetadata: row.progress_metadata,
-            completionType: row.completion_type,
-            completedByOsrsAccountId: row.completed_by_osrs_account_id,
-            completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
-            createdAt: new Date(row.created_at),
-            updatedAt: new Date(row.updated_at)
+            boardTileId: row.boardTileId,
+            progressValue: parseFloat(row.progressValue) || 0,
+            progressMetadata: row.progressMetadata, // Already camelCase from query()
+            completionType: row.completionType ?? undefined,
+            completedByOsrsAccountId: row.completedByOsrsAccountId ?? undefined,
+            completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
+            createdAt: new Date(row.createdAt),
+            updatedAt: new Date(row.updatedAt)
         };
     };
     /**

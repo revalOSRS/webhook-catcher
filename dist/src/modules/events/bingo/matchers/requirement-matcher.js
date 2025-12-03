@@ -87,46 +87,28 @@ const matchesSimplifiedRequirement = (event, requirement) => {
 /**
  * Checks if a loot event contains required item drops.
  *
- * Two modes based on whether `totalAmount` is defined:
+ * For BOTH modes (totalAmount or per-item):
+ * Returns true if ANY required item is found in the event.
+ * The calculator handles accumulating progress and determining completion.
  *
- * 1. Total amount mode (totalAmount provided):
- *    Sums up quantities of ALL matching items from the event.
- *    Returns true if the total >= totalAmount.
- *    Example: Items A, B, C with totalAmount: 5 → getting 2 of A and 3 of B = 5 total = match
+ * This allows cumulative progress tracking - players can get items one at a time
+ * across multiple events, and the calculator sums them up.
  *
- * 2. Per-item mode (totalAmount NOT provided):
- *    Returns true if ANY required item is found in the event.
- *    Full completion tracking (checking each item meets its itemAmount) is handled
- *    by the calculator based on accumulated progress, not here.
- *
- * Returns false if event is not a LOOT event.
+ * Returns false if event is not a LOOT event or no required items are present.
  */
 const matchesItemDrop = (event, requirement) => {
     if (event.eventType !== UnifiedEventType.LOOT)
         return false;
     const lootData = event.data;
-    if (requirement.totalAmount !== undefined) {
-        // Total amount mode: check if total matching items >= totalAmount
-        let totalFound = 0;
-        for (const reqItem of requirement.items) {
-            const found = lootData.items.find(item => item.id === reqItem.itemId);
-            if (found) {
-                totalFound += found.quantity;
-            }
+    // Check if at least one required item is present in this event
+    // Progress accumulation and completion check happens in the calculator
+    for (const reqItem of requirement.items) {
+        const found = lootData.items.find(item => item.id === reqItem.itemId);
+        if (found) {
+            return true; // At least one matching item found
         }
-        return totalFound >= requirement.totalAmount;
     }
-    else {
-        // Per-item mode: check if at least one required item is present in this event
-        // (Full completion check happens in the calculator based on accumulated progress)
-        for (const reqItem of requirement.items) {
-            const found = lootData.items.find(item => item.id === reqItem.itemId);
-            if (found) {
-                return true; // At least one matching item found
-            }
-        }
-        return false;
-    }
+    return false;
 };
 /**
  * Checks if a pet event matches the required pet name.

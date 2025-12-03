@@ -73,18 +73,19 @@ export class BingoService {
       WHERE bbt.board_id = $1
       ORDER BY bbt.position
     `, [boardId]);
+        // Note: query() auto-converts snake_case to camelCase
         return tiles.map((row) => ({
             id: row.id,
-            boardId: row.board_id,
-            tileId: row.tile_id,
+            boardId: row.boardId,
+            tileId: row.tileId,
             position: row.position,
-            isCompleted: row.is_completed,
-            completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+            isCompleted: row.isCompleted,
+            completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
             metadata: (row.metadata || {}),
-            createdAt: new Date(row.created_at),
-            updatedAt: new Date(row.updated_at),
+            createdAt: new Date(row.createdAt),
+            updatedAt: new Date(row.updatedAt),
             tile: {
-                id: row.tile_lib_id,
+                id: row.tileLibId,
                 task: row.task,
                 category: row.category,
                 difficulty: row.difficulty,
@@ -113,8 +114,9 @@ export class BingoService {
      * Check if a tile is completed on a board
      */
     static isTileCompleted = async (boardId, position) => {
+        // Note: query() auto-converts snake_case to camelCase
         const result = await query('SELECT is_completed FROM bingo_board_tiles WHERE board_id = $1 AND position = $2', [boardId, position]);
-        return result[0]?.is_completed ?? false;
+        return result[0]?.isCompleted ?? false;
     };
     // ============================================================================
     // Progress Queries
@@ -135,13 +137,14 @@ export class BingoService {
     `, [boardTileId]);
         if (result.length === 0)
             return null;
+        // Note: query() auto-converts snake_case to camelCase
         const row = result[0];
         return {
-            progressValue: parseFloat(row.progress_value) || 0,
-            metadata: (row.progress_metadata || {}),
-            completionType: row.completion_type,
-            completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
-            completedByOsrsAccountId: row.completed_by_osrs_account_id
+            progressValue: parseFloat(row.progressValue) || 0,
+            metadata: (row.progressMetadata || {}),
+            completionType: row.completionType,
+            completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
+            completedByOsrsAccountId: row.completedByOsrsAccountId
         };
     };
     /**
@@ -160,12 +163,13 @@ export class BingoService {
       WHERE bbt.board_id = $1
       ORDER BY bbt.position
     `, [boardId]);
+        // Note: query() auto-converts snake_case to camelCase
         return result.map((row) => ({
-            boardTileId: row.board_tile_id,
+            boardTileId: row.boardTileId,
             position: row.position,
-            progressValue: parseFloat(row.progress_value) || 0,
-            isCompleted: row.is_completed,
-            metadata: (row.progress_metadata || {})
+            progressValue: parseFloat(row.progressValue) || 0,
+            isCompleted: row.isCompleted,
+            metadata: (row.progressMetadata || {})
         }));
     };
     /**
@@ -193,17 +197,18 @@ export class BingoService {
         AND e.status = 'active'
       ORDER BY bbt.completed_at DESC NULLS LAST
     `, [osrsAccountId]);
+        // Note: query() auto-converts snake_case to camelCase
         return result.map((row) => ({
-            boardTileId: row.board_tile_id,
-            tileId: row.tile_id,
+            boardTileId: row.boardTileId,
+            tileId: row.tileId,
             position: row.position,
             task: row.task,
             category: row.category,
             difficulty: row.difficulty,
-            progressValue: parseFloat(row.progress_value) || 0,
-            isCompleted: row.is_completed,
-            completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
-            metadata: (row.progress_metadata || {})
+            progressValue: parseFloat(row.progressValue) || 0,
+            isCompleted: row.isCompleted,
+            completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
+            metadata: (row.progressMetadata || {})
         }));
     };
     // ============================================================================
@@ -232,16 +237,17 @@ export class BingoService {
     `, [eventId, teamId]);
         if (stats.length === 0)
             return null;
+        // Note: query() auto-converts snake_case to camelCase
         const row = stats[0];
-        const totalTiles = parseInt(row.total_tiles) || 0;
-        const completedTiles = parseInt(row.completed_tiles) || 0;
+        const totalTiles = parseInt(row.totalTiles) || 0;
+        const completedTiles = parseInt(row.completedTiles) || 0;
         return {
-            teamId: row.team_id,
-            teamName: row.team_name,
+            teamId: row.teamId,
+            teamName: row.teamName,
             totalTiles,
             completedTiles,
             completionPercentage: totalTiles > 0 ? (completedTiles / totalTiles) * 100 : 0,
-            totalPoints: parseInt(row.total_points) || 0
+            totalPoints: parseInt(row.totalPoints) || 0
         };
     };
     /**
@@ -263,16 +269,17 @@ export class BingoService {
       GROUP BY et.id, et.name
       ORDER BY total_points DESC, completed_tiles DESC
     `, [eventId]);
+        // Note: query() auto-converts snake_case to camelCase
         return result.map((row) => {
-            const totalTiles = parseInt(row.total_tiles) || 0;
-            const completedTiles = parseInt(row.completed_tiles) || 0;
+            const totalTiles = parseInt(row.totalTiles) || 0;
+            const completedTiles = parseInt(row.completedTiles) || 0;
             return {
-                teamId: row.team_id,
-                teamName: row.team_name,
+                teamId: row.teamId,
+                teamName: row.teamName,
                 totalTiles,
                 completedTiles,
                 completionPercentage: totalTiles > 0 ? (completedTiles / totalTiles) * 100 : 0,
-                totalPoints: parseInt(row.total_points) || 0
+                totalPoints: parseInt(row.totalPoints) || 0
             };
         });
     };
