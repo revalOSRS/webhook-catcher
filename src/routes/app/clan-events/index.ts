@@ -21,7 +21,8 @@ const router = Router();
  *   /events/:eventId/team/progress       - Team progress summary
  *   /events/:eventId/team/leaderboard    - Team member rankings
  *   /events/:eventId/team/activity       - Recent team activity
- *   /events/:eventId/my-contributions    - User's tile contributions
+ *   /events/:eventId/contributions       - User's tile contributions (/ = my, /team = all)
+ *   /events/:eventId/contributions/team  - All team contributions
  *   /events/:eventId/tiles/:tileId       - Tile detail view
  *   /events/:eventId/effects             - Team's available effects
  *   /events/:eventId/effects/:id/use     - Use an effect
@@ -36,7 +37,7 @@ router.use('/events', eventsRouter);
 // Mount sub-routes under /events/:eventId
 router.use('/events/:eventId/leaderboard', leaderboardRouter);
 router.use('/events/:eventId/team', teamRouter);
-router.use('/events/:eventId/my-contributions', contributionsRouter);
+router.use('/events/:eventId/contributions', contributionsRouter);
 router.use('/events/:eventId/tiles', tilesRouter);
 router.use('/events/:eventId/effects', effectsRouter);
 
