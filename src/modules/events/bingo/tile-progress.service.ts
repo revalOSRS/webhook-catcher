@@ -529,10 +529,20 @@ export class TileProgressService {
 
     // If event matches a base requirement, process it
     if (matchingBaseReq && matchingReqIndex >= 0) {
+      // For multi-requirement tiles, get the specific progress for THIS requirement
+      // Otherwise the calculator would use the wrong requirement's existing progress
+      const existingReqProgress = existingForCalc?.progressMetadata?.requirementProgress?.[matchingReqIndex];
+      const existingForThisReq: ExistingProgress | null = existingReqProgress 
+        ? {
+            progressValue: existingReqProgress.progressValue,
+            progressMetadata: existingReqProgress.progressMetadata as ProgressMetadata
+          }
+        : null;
+
       const result = await this.calculateRequirementProgress(
         event,
         matchingBaseReq,
-        existingForCalc,
+        existingForThisReq, // Pass specific requirement's progress, not the whole tile
         eventStartDate,
         undefined,
         memberId,
@@ -541,6 +551,7 @@ export class TileProgressService {
       );
 
       // Track which requirements are completed for matchType "all" logic
+      // Read from the TILE's existing progress, not the individual requirement
       const existingCompleted = existingForCalc?.progressMetadata?.completedRequirementIndices || [];
       const completedRequirementIndices = [...new Set([...existingCompleted])]; // Clone existing
       
@@ -549,8 +560,9 @@ export class TileProgressService {
         completedRequirementIndices.push(matchingReqIndex);
       }
 
-      // Store the completed indices and per-requirement progress
-      const requirementProgress = existingForCalc?.progressMetadata?.requirementProgress || {};
+      // Preserve existing requirement progress and add/update the current one
+      const existingReqProgressMap = existingForCalc?.progressMetadata?.requirementProgress || {};
+      const requirementProgress = { ...existingReqProgressMap }; // Clone to preserve others
       requirementProgress[matchingReqIndex] = {
         isCompleted: result.isCompleted,
         progressValue: result.progressValue,
@@ -789,7 +801,11 @@ export class TileProgressService {
       lastUpdateAt: new Date().toISOString(),
       completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
       currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined,
-      playerContributions
+      playerContributions,
+      // Preserve multi-requirement tracking fields from existing progress
+      completedRequirementIndices: existing?.progressMetadata?.completedRequirementIndices,
+      requirementProgress: existing?.progressMetadata?.requirementProgress,
+      totalRequirements: existing?.progressMetadata?.totalRequirements
     };
 
     return {
@@ -936,11 +952,15 @@ export class TileProgressService {
     // Sort completed tiers by tier number
     newCompletedTiers.sort((a, b) => a.tier - b.tier);
 
-    // Update metadata with tier info
+    // Update metadata with tier info, preserving base requirement tracking
     const updatedMetadata: ProgressMetadata = {
       ...tierResult.progressMetadata,
       completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
-      currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
+      currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined,
+      // Preserve multi-requirement tracking fields from existing progress
+      completedRequirementIndices: existing?.progressMetadata?.completedRequirementIndices,
+      requirementProgress: existing?.progressMetadata?.requirementProgress,
+      totalRequirements: existing?.progressMetadata?.totalRequirements
     };
 
     return {
