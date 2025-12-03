@@ -280,10 +280,12 @@ export class BoardInitializationService {
     const positionToTileId = new Map(boardTiles.map(t => [t.position, t.id]));
 
     for (const effect of effects) {
-      const tileId = positionToTileId.get(effect.position);
+      // Support both 'position' (type definition) and 'tilePosition' (legacy config format)
+      const position = effect.position || (effect as any).tilePosition;
+      const tileId = positionToTileId.get(position);
       
       if (!tileId) {
-        console.warn(`[BoardInit] Tile effect position not found: ${effect.position}`);
+        console.warn(`[BoardInit] Tile effect position not found: ${position}`);
         continue;
       }
 
@@ -308,7 +310,7 @@ export class BoardInitializationService {
         JSON.stringify(effect.metadata || {})
       ]);
       
-      console.log(`[BoardInit] Created tile effect: ${effect.position} -> ${effect.buffDebuffId}`);
+      console.log(`[BoardInit] Created tile effect: ${position} -> ${effect.buffDebuffId}`);
     }
   };
 }

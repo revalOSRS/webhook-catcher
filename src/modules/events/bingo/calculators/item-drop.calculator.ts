@@ -143,6 +143,13 @@ export const calculateItemDropProgress = (
 /**
  * Calculate completion based on requirement mode.
  * 
+ * Two modes:
+ * 1. totalAmount mode: Count UNIQUE items obtained from the list
+ *    Example: items [A, B, C] with totalAmount: 2 = need any 2 different items
+ * 
+ * 2. Per-item mode: Each specific item must reach its individual itemAmount target
+ *    Example: items [{A, amount: 5}, {B, amount: 3}] = need 5 of A AND 3 of B
+ * 
  * @param contributions - All player contributions
  * @param requirement - The item drop requirement
  * @returns Progress value, target, and completion status
@@ -153,41 +160,53 @@ const calculateCompletion = (
 ): { progressValue: number; targetValue: number; isCompleted: boolean } => {
   // Aggregate all items across players
   const itemTotals: Record<number, number> = {};
-  let totalCount = 0;
   
   for (const player of contributions) {
     for (const item of player.items) {
       itemTotals[item.itemId] = (itemTotals[item.itemId] ?? 0) + item.quantity;
-      totalCount += item.quantity;
     }
   }
   
-  // Total amount mode: sum all matching items
+  // Total amount mode: count UNIQUE items obtained (not total quantity)
+  // Example: items [Cowhide, Raw beef, Hammer] with totalAmount: 2
+  // = need to obtain any 2 different items from the list
   if (requirement.totalAmount !== undefined) {
+    // Count how many unique required items have been obtained (at least 1 of each)
+    let uniqueItemsObtained = 0;
+    for (const reqItem of requirement.items) {
+      const currentAmount = itemTotals[reqItem.itemId] ?? 0;
+      const requiredAmount = reqItem.itemAmount ?? 1;
+      if (currentAmount >= requiredAmount) {
+        uniqueItemsObtained++;
+      }
+    }
+    
     return {
-      progressValue: totalCount,
+      progressValue: uniqueItemsObtained,
       targetValue: requirement.totalAmount,
-      isCompleted: totalCount >= requirement.totalAmount
+      isCompleted: uniqueItemsObtained >= requirement.totalAmount
     };
   }
   
   // Per-item mode: each item must meet its individual target
   let allItemsComplete = true;
-  let totalTarget = 0;
+  let completedItems = 0;
+  const totalItems = requirement.items.length;
   
   for (const reqItem of requirement.items) {
     const requiredAmount = reqItem.itemAmount ?? 1;
     const currentAmount = itemTotals[reqItem.itemId] ?? 0;
-    totalTarget += requiredAmount;
     
-    if (currentAmount < requiredAmount) {
+    if (currentAmount >= requiredAmount) {
+      completedItems++;
+    } else {
       allItemsComplete = false;
     }
   }
   
   return {
-    progressValue: totalCount,
-    targetValue: totalTarget,
+    progressValue: completedItems,
+    targetValue: totalItems,
     isCompleted: allItemsComplete
   };
 };
