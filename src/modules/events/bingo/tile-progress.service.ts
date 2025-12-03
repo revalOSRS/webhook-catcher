@@ -1128,7 +1128,18 @@ export class TileProgressService {
   private getExistingProgress = async (
     boardTileId: string
   ): Promise<BingoTileProgress | null> => {
-    const result = await query(`
+    // Note: query() auto-converts snake_case to camelCase
+    const result = await query<{
+      id: string;
+      boardTileId: string;
+      progressValue: string;
+      progressMetadata: ProgressMetadata;
+      completionType: BingoTileCompletionType | null;
+      completedAt: string | null;
+      completedByOsrsAccountId: number | null;
+      createdAt: string;
+      updatedAt: string;
+    }>(`
       SELECT id, board_tile_id, progress_value, progress_metadata, completion_type,
         completed_at, completed_by_osrs_account_id, created_at, updated_at
       FROM bingo_tile_progress WHERE board_tile_id = $1 LIMIT 1
@@ -1138,15 +1149,15 @@ export class TileProgressService {
 
     const row = result[0];
     return {
-      id: row.id as string,
-      boardTileId: row.board_tile_id as string,
-      progressValue: parseFloat(row.progress_value as string) || 0,
-      progressMetadata: row.progress_metadata as ProgressMetadata,
-      completionType: row.completion_type as BingoTileCompletionType | undefined,
-      completedByOsrsAccountId: row.completed_by_osrs_account_id as number | undefined,
-      completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
-      createdAt: new Date(row.created_at as string),
-      updatedAt: new Date(row.updated_at as string)
+      id: row.id,
+      boardTileId: row.boardTileId,
+      progressValue: parseFloat(row.progressValue) || 0,
+      progressMetadata: row.progressMetadata, // Already camelCase from query()
+      completionType: row.completionType ?? undefined,
+      completedByOsrsAccountId: row.completedByOsrsAccountId ?? undefined,
+      completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt)
     };
   };
 
