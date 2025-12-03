@@ -7,6 +7,7 @@
 
 import { Router, Response, Request } from 'express';
 import { query } from '../../../db/connection.js';
+import { estonianToUtc } from '../../../utils/estonian-time.js';
 
 const router = Router();
 
@@ -201,6 +202,9 @@ const sanitizeRequirement = (req: any, progressMetadata?: any): PublicRequiremen
  * Check if tiles should be visible based on event start time
  * Tiles are hidden if more than 3 hours before event start
  * Tiles are also hidden if no start date is set (event not scheduled)
+ * 
+ * Note: Event times are stored as Estonian time in the database (but in UTC column).
+ * We convert to actual UTC for comparison with the current time.
  */
 const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Date; message?: string } => {
 	if (!startDate) {
@@ -211,8 +215,10 @@ const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Da
 		};
 	}
 	
-	const now = new Date();
-	const threeHoursBefore = new Date(startDate.getTime() - (3 * 60 * 60 * 1000));
+	// Convert stored Estonian time to actual UTC for comparison
+	const startDateUtc = estonianToUtc(startDate);
+	const now = new Date(); // Current UTC time
+	const threeHoursBefore = new Date(startDateUtc.getTime() - (3 * 60 * 60 * 1000));
 	
 	if (now >= threeHoursBefore) {
 		// Within 3 hours of start or after - show tiles
@@ -220,9 +226,11 @@ const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Da
 	}
 	
 	// More than 3 hours before start - hide tiles
+	// Return revealAt in the same format as stored (Estonian time representation)
+	// so the frontend can display it correctly
 	return {
 		show: false,
-		revealAt: threeHoursBefore,
+		revealAt: new Date(startDate.getTime() - (3 * 60 * 60 * 1000)),
 		message: 'Tiles will be revealed 3 hours before the event starts'
 	};
 };

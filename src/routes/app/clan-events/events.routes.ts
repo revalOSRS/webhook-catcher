@@ -67,6 +67,8 @@ router.get('/', async (req, res: Response) => {
 		}
 
 		// Get all active events
+		// Note: Event dates are stored as Estonian time (Europe/Tallinn) in the database
+		// We use AT TIME ZONE to properly convert to UTC for comparison with NOW()
 		const events = await query(`
 			SELECT 
 				e.id,
@@ -79,7 +81,7 @@ router.get('/', async (req, res: Response) => {
 			FROM events e
 			LEFT JOIN event_teams et ON e.id = et.event_id
 			WHERE e.status = 'active'
-				AND (e.end_date IS NULL OR e.end_date > NOW())
+				AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
 			GROUP BY e.id, e.name, e.event_type, e.status, e.start_date, e.end_date
 			ORDER BY e.start_date DESC NULLS LAST, e.created_at DESC
 		`);

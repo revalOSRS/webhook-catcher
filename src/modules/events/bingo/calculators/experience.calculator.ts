@@ -24,6 +24,7 @@ import type {
 } from '../types/bingo-requirements.type.js';
 import { BingoTileRequirementType } from '../types/bingo-requirements.type.js';
 import { WiseOldManService } from '../../../wiseoldman/index.js';
+import { estonianToUtc } from '../../../../utils/estonian-time.js';
 
 /**
  * WOM snapshot skill data
@@ -218,7 +219,7 @@ const fetchCurrentXp = async (playerName: string, skill: string): Promise<number
  * 
  * @param playerName - Player's OSRS name
  * @param skill - Skill name
- * @param date - Target date (event start)
+ * @param date - Target date (event start, stored as Estonian time)
  * @returns Historical XP or null if unavailable
  */
 const fetchHistoricalXp = async (
@@ -238,12 +239,16 @@ const fetchHistoricalXp = async (
       return null;
     }
     
+    // Convert Estonian event start date to actual UTC for comparison with WOM snapshots
+    // (WOM returns dates in UTC)
+    const targetDateUtc = estonianToUtc(date);
+    
     // Find snapshot closest to (but before or at) the target date
     const validSnapshots = snapshots
       .filter(s => {
         if (!s.createdAt) return false;
         const snapshotDate = s.createdAt instanceof Date ? s.createdAt : new Date(s.createdAt);
-        return snapshotDate <= date;
+        return snapshotDate <= targetDateUtc;
       })
       .sort((a, b) => {
         const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt ?? 0).getTime();
