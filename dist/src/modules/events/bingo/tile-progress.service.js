@@ -122,6 +122,8 @@ export class TileProgressService {
         if (!osrsAccountId)
             return [];
         // Get team memberships for active events (within date range)
+        // Note: Event dates are stored as Estonian time (Europe/Tallinn) in the database
+        // We use AT TIME ZONE to properly convert to UTC for comparison with NOW()
         const memberships = await query(`
       SELECT DISTINCT et.id as team_id, e.id as event_id, e.start_date as event_start_date
       FROM event_team_members etm
@@ -129,8 +131,8 @@ export class TileProgressService {
       JOIN events e ON et.event_id = e.id
       WHERE etm.osrs_account_id = $1
         AND e.status = 'active'
-        AND (e.start_date IS NULL OR e.start_date <= NOW())
-        AND (e.end_date IS NULL OR e.end_date > NOW())
+        AND (e.start_date IS NULL OR (e.start_date AT TIME ZONE 'Europe/Tallinn') <= NOW())
+        AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
     `, [osrsAccountId]);
         if (memberships.length === 0)
             return [];
@@ -190,7 +192,7 @@ export class TileProgressService {
         const memberId = event.osrsAccountId
             ? await this.getMemberIdFromOsrsAccount(event.osrsAccountId, tile.teamId)
             : undefined;
-        const updatedProgress = await this.calculateProgress(event, tile.requirements, existingProgress, tile.eventStartDate, memberId, event.osrsAccountId, event.playerName);
+        const updatedProgress = await this.calculateProgress(event, tile.requirements, existingProgress, tile.eventStartDate, memberId, event.osrsAccountId, event.playerName, tile.eventId);
         const completedByOsrsAccountId = this.getCompletedByAccountId(updatedProgress, existingProgress);
         // Upsert progress
         if (existingProgress) {
@@ -368,9 +370,10 @@ export class TileProgressService {
      * @param memberId - Team member ID for contribution tracking
      * @param osrsAccountId - OSRS account for attribution
      * @param playerName - Player name for display
+     * @param eventId - Event ID for XP snapshot lookup
      * @returns Calculated progress result
      */
-    calculateProgress = async (event, requirements, existing, eventStartDate, memberId, osrsAccountId, playerName) => {
+    calculateProgress = async (event, requirements, existing, eventStartDate, memberId, osrsAccountId, playerName, eventId) => {
         // Convert BingoTileProgress to ExistingProgress format for calculators
         const existingForCalc = this.toExistingProgress(existing);
         // Check if event matches any tier
@@ -399,7 +402,7 @@ export class TileProgressService {
         });
         // If event matches a tier, process tiered progress
         if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
-            return this.calculateTieredProgress(event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName);
+            return this.calculateTieredProgress(event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName, eventId);
         }
         // If event matches a base requirement, process it
         if (matchingBaseReq && matchingReqIndex >= 0) {
@@ -413,7 +416,7 @@ export class TileProgressService {
                 }
                 : null;
             const result = await this.calculateRequirementProgress(event, matchingBaseReq, existingForThisReq, // Pass specific requirement's progress, not the whole tile
-            eventStartDate, undefined, memberId, osrsAccountId, playerName);
+            eventStartDate, undefined, memberId, osrsAccountId, playerName, eventId);
             // Track which requirements are completed for matchType "all" logic
             // Read from the TILE's existing progress, not the individual requirement
             const existingCompleted = existingForCalc?.progressMetadata?.completedRequirementIndices || [];
@@ -525,14 +528,14 @@ export class TileProgressService {
      *
      * @returns Progress result with tier-specific data
      */
-    calculateTieredProgress = async (event, requirements, existing, eventStartDate, memberId, osrsAccountId, playerName) => {
+    calculateTieredProgress = async (event, requirements, existing, eventStartDate, memberId, osrsAccountId, playerName, eventId) => {
         const existingCompletedTiers = existing?.progressMetadata?.completedTiers || [];
         const completedTierNumbers = existingCompletedTiers.map(t => t.tier);
         const isSpeedrun = requirements.tiers[0]?.requirement?.type === BingoTileRequirementType.SPEEDRUN;
         if (isSpeedrun) {
             return this.calculateSpeedrunTieredProgress(event, requirements, existing, completedTierNumbers, osrsAccountId, playerName);
         }
-        return this.calculateRegularTieredProgress(event, requirements, existing, eventStartDate, completedTierNumbers, memberId, osrsAccountId, playerName);
+        return this.calculateRegularTieredProgress(event, requirements, existing, eventStartDate, completedTierNumbers, memberId, osrsAccountId, playerName, eventId);
     };
     /**
      * Calculate speedrun-specific tiered progress.
@@ -665,13 +668,16 @@ export class TileProgressService {
      *
      * @returns Progress with accumulated values and tier completions
      */
-    calculateRegularTieredProgress = async (event, requirements, existing, eventStartDate, completedTierNumbers, memberId, osrsAccountId, playerName) => {
+    calculateRegularTieredProgress = async (event, requirements, existing, eventStartDate, completedTierNumbers, memberId, osrsAccountId, playerName, eventId) => {
         const newCompletedTiers = [...(existing?.progressMetadata?.completedTiers || [])];
         const updatedCompletedNumbers = [...completedTierNumbers];
-        // Find the matching tier and calculate progress
+        // Find ANY matching tier to calculate progress
+        // We use the HIGHEST tier's requirement for progress calculation since it has the highest target
         let tierResult = null;
         let matchedTier = null;
-        for (const tier of requirements.tiers) {
+        // Sort tiers by tier number descending to find highest first
+        const sortedTiers = [...requirements.tiers].sort((a, b) => b.tier - a.tier);
+        for (const tier of sortedTiers) {
             const tierReq = {
                 matchType: BingoTileMatchType.ALL,
                 requirements: [],
@@ -679,8 +685,8 @@ export class TileProgressService {
             };
             if (!matchesRequirement(event, tierReq))
                 continue;
-            // Calculate progress using this tier's requirement
-            tierResult = await this.calculateRequirementProgress(event, tier.requirement, existing, eventStartDate, tier, memberId, osrsAccountId, playerName);
+            // Calculate progress using highest matching tier's requirement
+            tierResult = await this.calculateRequirementProgress(event, tier.requirement, existing, eventStartDate, tier, memberId, osrsAccountId, playerName, eventId);
             matchedTier = tier;
             break;
         }
@@ -695,27 +701,24 @@ export class TileProgressService {
             }
             return this.buildEmptyProgress(null, requirements);
         }
-        // Check if the matched tier's requirement is now complete
-        const isMatchedTierComplete = this.isTierComplete(matchedTier.requirement, tierResult.progressValue, tierResult.progressMetadata);
-        if (isMatchedTierComplete && !updatedCompletedNumbers.includes(matchedTier.tier)) {
-            // Mark this tier as complete
-            newCompletedTiers.push({
-                tier: matchedTier.tier,
-                completedAt: new Date().toISOString(),
-                completedByOsrsAccountId: osrsAccountId || 0
-            });
-            updatedCompletedNumbers.push(matchedTier.tier);
-            // AUTO-COMPLETE ALL LOWER TIERS
-            // This is the key change - completing tier 3 auto-completes tiers 1 and 2
-            for (const lowerTier of requirements.tiers.filter(t => t.tier < matchedTier.tier)) {
-                if (!updatedCompletedNumbers.includes(lowerTier.tier)) {
-                    newCompletedTiers.push({
-                        tier: lowerTier.tier,
-                        completedAt: new Date().toISOString(),
-                        completedByOsrsAccountId: osrsAccountId || 0
-                    });
-                    updatedCompletedNumbers.push(lowerTier.tier);
-                }
+        // Check ALL tiers to see which ones are complete with current progress
+        // Sort by tier number ascending to check from lowest to highest
+        const tiersAscending = [...requirements.tiers].sort((a, b) => a.tier - b.tier);
+        for (const tier of tiersAscending) {
+            // Skip already completed tiers
+            if (updatedCompletedNumbers.includes(tier.tier))
+                continue;
+            // Check if this tier is complete with current progress
+            const isTierComplete = this.isTierComplete(tier.requirement, tierResult.progressValue, tierResult.progressMetadata);
+            if (isTierComplete) {
+                // Mark this tier as complete
+                newCompletedTiers.push({
+                    tier: tier.tier,
+                    completedAt: new Date().toISOString(),
+                    completedByOsrsAccountId: osrsAccountId || 0
+                });
+                updatedCompletedNumbers.push(tier.tier);
+                console.log(`[TileProgress] Tier ${tier.tier} completed with progress ${tierResult.progressValue}`);
             }
         }
         // Sort completed tiers by tier number
@@ -823,7 +826,7 @@ export class TileProgressService {
      *
      * @returns Progress value, metadata, and completion status
      */
-    calculateRequirementProgress = async (event, requirement, existing, eventStartDate, tier, memberId, osrsAccountId, playerName) => {
+    calculateRequirementProgress = async (event, requirement, existing, eventStartDate, tier, memberId, osrsAccountId, playerName, eventId) => {
         const req = requirement;
         switch (req.type) {
             case BingoTileRequirementType.ITEM_DROP:
@@ -837,11 +840,11 @@ export class TileProgressService {
             case BingoTileRequirementType.BA_GAMBLES:
                 return calculateBaGamblesProgress(event, req, existing, memberId, osrsAccountId, playerName);
             case BingoTileRequirementType.EXPERIENCE:
-                return await calculateExperienceProgress(event, req, existing, eventStartDate, memberId, osrsAccountId, playerName);
+                return await calculateExperienceProgress(event, req, existing, eventStartDate, memberId, osrsAccountId, playerName, eventId);
             case BingoTileRequirementType.CHAT:
                 return calculateChatProgress(event, req, existing, memberId, osrsAccountId, playerName);
             case BingoTileRequirementType.PUZZLE:
-                return await calculatePuzzleProgress(event, req, existing, eventStartDate, memberId, osrsAccountId, playerName);
+                return await calculatePuzzleProgress(event, req, existing, eventStartDate, memberId, osrsAccountId, playerName, eventId);
             default:
                 return this.buildEmptyProgress(null, { matchType: BingoTileMatchType.ALL, requirements: [req], tiers: [] });
         }

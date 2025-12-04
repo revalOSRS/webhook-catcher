@@ -888,11 +888,15 @@ export class TileProgressService {
     const newCompletedTiers: TierCompletion[] = [...(existing?.progressMetadata?.completedTiers || [])];
     const updatedCompletedNumbers = [...completedTierNumbers];
 
-    // Find the matching tier and calculate progress
+    // Find ANY matching tier to calculate progress
+    // We use the HIGHEST tier's requirement for progress calculation since it has the highest target
     let tierResult: ProgressResult | null = null;
     let matchedTier: TieredRequirementDef | null = null;
     
-    for (const tier of requirements.tiers!) {
+    // Sort tiers by tier number descending to find highest first
+    const sortedTiers = [...requirements.tiers!].sort((a, b) => b.tier - a.tier);
+    
+    for (const tier of sortedTiers) {
       const tierReq: BingoTileRequirements = {
         matchType: BingoTileMatchType.ALL,
         requirements: [],
@@ -900,7 +904,7 @@ export class TileProgressService {
       };
       if (!matchesRequirement(event, tierReq)) continue;
 
-      // Calculate progress using this tier's requirement
+      // Calculate progress using highest matching tier's requirement
       tierResult = await this.calculateRequirementProgress(
         event,
         tier.requirement,
@@ -928,33 +932,31 @@ export class TileProgressService {
       return this.buildEmptyProgress(null, requirements);
     }
 
-    // Check if the matched tier's requirement is now complete
-    const isMatchedTierComplete = this.isTierComplete(
-      matchedTier.requirement,
-      tierResult.progressValue,
-      tierResult.progressMetadata
-    );
-
-    if (isMatchedTierComplete && !updatedCompletedNumbers.includes(matchedTier.tier)) {
-      // Mark this tier as complete
-      newCompletedTiers.push({
-        tier: matchedTier.tier,
-        completedAt: new Date().toISOString(),
-        completedByOsrsAccountId: osrsAccountId || 0
-      });
-      updatedCompletedNumbers.push(matchedTier.tier);
-
-      // AUTO-COMPLETE ALL LOWER TIERS
-      // This is the key change - completing tier 3 auto-completes tiers 1 and 2
-      for (const lowerTier of requirements.tiers!.filter(t => t.tier < matchedTier!.tier)) {
-        if (!updatedCompletedNumbers.includes(lowerTier.tier)) {
-          newCompletedTiers.push({
-            tier: lowerTier.tier,
-            completedAt: new Date().toISOString(),
-            completedByOsrsAccountId: osrsAccountId || 0
-          });
-          updatedCompletedNumbers.push(lowerTier.tier);
-        }
+    // Check ALL tiers to see which ones are complete with current progress
+    // Sort by tier number ascending to check from lowest to highest
+    const tiersAscending = [...requirements.tiers!].sort((a, b) => a.tier - b.tier);
+    
+    for (const tier of tiersAscending) {
+      // Skip already completed tiers
+      if (updatedCompletedNumbers.includes(tier.tier)) continue;
+      
+      // Check if this tier is complete with current progress
+      const isTierComplete = this.isTierComplete(
+        tier.requirement,
+        tierResult.progressValue,
+        tierResult.progressMetadata
+      );
+      
+      if (isTierComplete) {
+        // Mark this tier as complete
+        newCompletedTiers.push({
+          tier: tier.tier,
+          completedAt: new Date().toISOString(),
+          completedByOsrsAccountId: osrsAccountId || 0
+        });
+        updatedCompletedNumbers.push(tier.tier);
+        
+        console.log(`[TileProgress] Tier ${tier.tier} completed with progress ${tierResult.progressValue}`);
       }
     }
 

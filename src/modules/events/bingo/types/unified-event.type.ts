@@ -10,6 +10,7 @@ export enum UnifiedEventType {
   PET = 'PET',
   SPEEDRUN = 'SPEEDRUN',
   BA_GAMBLE = 'BA_GAMBLE',
+  LOGIN = 'LOGIN',
   LOGOUT = 'LOGOUT',
   EXPERIENCE = 'EXPERIENCE',
   CHAT = 'CHAT'
@@ -29,7 +30,7 @@ export interface UnifiedGameEvent {
   source: UnifiedEventSource // Event source identifier
   
   // Event-specific data
-  data: LootEventData | PetEventData | SpeedrunEventData | BaGambleEventData | LogoutEventData | ExperienceEventData | ChatEventData
+  data: LootEventData | PetEventData | SpeedrunEventData | BaGambleEventData | LoginEventData | LogoutEventData | ExperienceEventData | ChatEventData
 }
 
 export interface LootEventData {
@@ -58,9 +59,15 @@ export interface BaGambleEventData {
   gambleCount: number
 }
 
+export interface LoginEventData {
+  // LOGIN events carry current XP data from Dink
+  // The XP snapshot is captured separately in dink.service.ts
+  // This event triggers XP progress calculation
+}
+
 export interface LogoutEventData {
-  // XP data will be fetched from WiseOldMan API
-  // This event triggers XP calculation
+  // Legacy: LOGOUT was used to trigger XP calculation
+  // Now LOGIN is preferred as it carries fresh XP data
 }
 
 export interface ExperienceEventData {

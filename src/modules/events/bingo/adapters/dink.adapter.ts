@@ -9,6 +9,7 @@ import type {
   DinkPetEvent, 
   DinkSpeedrunEvent, 
   DinkBarbarianAssaultGambleEvent,
+  DinkLoginEvent,
   DinkLogoutEvent,
   DinkKillCountEvent,
   DinkChatEvent
@@ -23,6 +24,7 @@ type SupportedDinkEvent =
   | DinkPetEvent 
   | DinkSpeedrunEvent 
   | DinkBarbarianAssaultGambleEvent 
+  | DinkLoginEvent
   | DinkLogoutEvent 
   | DinkKillCountEvent
   | DinkChatEvent
@@ -43,6 +45,9 @@ const eventAdapters: Partial<Record<DinkEventType, (event: SupportedDinkEvent, o
   
   [DinkEventType.BARBARIAN_ASSAULT_GAMBLE]: (event, osrsAccountId, timestamp) => 
     adaptBaGambleEvent(event as DinkBarbarianAssaultGambleEvent, osrsAccountId, timestamp),
+  
+  [DinkEventType.LOGIN]: (event, osrsAccountId, timestamp) => 
+    adaptLoginEvent(event as DinkLoginEvent, osrsAccountId, timestamp),
   
   [DinkEventType.LOGOUT]: (event, osrsAccountId, timestamp) => 
     adaptLogoutEvent(event as DinkLogoutEvent, osrsAccountId, timestamp),
@@ -163,10 +168,26 @@ const adaptBaGambleEvent = (event: DinkBarbarianAssaultGambleEvent, osrsAccountI
 })
 
 /**
+ * Converts a login event to unified format.
+ * 
+ * LOGIN events are the primary trigger for experience progress calculation.
+ * The XP snapshot is captured separately in dink.service.ts before this
+ * event is processed, so the progress calculator can read fresh XP data.
+ */
+const adaptLoginEvent = (event: DinkLoginEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => ({
+  eventType: UnifiedEventType.LOGIN,
+  playerName: event.playerName,
+  osrsAccountId,
+  timestamp,
+  source: UnifiedEventSource.DINK,
+  data: {}
+})
+
+/**
  * Converts a logout event to unified format.
  * 
- * Creates a minimal logout event - XP data will be fetched from WiseOldMan API
- * when processing experience-based tile requirements.
+ * Legacy: LOGOUT was used to trigger XP calculation.
+ * Now LOGIN is preferred as it carries fresh XP data from Dink.
  */
 const adaptLogoutEvent = (event: DinkLogoutEvent, osrsAccountId: number | undefined, timestamp: Date): UnifiedGameEvent => ({
   eventType: UnifiedEventType.LOGOUT,

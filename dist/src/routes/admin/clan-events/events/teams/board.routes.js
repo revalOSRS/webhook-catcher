@@ -1267,4 +1267,345 @@ router.post('/tiles/:tileId/revert', async (req, res) => {
         });
     }
 });
+/**
+ * PUT /api/admin/clan-events/:eventId/teams/:teamId/board/bulk
+ * Bulk update entire board - tiles, positions, and progress
+ *
+ * This is a comprehensive endpoint to modify everything about a team's board in one request.
+ *
+ * Body: {
+ *   board?: {
+ *     columns?: number,
+ *     rows?: number,
+ *     metadata?: object
+ *   },
+ *   tiles?: [
+ *     {
+ *       boardTileId?: string,        // If provided, updates existing tile. If not, creates new
+ *       tileId: string,              // Reference to bingo_tiles.id
+ *       position: string,            // e.g. "A1", "B2"
+ *       metadata?: object,
+ *       isCompleted?: boolean,
+ *       progress?: {
+ *         progressValue?: number,
+ *         progressMetadata?: object,
+ *         completedByOsrsAccountId?: number,
+ *         completionType?: 'auto' | 'manual_admin'
+ *       }
+ *     }
+ *   ],
+ *   removeTileIds?: string[],        // Board tile IDs to remove
+ *   resetAllProgress?: boolean       // If true, resets all tile progress
+ * }
+ *
+ * Returns: Updated board with all tiles
+ */
+router.put('/bulk', async (req, res) => {
+    try {
+        const { eventId, teamId } = req.params;
+        const { board, tiles, removeTileIds, resetAllProgress } = req.body;
+        // Validate team exists
+        const teamCheck = await query('SELECT id FROM event_teams WHERE id = $1 AND event_id = $2', [teamId, eventId]);
+        if (teamCheck.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Team not found or does not belong to this event'
+            });
+        }
+        // Get or create board
+        let boards = await query('SELECT id, metadata, columns, rows FROM bingo_boards WHERE event_id = $1 AND team_id = $2', [eventId, teamId]);
+        let boardId;
+        if (boards.length === 0) {
+            // Create board
+            const event = await query('SELECT config FROM events WHERE id = $1', [eventId]);
+            const eventConfig = event[0]?.config || {};
+            const genericBoard = eventConfig.board || {};
+            const newBoard = await query(`
+				INSERT INTO bingo_boards (
+					event_id, team_id, name, columns, rows, metadata
+				)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				RETURNING id
+			`, [
+                eventId,
+                teamId,
+                'Team Board',
+                board?.columns || genericBoard.columns || 5,
+                board?.rows || genericBoard.rows || 5,
+                JSON.stringify(board?.metadata || genericBoard.metadata || {})
+            ]);
+            boardId = newBoard[0].id;
+        }
+        else {
+            boardId = boards[0].id;
+            // Update board config if provided
+            if (board) {
+                const existingMetadata = boards[0].metadata || {};
+                const updateParts = [];
+                const updateValues = [];
+                let paramIdx = 1;
+                if (board.columns !== undefined) {
+                    updateParts.push(`columns = $${paramIdx++}`);
+                    updateValues.push(board.columns);
+                }
+                if (board.rows !== undefined) {
+                    updateParts.push(`rows = $${paramIdx++}`);
+                    updateValues.push(board.rows);
+                }
+                if (board.metadata !== undefined) {
+                    updateParts.push(`metadata = $${paramIdx++}`);
+                    updateValues.push(JSON.stringify({ ...existingMetadata, ...board.metadata }));
+                }
+                if (updateParts.length > 0) {
+                    updateValues.push(boardId);
+                    await query(`
+						UPDATE bingo_boards 
+						SET ${updateParts.join(', ')}, updated_at = NOW()
+						WHERE id = $${paramIdx}
+					`, updateValues);
+                }
+            }
+        }
+        const results = {
+            boardUpdated: false,
+            tilesCreated: 0,
+            tilesUpdated: 0,
+            tilesRemoved: 0,
+            progressUpdated: 0,
+            progressReset: false
+        };
+        if (board) {
+            results.boardUpdated = true;
+        }
+        // Reset all progress if requested
+        if (resetAllProgress) {
+            await query(`
+				UPDATE bingo_board_tiles
+				SET is_completed = false, completed_at = NULL
+				WHERE board_id = $1
+			`, [boardId]);
+            await query(`
+				DELETE FROM bingo_tile_progress
+				WHERE board_tile_id IN (
+					SELECT id FROM bingo_board_tiles WHERE board_id = $1
+				)
+			`, [boardId]);
+            results.progressReset = true;
+        }
+        // Remove tiles if specified
+        if (removeTileIds && removeTileIds.length > 0) {
+            // Delete progress first (foreign key)
+            await query(`
+				DELETE FROM bingo_tile_progress
+				WHERE board_tile_id = ANY($1::uuid[])
+			`, [removeTileIds]);
+            // Delete tile effects
+            await query(`
+				DELETE FROM bingo_board_tile_effects
+				WHERE board_tile_id = ANY($1::uuid[])
+			`, [removeTileIds]);
+            // Delete tiles
+            const deleteResult = await query(`
+				DELETE FROM bingo_board_tiles
+				WHERE id = ANY($1::uuid[]) AND board_id = $2
+				RETURNING id
+			`, [removeTileIds, boardId]);
+            results.tilesRemoved = deleteResult.length;
+        }
+        // Process tiles
+        if (tiles && tiles.length > 0) {
+            for (const tile of tiles) {
+                const { boardTileId, tileId, position, metadata, isCompleted, progress } = tile;
+                // Validate tile exists in bingo_tiles
+                const tileCheck = await query('SELECT id FROM bingo_tiles WHERE id = $1', [tileId]);
+                if (tileCheck.length === 0) {
+                    continue; // Skip invalid tiles
+                }
+                let currentBoardTileId;
+                if (boardTileId) {
+                    // Update existing board tile
+                    const existingTile = await query('SELECT id, metadata FROM bingo_board_tiles WHERE id = $1 AND board_id = $2', [boardTileId, boardId]);
+                    if (existingTile.length === 0) {
+                        continue; // Skip if tile doesn't exist
+                    }
+                    const existingMeta = existingTile[0].metadata || {};
+                    await query(`
+						UPDATE bingo_board_tiles
+						SET 
+							tile_id = $1,
+							position = $2,
+							metadata = $3,
+							is_completed = COALESCE($4, is_completed),
+							completed_at = CASE WHEN $4 = true AND completed_at IS NULL THEN NOW() 
+								WHEN $4 = false THEN NULL 
+								ELSE completed_at END,
+							updated_at = NOW()
+						WHERE id = $5
+					`, [
+                        tileId,
+                        position,
+                        JSON.stringify({ ...existingMeta, ...(metadata || {}) }),
+                        isCompleted,
+                        boardTileId
+                    ]);
+                    currentBoardTileId = boardTileId;
+                    results.tilesUpdated++;
+                }
+                else {
+                    // Check if position is already occupied
+                    const positionCheck = await query('SELECT id FROM bingo_board_tiles WHERE board_id = $1 AND position = $2', [boardId, position]);
+                    if (positionCheck.length > 0) {
+                        // Update existing tile at this position
+                        await query(`
+							UPDATE bingo_board_tiles
+							SET 
+								tile_id = $1,
+								metadata = $2,
+								is_completed = COALESCE($3, is_completed),
+								completed_at = CASE WHEN $3 = true AND completed_at IS NULL THEN NOW() 
+									WHEN $3 = false THEN NULL 
+									ELSE completed_at END,
+								updated_at = NOW()
+							WHERE id = $4
+						`, [
+                            tileId,
+                            JSON.stringify(metadata || {}),
+                            isCompleted,
+                            positionCheck[0].id
+                        ]);
+                        currentBoardTileId = positionCheck[0].id;
+                        results.tilesUpdated++;
+                    }
+                    else {
+                        // Create new board tile
+                        const newTile = await query(`
+							INSERT INTO bingo_board_tiles (board_id, tile_id, position, metadata, is_completed, completed_at)
+							VALUES ($1, $2, $3, $4, COALESCE($5, false), CASE WHEN $5 = true THEN NOW() ELSE NULL END)
+							RETURNING id
+						`, [
+                            boardId,
+                            tileId,
+                            position,
+                            JSON.stringify(metadata || {}),
+                            isCompleted
+                        ]);
+                        currentBoardTileId = newTile[0].id;
+                        results.tilesCreated++;
+                    }
+                }
+                // Update progress if provided
+                if (progress) {
+                    const existingProgress = await query('SELECT id, progress_metadata FROM bingo_tile_progress WHERE board_tile_id = $1', [currentBoardTileId]);
+                    if (existingProgress.length > 0) {
+                        // Update existing progress
+                        const existingMeta = existingProgress[0].progressMetadata || {};
+                        await query(`
+							UPDATE bingo_tile_progress
+							SET 
+								progress_value = COALESCE($1, progress_value),
+								progress_metadata = $2,
+								completed_by_osrs_account_id = COALESCE($3, completed_by_osrs_account_id),
+								completion_type = COALESCE($4, completion_type),
+								completed_at = CASE 
+									WHEN $4 IS NOT NULL AND completed_at IS NULL THEN NOW()
+									ELSE completed_at 
+								END,
+								updated_at = NOW()
+							WHERE board_tile_id = $5
+						`, [
+                            progress.progressValue,
+                            JSON.stringify({ ...existingMeta, ...(progress.progressMetadata || {}) }),
+                            progress.completedByOsrsAccountId,
+                            progress.completionType,
+                            currentBoardTileId
+                        ]);
+                    }
+                    else {
+                        // Create new progress record
+                        await query(`
+							INSERT INTO bingo_tile_progress (
+								board_tile_id, progress_value, progress_metadata, 
+								completed_by_osrs_account_id, completion_type, completed_at
+							)
+							VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 IS NOT NULL THEN NOW() ELSE NULL END)
+						`, [
+                            currentBoardTileId,
+                            progress.progressValue || 0,
+                            JSON.stringify(progress.progressMetadata || {}),
+                            progress.completedByOsrsAccountId,
+                            progress.completionType
+                        ]);
+                    }
+                    results.progressUpdated++;
+                }
+            }
+        }
+        // Fetch the complete updated board
+        const updatedBoard = await query(`
+			SELECT id, event_id, team_id, columns, rows, metadata
+			FROM bingo_boards WHERE id = $1
+		`, [boardId]);
+        const updatedTiles = await query(`
+			SELECT 
+				bbt.id, bbt.board_id, bbt.tile_id, bbt.position, 
+				bbt.is_completed, bbt.completed_at, bbt.metadata,
+				bt.task, bt.category, bt.difficulty, bt.icon, 
+				bt.description, bt.points, bt.requirements,
+				btp.progress_value, btp.progress_metadata, 
+				btp.completion_type, btp.completed_at as progress_completed_at,
+				btp.completed_by_osrs_account_id
+			FROM bingo_board_tiles bbt
+			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+			LEFT JOIN bingo_tile_progress btp ON btp.board_tile_id = bbt.id
+			WHERE bbt.board_id = $1
+			ORDER BY bbt.position
+		`, [boardId]);
+        res.json({
+            success: true,
+            message: 'Board bulk update completed',
+            summary: results,
+            data: {
+                board: {
+                    id: updatedBoard[0].id,
+                    eventId: updatedBoard[0].eventId,
+                    teamId: updatedBoard[0].teamId,
+                    columns: updatedBoard[0].columns,
+                    rows: updatedBoard[0].rows,
+                    metadata: updatedBoard[0].metadata
+                },
+                tiles: updatedTiles.map((t) => ({
+                    id: t.id,
+                    boardId: t.boardId,
+                    tileId: t.tileId,
+                    position: t.position,
+                    isCompleted: t.isCompleted,
+                    completedAt: t.completedAt,
+                    metadata: t.metadata,
+                    task: t.task,
+                    category: t.category,
+                    difficulty: t.difficulty,
+                    icon: t.icon,
+                    description: t.description,
+                    points: t.points,
+                    requirements: t.requirements,
+                    progress: t.progressValue !== null ? {
+                        progressValue: t.progressValue,
+                        progressMetadata: t.progressMetadata,
+                        completionType: t.completionType,
+                        completedAt: t.progressCompletedAt,
+                        completedByOsrsAccountId: t.completedByOsrsAccountId
+                    } : null
+                }))
+            }
+        });
+    }
+    catch (error) {
+        console.error('Error in bulk board update:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to perform bulk update',
+            message: error.message
+        });
+    }
+});
 export default router;

@@ -205,18 +205,19 @@ const matchesSpeedrun = (event: UnifiedGameEvent, requirement: SpeedrunRequireme
 /**
  * Checks if an event should trigger experience progress tracking.
  * 
- * Experience gains are validated against WiseOldMan API data, not the event itself.
- * This matcher only checks if the event type is LOGOUT, which triggers
- * the experience calculation in the progress calculator.
+ * Experience gains are validated using LOGIN snapshots captured by Dink.
  * 
- * The actual XP validation (checking if player gained required XP in the skill)
- * is handled by the calculator fetching data from WiseOldMan.
+ * LOGIN events are the primary trigger because:
+ * - Dink sends current skill XP on every LOGIN
+ * - The snapshot service captures baseline on first login after event start
+ * - Subsequent logins update current XP and trigger progress calculation
+ * 
+ * LOGOUT is also included for backwards compatibility.
  */
 const matchesExperience = (event: UnifiedGameEvent, _requirement: ExperienceRequirement): boolean => {
-  // Experience is checked on LOGOUT, but we need to fetch from WiseOldMan
-  // This will be handled in the progress calculator, not here
-  // For now, just check event type
-  return event.eventType === UnifiedEventType.LOGOUT
+  // LOGIN events carry current XP data that updates the snapshot and triggers progress
+  // LOGOUT is kept for backwards compatibility
+  return event.eventType === UnifiedEventType.LOGIN || event.eventType === UnifiedEventType.LOGOUT
 }
 
 /**
