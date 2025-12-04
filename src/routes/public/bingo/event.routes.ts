@@ -342,7 +342,7 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			};
 		});
 
-		// Build response
+		// Build response - format all dates with Estonian timezone
 		const response = {
 			event: {
 				id: event.id,

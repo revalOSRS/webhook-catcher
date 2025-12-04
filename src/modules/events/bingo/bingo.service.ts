@@ -80,8 +80,7 @@ export class BingoService {
     
     if (!accountId) return false;
 
-    // Note: Event dates are stored as Estonian time (Europe/Tallinn) in the database
-    // We use AT TIME ZONE to properly convert to UTC for comparison with NOW()
+    // All times in UTC
     // start_date is REQUIRED and must have passed for events to be processed
     const result = await query<{ count: string }>(`
       SELECT COUNT(*) as count
@@ -92,8 +91,8 @@ export class BingoService {
         AND e.event_type = 'bingo'
         AND e.status = 'active'
         AND e.start_date IS NOT NULL
-        AND (e.start_date AT TIME ZONE 'Europe/Tallinn') <= NOW()
-        AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
+        AND e.start_date <= NOW()
+        AND (e.end_date IS NULL OR e.end_date > NOW())
     `, [accountId]);
 
     return parseInt(result[0].count) > 0;

@@ -538,7 +538,7 @@ export class DinkService {
       return
     }
 
-    // Get active bingo events for this player
+    // Get active bingo events for this player (all times in UTC)
     // start_date is REQUIRED and must have passed for XP snapshots to be captured
     const activeEvents = await query<{ eventId: string }>(`
       SELECT DISTINCT e.id as event_id
@@ -549,8 +549,8 @@ export class DinkService {
         AND e.event_type = 'bingo'
         AND e.status = 'active'
         AND e.start_date IS NOT NULL
-        AND (e.start_date AT TIME ZONE 'Europe/Tallinn') <= NOW()
-        AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
+        AND e.start_date <= NOW()
+        AND (e.end_date IS NULL OR e.end_date > NOW())
     `, [account.id])
 
     if (activeEvents.length === 0) {

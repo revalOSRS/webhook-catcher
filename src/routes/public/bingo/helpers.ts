@@ -4,7 +4,6 @@
  * Utility functions for public bingo endpoints.
  */
 
-import { estonianToUtc } from '../../../utils/estonian-time.js';
 import type { PublicRequirementInfo, TileVisibility } from './types.js';
 
 /**
@@ -69,29 +68,23 @@ export const sanitizeRequirement = (req: any, progressMetadata?: any): PublicReq
  * Tiles are hidden until 3 hours before the event starts
  * Tiles are also hidden if no start date is set (event not scheduled)
  * 
- * Note: Event times are stored as Estonian time in the database (but in UTC column).
- * We convert to actual UTC for comparison with the current time.
+ * All times are in UTC.
  */
 export const shouldShowTiles = (startDate: Date | null): TileVisibility => {
 	if (!startDate) {
-		// No start date set - hide tiles until event is scheduled
 		return { 
 			show: false,
 			message: 'Tiles will be revealed 3 hours before the event starts'
 		};
 	}
 	
-	// Convert stored Estonian time to actual UTC for comparison
-	const startDateUtc = estonianToUtc(startDate);
-	const now = new Date(); // Current UTC time
-	const threeHoursBefore = new Date(startDateUtc.getTime() - (3 * 60 * 60 * 1000));
+	const now = new Date();
+	const threeHoursBefore = new Date(startDate.getTime() - (3 * 60 * 60 * 1000));
 	
 	if (now >= threeHoursBefore) {
-		// Within 3 hours of start or after - show tiles
 		return { show: true };
 	}
 	
-	// More than 3 hours before start - hide tiles
 	return {
 		show: false,
 		revealAt: threeHoursBefore,

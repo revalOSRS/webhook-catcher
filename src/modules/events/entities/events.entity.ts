@@ -182,15 +182,14 @@ export class EventsEntity extends BaseEntity<Event, string> {
 
   /**
    * Find active events (status = active, within date range)
-   * Note: Event dates are stored as Estonian time (Europe/Tallinn) in the database
-   * We use AT TIME ZONE to properly convert to UTC for comparison with NOW()
+   * All times in UTC
    */
   async findActive(eventType?: EventType): Promise<Event[]> {
     let sql = `
       SELECT * FROM events 
       WHERE status = $1
-        AND (start_date IS NULL OR (start_date AT TIME ZONE 'Europe/Tallinn') <= NOW())
-        AND (end_date IS NULL OR (end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
+        AND (start_date IS NULL OR start_date <= NOW())
+        AND (end_date IS NULL OR end_date > NOW())
     `
     const params: any[] = [EventStatus.ACTIVE]
 

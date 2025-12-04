@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import { query } from '../../../db/connection.js';
-import { estonianToUtc } from '../../../utils/estonian-time.js';
 import {
 	getMemberFromHeaders,
 	getEventParticipation,
@@ -18,12 +17,8 @@ const router = Router();
 
 /**
  * Check if tiles should be visible based on event start time.
- * 
- * Tiles are hidden until 3 hours before the event starts to give
- * teams time to prepare strategies.
- * 
- * Note: Event times are stored as Estonian time in the database (but in UTC column).
- * We convert to actual UTC for comparison with the current time.
+ * Tiles are hidden until 3 hours before the event starts.
+ * All times are in UTC.
  */
 const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Date; message?: string } => {
 	if (!startDate) {
@@ -33,17 +28,13 @@ const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Da
 		};
 	}
 	
-	// Convert stored Estonian time to actual UTC for comparison
-	const startDateUtc = estonianToUtc(startDate);
-	const now = new Date(); // Current UTC time
-	const threeHoursBefore = new Date(startDateUtc.getTime() - (3 * 60 * 60 * 1000));
+	const now = new Date();
+	const threeHoursBefore = new Date(startDate.getTime() - (3 * 60 * 60 * 1000));
 	
 	if (now >= threeHoursBefore) {
-		// Within 3 hours of start or after - show tiles
 		return { show: true };
 	}
 	
-	// More than 3 hours before start
 	return { 
 		show: false,
 		revealAt: threeHoursBefore,
@@ -102,9 +93,7 @@ router.get('/', async (req, res: Response) => {
 			});
 		}
 
-		// Get all active events
-		// Note: Event dates are stored as Estonian time (Europe/Tallinn) in the database
-		// We use AT TIME ZONE to properly convert to UTC for comparison with NOW()
+		// Get all active events (all times in UTC)
 		const events = await query(`
 			SELECT 
 				e.id,
@@ -117,7 +106,7 @@ router.get('/', async (req, res: Response) => {
 			FROM events e
 			LEFT JOIN event_teams et ON e.id = et.event_id
 			WHERE e.status = 'active'
-				AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
+				AND (e.end_date IS NULL OR e.end_date > NOW())
 			GROUP BY e.id, e.name, e.event_type, e.status, e.start_date, e.end_date
 			ORDER BY e.start_date DESC NULLS LAST, e.created_at DESC
 		`);
@@ -548,7 +537,7 @@ router.get('/:eventId', async (req, res: Response) => {
 					rowEffects: teamBoard.metadata?.showRowEffects !== false ? rowEffects : [],
 					columnEffects: teamBoard.metadata?.showColumnEffects !== false ? columnEffects : [],
 					tilesHidden: true,
-					tilesRevealAt: tileVisibility.revealAt,
+					tilesRevealAt: tileVisibility.revealAt?.toISOString(),
 					tilesHiddenMessage: tileVisibility.message
 				};
 			}
