@@ -17,6 +17,9 @@ import { sendToDeathChannelDiscord, sendToMeenedChannelDiscord } from './discord
 // Bingo event processing
 import { tileProgressService } from '../events/bingo/tile-progress.service.js'
 import { BingoService } from '../events/bingo/bingo.service.js'
+import { BingoXpSnapshotsService } from '../events/bingo/xp-snapshots.service.js'
+import { OsrsAccountsService } from '../osrs-accounts/osrs-accounts.service.js'
+import { query } from '../../db/connection.js'
 
 // Cache for dink hash verification (10 minutes)
 const dinkHashCache = new Map<string, { isValid: boolean; expiresAt: number }>()
@@ -379,6 +382,15 @@ export class DinkService {
               console.log('═══════════════════════════════════════════════════════════')
             }
 
+            // Capture XP snapshot on LOGIN for bingo participants
+            if (eventType === 'LOGIN' && isBingoParticipant) {
+              try {
+                await this.captureLoginXpSnapshot(playerName, payloadData)
+              } catch (error) {
+                console.error('[DinkService] Error capturing XP snapshot:', error)
+              }
+            }
+
             // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
             // This must happen before any filtering
             try {
@@ -450,6 +462,15 @@ export class DinkService {
         console.log('═══════════════════════════════════════════════════════════')
       }
 
+      // Capture XP snapshot on LOGIN for bingo participants
+      if (eventType === 'LOGIN' && isBingoParticipant) {
+        try {
+          await this.captureLoginXpSnapshot(playerName, req.body)
+        } catch (error) {
+          console.error('[DinkService] Error capturing XP snapshot:', error)
+        }
+      }
+
       // Process tile progress tracking FIRST (for all events, but especially for bingo participants)
       // This must happen before any filtering
       try {
@@ -493,6 +514,61 @@ export class DinkService {
     } catch (error) {
       console.error('Error sending to Discord:', error)
       throw error
+    }
+  }
+
+  /**
+   * Capture XP snapshot from LOGIN event for bingo participants
+   * 
+   * Extracts skills XP data from the LOGIN event and stores it as a snapshot.
+   * First login after event start captures baseline, subsequent logins update current.
+   */
+  private static async captureLoginXpSnapshot(playerName: string, payloadData: any): Promise<void> {
+    // Get player's OSRS account
+    const account = await OsrsAccountsService.getAccountByNickname(playerName)
+    if (!account) {
+      console.log(`[XpSnapshot] No OSRS account found for ${playerName}, skipping XP capture`)
+      return
+    }
+
+    // Get the skills XP data from the LOGIN event
+    const skills = payloadData?.extra?.skills
+    if (!skills?.experience || !skills?.totalExperience) {
+      console.log(`[XpSnapshot] No skills data in LOGIN event for ${playerName}`)
+      return
+    }
+
+    // Get active bingo events for this player
+    const activeEvents = await query<{ eventId: string }>(`
+      SELECT DISTINCT e.id as event_id
+      FROM event_team_members etm
+      JOIN event_teams et ON etm.team_id = et.id
+      JOIN events e ON et.event_id = e.id
+      WHERE etm.osrs_account_id = $1
+        AND e.event_type = 'bingo'
+        AND e.status = 'active'
+        AND (e.start_date IS NULL OR (e.start_date AT TIME ZONE 'Europe/Tallinn') <= NOW())
+        AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
+    `, [account.id])
+
+    if (activeEvents.length === 0) {
+      console.log(`[XpSnapshot] Player ${playerName} not in any active bingo events`)
+      return
+    }
+
+    // Capture snapshot for each active event
+    for (const { eventId } of activeEvents) {
+      try {
+        const snapshot = await BingoXpSnapshotsService.captureLoginSnapshot(
+          eventId,
+          account.id,
+          skills.experience, // e.g., { "Attack": 7285226, "Strength": 14602484, ... }
+          skills.totalExperience
+        )
+        console.log(`[XpSnapshot] Captured for ${playerName} in event ${eventId} (login #${snapshot.loginCount})`)
+      } catch (error) {
+        console.error(`[XpSnapshot] Error capturing for event ${eventId}:`, error)
+      }
     }
   }
 }

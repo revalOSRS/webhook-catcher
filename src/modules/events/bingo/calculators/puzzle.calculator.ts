@@ -70,6 +70,7 @@ const extractHiddenProgress = (
  * @param memberId - Discord member ID (optional)
  * @param osrsAccountId - OSRS account ID (required for tracking)
  * @param playerName - Player's OSRS name (required for display)
+ * @param eventId - Event ID for XP snapshot lookup (optional)
  * @returns Progress result with puzzle wrapper metadata
  */
 export const calculatePuzzleProgress = async (
@@ -79,7 +80,8 @@ export const calculatePuzzleProgress = async (
   eventStartDate: Date,
   memberId?: number,
   osrsAccountId?: number,
-  playerName?: string
+  playerName?: string,
+  eventId?: string
 ): Promise<ProgressResult> => {
   const hiddenReq = requirement.hiddenRequirement;
   const hiddenExisting = extractHiddenProgress(existing);
@@ -140,7 +142,8 @@ export const calculatePuzzleProgress = async (
         eventStartDate,
         memberId,
         osrsAccountId,
-        playerName
+        playerName,
+        eventId
       );
       break;
       

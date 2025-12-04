@@ -261,7 +261,8 @@ export class TileProgressService {
       tile.eventStartDate,
       memberId,
       event.osrsAccountId,
-      event.playerName
+      event.playerName,
+      tile.eventId
     );
 
     const completedByOsrsAccountId = this.getCompletedByAccountId(updatedProgress, existingProgress);
@@ -482,6 +483,7 @@ export class TileProgressService {
    * @param memberId - Team member ID for contribution tracking
    * @param osrsAccountId - OSRS account for attribution
    * @param playerName - Player name for display
+   * @param eventId - Event ID for XP snapshot lookup
    * @returns Calculated progress result
    */
   private calculateProgress = async (
@@ -491,7 +493,8 @@ export class TileProgressService {
     eventStartDate: Date,
     memberId?: number,
     osrsAccountId?: number,
-    playerName?: string
+    playerName?: string,
+    eventId?: string
   ): Promise<ProgressResult> => {
     // Convert BingoTileProgress to ExistingProgress format for calculators
     const existingForCalc = this.toExistingProgress(existing);
@@ -525,7 +528,7 @@ export class TileProgressService {
     // If event matches a tier, process tiered progress
     if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
       return this.calculateTieredProgress(
-        event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName
+        event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName, eventId
       );
     }
 
@@ -549,7 +552,8 @@ export class TileProgressService {
         undefined,
         memberId,
         osrsAccountId,
-        playerName
+        playerName,
+        eventId
       );
 
       // Track which requirements are completed for matchType "all" logic
@@ -686,7 +690,8 @@ export class TileProgressService {
     eventStartDate: Date,
     memberId?: number,
     osrsAccountId?: number,
-    playerName?: string
+    playerName?: string,
+    eventId?: string
   ): Promise<ProgressResult> => {
     const existingCompletedTiers = existing?.progressMetadata?.completedTiers || [];
     const completedTierNumbers = existingCompletedTiers.map(t => t.tier);
@@ -700,7 +705,7 @@ export class TileProgressService {
     }
 
     return this.calculateRegularTieredProgress(
-      event, requirements, existing, eventStartDate, completedTierNumbers, memberId, osrsAccountId, playerName
+      event, requirements, existing, eventStartDate, completedTierNumbers, memberId, osrsAccountId, playerName, eventId
     );
   };
 
@@ -877,7 +882,8 @@ export class TileProgressService {
     completedTierNumbers: number[],
     memberId?: number,
     osrsAccountId?: number,
-    playerName?: string
+    playerName?: string,
+    eventId?: string
   ): Promise<ProgressResult> => {
     const newCompletedTiers: TierCompletion[] = [...(existing?.progressMetadata?.completedTiers || [])];
     const updatedCompletedNumbers = [...completedTierNumbers];
@@ -903,7 +909,8 @@ export class TileProgressService {
         tier,
         memberId,
         osrsAccountId,
-        playerName
+        playerName,
+        eventId
       );
       matchedTier = tier;
       break;
@@ -1082,7 +1089,8 @@ export class TileProgressService {
     tier?: TieredRequirementDef,
     memberId?: number,
     osrsAccountId?: number,
-    playerName?: string
+    playerName?: string,
+    eventId?: string
   ): Promise<ProgressResult> => {
     const req = requirement;
 
@@ -1098,11 +1106,11 @@ export class TileProgressService {
       case BingoTileRequirementType.BA_GAMBLES:
         return calculateBaGamblesProgress(event, req as BaGamblesRequirement, existing, memberId, osrsAccountId, playerName);
       case BingoTileRequirementType.EXPERIENCE:
-        return await calculateExperienceProgress(event, req as ExperienceRequirement, existing, eventStartDate, memberId, osrsAccountId, playerName);
+        return await calculateExperienceProgress(event, req as ExperienceRequirement, existing, eventStartDate, memberId, osrsAccountId, playerName, eventId);
       case BingoTileRequirementType.CHAT:
         return calculateChatProgress(event, req as ChatRequirement, existing, memberId, osrsAccountId, playerName);
       case BingoTileRequirementType.PUZZLE:
-        return await calculatePuzzleProgress(event, req as PuzzleRequirement, existing, eventStartDate, memberId, osrsAccountId, playerName);
+        return await calculatePuzzleProgress(event, req as PuzzleRequirement, existing, eventStartDate, memberId, osrsAccountId, playerName, eventId);
       default:
         return this.buildEmptyProgress(null, { matchType: BingoTileMatchType.ALL, requirements: [req], tiers: [] });
     }
