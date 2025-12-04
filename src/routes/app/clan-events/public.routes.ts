@@ -200,7 +200,7 @@ const sanitizeRequirement = (req: any, progressMetadata?: any): PublicRequiremen
 
 /**
  * Check if tiles should be visible based on event start time
- * Tiles are hidden if more than 3 hours before event start
+ * Tiles are hidden until 3 hours before the event starts
  * Tiles are also hidden if no start date is set (event not scheduled)
  * 
  * Note: Event times are stored as Estonian time in the database (but in UTC column).
@@ -211,7 +211,7 @@ const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Da
 		// No start date set - hide tiles until event is scheduled
 		return { 
 			show: false,
-			message: 'Tiles will be revealed when the event is scheduled'
+			message: 'Tiles will be revealed 3 hours before the event starts'
 		};
 	}
 	
@@ -226,11 +226,9 @@ const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Da
 	}
 	
 	// More than 3 hours before start - hide tiles
-	// Return revealAt in the same format as stored (Estonian time representation)
-	// so the frontend can display it correctly
 	return {
 		show: false,
-		revealAt: new Date(startDate.getTime() - (3 * 60 * 60 * 1000)),
+		revealAt: threeHoursBefore,
 		message: 'Tiles will be revealed 3 hours before the event starts'
 	};
 };

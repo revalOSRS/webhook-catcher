@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../../../db/connection.js';
+import { estonianToUtc } from '../../../utils/estonian-time.js';
 import {
 	getMemberFromHeaders,
 	getEventParticipation,
@@ -14,6 +15,41 @@ import {
 } from './types.js';
 
 const router = Router();
+
+/**
+ * Check if tiles should be visible based on event start time.
+ * 
+ * Tiles are hidden until 3 hours before the event starts to give
+ * teams time to prepare strategies.
+ * 
+ * Note: Event times are stored as Estonian time in the database (but in UTC column).
+ * We convert to actual UTC for comparison with the current time.
+ */
+const shouldShowTiles = (startDate: Date | null): { show: boolean; revealAt?: Date; message?: string } => {
+	if (!startDate) {
+		return { 
+			show: false,
+			message: 'Tiles will be revealed 3 hours before the event starts'
+		};
+	}
+	
+	// Convert stored Estonian time to actual UTC for comparison
+	const startDateUtc = estonianToUtc(startDate);
+	const now = new Date(); // Current UTC time
+	const threeHoursBefore = new Date(startDateUtc.getTime() - (3 * 60 * 60 * 1000));
+	
+	if (now >= threeHoursBefore) {
+		// Within 3 hours of start or after - show tiles
+		return { show: true };
+	}
+	
+	// More than 3 hours before start
+	return { 
+		show: false,
+		revealAt: threeHoursBefore,
+		message: 'Tiles will be revealed 3 hours before the event starts'
+	};
+};
 
 /**
  * Sanitize requirements to hide puzzle hidden requirements from regular users
@@ -309,6 +345,11 @@ router.get('/:eventId', async (req, res: Response) => {
 
 		const event = events[0];
 
+		// Check if tiles should be visible based on event start time
+		const tileVisibility = shouldShowTiles(
+			event.startDate ? new Date(event.startDate) : null
+		);
+
 		// Get team members
 		const teamMembers = await query(`
 			SELECT 
@@ -481,18 +522,36 @@ router.get('/:eventId', async (req, res: Response) => {
 				};
 			});
 
-			board = {
-				id: teamBoard.id,
-				columns: teamBoard.columns,
-				rows: teamBoard.rows,
-				metadata: teamBoard.metadata,
-				tiles: tilesWithProgress,
-				tileEffects: tileEffects
-					.filter((e: any) => showTileBuffs || e.isActive)
-					.map(mapBoardTileEffect),
-				rowEffects,
-				columnEffects
-			};
+			// If tiles shouldn't be shown yet, hide tile details but keep board structure
+			if (tileVisibility.show) {
+				board = {
+					id: teamBoard.id,
+					columns: teamBoard.columns,
+					rows: teamBoard.rows,
+					metadata: teamBoard.metadata,
+					tiles: tilesWithProgress,
+					tileEffects: tileEffects
+						.filter((e: any) => showTileBuffs || e.isActive)
+						.map(mapBoardTileEffect),
+					rowEffects,
+					columnEffects
+				};
+			} else {
+				// Hide tiles - only show board structure and visible line effects
+				board = {
+					id: teamBoard.id,
+					columns: teamBoard.columns,
+					rows: teamBoard.rows,
+					metadata: teamBoard.metadata,
+					tiles: [], // Hidden until event starts
+					tileEffects: [],
+					rowEffects: teamBoard.metadata?.showRowEffects !== false ? rowEffects : [],
+					columnEffects: teamBoard.metadata?.showColumnEffects !== false ? columnEffects : [],
+					tilesHidden: true,
+					tilesRevealAt: tileVisibility.revealAt,
+					tilesHiddenMessage: tileVisibility.message
+				};
+			}
 		}
 
 		const response: EventDetail = {

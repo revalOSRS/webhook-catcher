@@ -539,6 +539,7 @@ export class DinkService {
     }
 
     // Get active bingo events for this player
+    // start_date is REQUIRED and must have passed for XP snapshots to be captured
     const activeEvents = await query<{ eventId: string }>(`
       SELECT DISTINCT e.id as event_id
       FROM event_team_members etm
@@ -547,7 +548,8 @@ export class DinkService {
       WHERE etm.osrs_account_id = $1
         AND e.event_type = 'bingo'
         AND e.status = 'active'
-        AND (e.start_date IS NULL OR (e.start_date AT TIME ZONE 'Europe/Tallinn') <= NOW())
+        AND e.start_date IS NOT NULL
+        AND (e.start_date AT TIME ZONE 'Europe/Tallinn') <= NOW()
         AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
     `, [account.id])
 

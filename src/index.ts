@@ -95,10 +95,9 @@ app.post('/webhook', async (req, res) => {
     let result;
 
     if (req.headers['user-agent']?.includes('Dink')) {
-      console.log('Received Dink webhook')
       result = await DinkService.processWebhook(req)
     } else {
-      console.log('Received non-Dink webhook')
+      console.error('Received non-Dink webhook')
     }
 
     res.status(200).json(result)

@@ -148,6 +148,10 @@ export interface EventDetail {
 		tileEffects: BoardTileEffect[];
 		rowEffects: LineEffect[];
 		columnEffects: LineEffect[];
+		// Hidden tiles state (when event hasn't started yet)
+		tilesHidden?: boolean;
+		tilesRevealAt?: Date;
+		tilesHiddenMessage?: string;
 	};
 }
 
