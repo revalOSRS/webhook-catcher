@@ -41,6 +41,22 @@ export interface XpGains {
 	currentTotalXp: number;
 }
 
+/**
+ * Parse skills data that might be stored as a string (double-encoded JSON)
+ * or already as an object.
+ */
+const parseSkillsData = (skills: SkillsXpData | string): SkillsXpData => {
+	if (typeof skills === 'string') {
+		try {
+			return JSON.parse(skills);
+		} catch {
+			console.error('[XpSnapshots] Failed to parse skills data:', skills);
+			return {};
+		}
+	}
+	return skills;
+};
+
 export class BingoXpSnapshotsService {
 	/**
 	 * Get or create XP snapshot for a player in an event.
@@ -73,10 +89,11 @@ export class BingoXpSnapshotsService {
 
 		if (existing) {
 			// Update current XP and increment login count
+			// Use ::jsonb cast to ensure proper JSONB storage
 			const updated = await queryOne<XpSnapshot>(`
 				UPDATE bingo_player_xp_snapshots
 				SET 
-					current_skills = $1,
+					current_skills = $1::jsonb,
 					current_total_xp = $2,
 					current_updated_at = NOW(),
 					login_count = login_count + 1,
@@ -90,10 +107,11 @@ export class BingoXpSnapshotsService {
 			`, [JSON.stringify(skillsXp), totalXp, eventId, osrsAccountId]);
 
 			console.log(`[XpSnapshots] Updated XP snapshot for account ${osrsAccountId} in event ${eventId} (login #${updated?.loginCount})`);
-			return updated!;
+			return this.normalizeSnapshot(updated!);
 		}
 
 		// First login - create baseline snapshot
+		// Use ::jsonb cast to ensure proper JSONB storage
 		const created = await queryOne<XpSnapshot>(`
 			INSERT INTO bingo_player_xp_snapshots (
 				event_id, osrs_account_id,
@@ -101,7 +119,7 @@ export class BingoXpSnapshotsService {
 				current_skills, current_total_xp, current_updated_at,
 				login_count
 			)
-			VALUES ($1, $2, $3, $4, NOW(), $3, $4, NOW(), 1)
+			VALUES ($1, $2, $3::jsonb, $4, NOW(), $3::jsonb, $4, NOW(), 1)
 			RETURNING 
 				id, event_id, osrs_account_id,
 				baseline_skills, baseline_total_xp, baseline_captured_at,
@@ -110,7 +128,19 @@ export class BingoXpSnapshotsService {
 		`, [eventId, osrsAccountId, JSON.stringify(skillsXp), totalXp]);
 
 		console.log(`[XpSnapshots] Created baseline XP snapshot for account ${osrsAccountId} in event ${eventId}`);
-		return created!;
+		return this.normalizeSnapshot(created!);
+	}
+
+	/**
+	 * Normalize snapshot to ensure skills data is parsed properly
+	 * (handles legacy data that might be stored as strings)
+	 */
+	private static normalizeSnapshot(snapshot: XpSnapshot): XpSnapshot {
+		return {
+			...snapshot,
+			baselineSkills: parseSkillsData(snapshot.baselineSkills),
+			currentSkills: parseSkillsData(snapshot.currentSkills)
+		};
 	}
 
 	/**
@@ -120,7 +150,7 @@ export class BingoXpSnapshotsService {
 		eventId: string,
 		osrsAccountId: number
 	): Promise<XpSnapshot | null> {
-		return await queryOne<XpSnapshot>(`
+		const snapshot = await queryOne<XpSnapshot>(`
 			SELECT 
 				id, event_id, osrs_account_id,
 				baseline_skills, baseline_total_xp, baseline_captured_at,
@@ -129,6 +159,8 @@ export class BingoXpSnapshotsService {
 			FROM bingo_player_xp_snapshots
 			WHERE event_id = $1 AND osrs_account_id = $2
 		`, [eventId, osrsAccountId]);
+		
+		return snapshot ? this.normalizeSnapshot(snapshot) : null;
 	}
 
 	/**
@@ -245,7 +277,7 @@ export class BingoXpSnapshotsService {
 	 * Get all snapshots for an event
 	 */
 	static async getEventSnapshots(eventId: string): Promise<XpSnapshot[]> {
-		return await query<XpSnapshot>(`
+		const snapshots = await query<XpSnapshot>(`
 			SELECT 
 				id, event_id, osrs_account_id,
 				baseline_skills, baseline_total_xp, baseline_captured_at,
@@ -255,6 +287,8 @@ export class BingoXpSnapshotsService {
 			WHERE event_id = $1
 			ORDER BY baseline_captured_at ASC
 		`, [eventId]);
+		
+		return snapshots.map(s => this.normalizeSnapshot(s));
 	}
 
 	/**
