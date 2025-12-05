@@ -4,63 +4,42 @@
  * Utility functions for public bingo endpoints.
  */
 
-import type { PublicRequirementInfo, TileVisibility } from './types.js';
+import type { TileVisibility } from './types.js';
 
 /**
- * Sanitize a requirement for public view
- * Hides actual tracking details for PUZZLE types
+ * Sanitize requirements for public view.
+ * Passes through all requirement data as-is, only removing hiddenRequirement from PUZZLE types.
+ * This matches the behavior of the authenticated app endpoint.
  */
-export const sanitizeRequirement = (req: any, progressMetadata?: any): PublicRequirementInfo => {
-	if (req.type === 'PUZZLE') {
-		const isSolved = progressMetadata?.isSolved || false;
-		return {
-			type: 'PUZZLE',
-			puzzle: {
-				displayName: req.displayName,
-				displayDescription: req.displayDescription,
-				displayHint: req.displayHint,
-				displayIcon: req.displayIcon,
-				puzzleCategory: req.puzzleCategory,
-				isSolved,
-				revealAnswer: req.revealOnComplete && isSolved
+export const sanitizeRequirements = (requirements: any): any => {
+	if (!requirements) return requirements;
+	
+	const sanitized = { ...requirements };
+	
+	// Sanitize base requirements array
+	if (sanitized.requirements && Array.isArray(sanitized.requirements)) {
+		sanitized.requirements = sanitized.requirements.map((req: any) => {
+			if (req.type === 'PUZZLE') {
+				// Remove hiddenRequirement, keep only public display fields
+				const { hiddenRequirement, ...publicFields } = req;
+				return publicFields;
 			}
-		};
+			return req;
+		});
 	}
 	
-	// For non-puzzle types, provide a basic description without revealing specific targets
-	let description = '';
-	switch (req.type) {
-		case 'ITEM_DROP':
-			description = req.items?.length > 1 
-				? `Obtain ${req.items.length} different items`
-				: 'Obtain an item';
-			break;
-		case 'PET':
-			description = `Obtain a pet: ${req.petName || 'Any'}`;
-			break;
-		case 'VALUE_DROP':
-			description = `Get a valuable drop (${(req.value || 0).toLocaleString()}+ gp)`;
-			break;
-		case 'SPEEDRUN':
-			description = `Complete ${req.location || 'content'} speedrun`;
-			break;
-		case 'EXPERIENCE':
-			description = `Gain ${(req.experience || 0).toLocaleString()} ${req.skill || ''} XP`;
-			break;
-		case 'BA_GAMBLES':
-			description = `Complete ${req.amount || 0} BA gambles`;
-			break;
-		case 'CHAT':
-			description = 'Receive a specific game message';
-			break;
-		default:
-			description = 'Complete the task';
+	// Sanitize tier requirements
+	if (sanitized.tiers && Array.isArray(sanitized.tiers)) {
+		sanitized.tiers = sanitized.tiers.map((tier: any) => {
+			if (tier.requirement?.type === 'PUZZLE') {
+				const { hiddenRequirement, ...publicFields } = tier.requirement;
+				return { ...tier, requirement: publicFields };
+			}
+			return tier;
+		});
 	}
 	
-	return {
-		type: req.type,
-		description
-	};
+	return sanitized;
 };
 
 /**

@@ -2,7 +2,9 @@ import * as db from '../db/connection.js';
 // Define Discord IDs that have admin access
 // TODO: Move this to environment variables or database configuration
 const ADMIN_DISCORD_IDS = [
-    '603849391970975744', // Example Discord ID - replace with actual admin IDs
+    '603849391970975744',
+    '138410794126671872'
+    // '603849391970975744' Example Discord ID - replace with actual admin IDs
     // Add more admin Discord IDs here
 ];
 /**

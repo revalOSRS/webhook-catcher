@@ -91,14 +91,13 @@ app.use(express.json())
 
 // Webhook endpoint for Dink notifications
 app.post('/webhook', async (req, res) => {
-  try {
-    let result;
+  if (!req.headers['user-agent']?.includes('Dink')) {
+    console.error('Received non-Dink webhook');
+    return;
+  }
 
-    if (req.headers['user-agent']?.includes('Dink')) {
-      result = await DinkService.processWebhook(req)
-    } else {
-      console.error('Received non-Dink webhook')
-    }
+  try {
+    const result = await DinkService.processWebhook(req)
 
     res.status(200).json(result)
   } catch (error) {

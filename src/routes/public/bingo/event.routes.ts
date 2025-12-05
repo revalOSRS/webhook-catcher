@@ -9,7 +9,7 @@
 
 import { Router, Response, Request } from 'express';
 import { query } from '../../../db/connection.js';
-import { sanitizeRequirement, shouldShowTiles } from './helpers.js';
+import { sanitizeRequirements, shouldShowTiles } from './helpers.js';
 import type {
 	PublicTeam,
 	PublicTeamMember,
@@ -17,9 +17,7 @@ import type {
 	PublicBoardTile,
 	PublicTileProgress,
 	PublicEffect,
-	PublicLineEffect,
-	PublicRequirementInfo,
-	PublicTierInfo
+	PublicLineEffect
 } from './types.js';
 
 const router = Router();
@@ -260,50 +258,23 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 				};
 			}
 
-			// Get requirements and sanitize them
-			const requirements = row.requirements || {};
-			const baseRequirements = requirements.requirements || [];
-			const tiers = requirements.tiers || [];
-			const progressMetadata = row.progressMetadata || {};
+			// Sanitize requirements (removes hiddenRequirement from PUZZLE types)
+			const sanitizedRequirements = sanitizeRequirements(row.requirements);
 			
-			// Sanitize all base requirements
-			const sanitizedRequirements: PublicRequirementInfo[] = baseRequirements.map((req: any) => 
-				sanitizeRequirement(req, progressMetadata)
-			);
-			
-			// Check if any requirement is a puzzle
-			const hasPuzzle = baseRequirements.some((r: any) => r.type === 'PUZZLE');
-			
-			// Sanitize and build tier info
-			const completedTierNumbers = (progressMetadata.completedTiers || []).map((t: any) => t.tier);
-			const sanitizedTiers: PublicTierInfo[] = tiers.map((tier: any) => ({
-				tier: tier.tier,
-				points: tier.points || 0,
-				isCompleted: completedTierNumbers.includes(tier.tier),
-				requirement: sanitizeRequirement(tier.requirement, progressMetadata)
-			}));
-			
-			// Determine task name - use first puzzle's displayName if exists
-			const firstPuzzle = baseRequirements.find((r: any) => r.type === 'PUZZLE');
-			const displayTask = firstPuzzle?.displayName || row.task;
-			const displayIcon = firstPuzzle?.displayIcon || row.icon;
-			
-			// Build the tile data
+			// Build the tile data - pass through all data, just like the app endpoint
 			const tileData: PublicBoardTile = {
 				id: row.tileId,
 				position: row.position,
 				isCompleted: row.isCompleted,
 				completedAt: row.completedAt,
-				task: displayTask,
+				task: row.task,
 				category: row.category,
 				difficulty: row.difficulty,
-				icon: displayIcon,
+				icon: row.icon,
 				points: row.points,
 				progress,
 				effects: effectsByTile[row.tileId] || [],
-				requirements: sanitizedRequirements,
-				tiers: sanitizedTiers.length > 0 ? sanitizedTiers : undefined,
-				hasPuzzle
+				requirements: sanitizedRequirements
 			};
 
 			boardsByTeam[teamId].tiles.push(tileData);

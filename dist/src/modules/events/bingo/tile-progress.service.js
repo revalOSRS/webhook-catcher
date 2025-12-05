@@ -121,9 +121,8 @@ export class TileProgressService {
         }
         if (!osrsAccountId)
             return [];
-        // Get team memberships for active events (within date range)
-        // Note: Event dates are stored as Estonian time (Europe/Tallinn) in the database
-        // We use AT TIME ZONE to properly convert to UTC for comparison with NOW()
+        // Get team memberships for active events (all times in UTC)
+        // start_date is REQUIRED and must have passed for tile progress to be tracked
         const memberships = await query(`
       SELECT DISTINCT et.id as team_id, e.id as event_id, e.start_date as event_start_date
       FROM event_team_members etm
@@ -131,8 +130,9 @@ export class TileProgressService {
       JOIN events e ON et.event_id = e.id
       WHERE etm.osrs_account_id = $1
         AND e.status = 'active'
-        AND (e.start_date IS NULL OR (e.start_date AT TIME ZONE 'Europe/Tallinn') <= NOW())
-        AND (e.end_date IS NULL OR (e.end_date AT TIME ZONE 'Europe/Tallinn') > NOW())
+        AND e.start_date IS NOT NULL
+        AND e.start_date <= NOW()
+        AND (e.end_date IS NULL OR e.end_date > NOW())
     `, [osrsAccountId]);
         if (memberships.length === 0)
             return [];

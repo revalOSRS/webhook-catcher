@@ -62,36 +62,11 @@ export interface PublicBoard {
 }
 
 /**
- * Public requirement info (sanitized - no hidden details for puzzles)
- */
-export interface PublicRequirementInfo {
-	type: string;
-	/** For PUZZLE type, this contains the display info */
-	puzzle?: {
-		displayName: string;
-		displayDescription: string;
-		displayHint?: string;
-		displayIcon?: string;
-		puzzleCategory?: string;
-		isSolved: boolean;
-		revealAnswer?: boolean;
-	};
-	/** For non-puzzle types, basic info about what's tracked */
-	description?: string;
-}
-
-/**
- * Public tier info
- */
-export interface PublicTierInfo {
-	tier: number;
-	points: number;
-	isCompleted: boolean;
-	requirement: PublicRequirementInfo;
-}
-
-/**
- * Public tile data (simplified for spectators)
+ * Public tile data
+ * 
+ * Requirements are passed through as-is from the database,
+ * with only `hiddenRequirement` removed from PUZZLE types.
+ * This matches the authenticated app endpoint behavior.
  */
 export interface PublicBoardTile {
 	id: string;
@@ -105,12 +80,11 @@ export interface PublicBoardTile {
 	points: number;
 	progress: PublicTileProgress | null;
 	effects: PublicEffect[];
-	/** Base requirements (sanitized for public view) */
-	requirements: PublicRequirementInfo[];
-	/** Tier requirements (if tile has tiers) */
-	tiers?: PublicTierInfo[];
-	/** Whether any requirement is a puzzle */
-	hasPuzzle: boolean;
+	/** 
+	 * Full requirements object (sanitized - hiddenRequirement removed from PUZZLE types)
+	 * Contains: matchType, requirements[], tiers[] etc.
+	 */
+	requirements: any;
 }
 
 /**
