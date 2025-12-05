@@ -1433,6 +1433,21 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 			WHERE bbt.id = $1
 		`, [tileId]);
 
+		// Award points to the team
+		if (updatedTile.length > 0) {
+			const tile = updatedTile[0];
+			const basePoints = tile.points || 0;
+			
+			// Award base points for tile completion
+			if (basePoints > 0) {
+				await query(
+					'UPDATE event_teams SET score = score + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+					[basePoints, teamId]
+				);
+				console.log(`[Admin] Awarded ${basePoints} points to team ${teamId} for completing tile ${tileId}`);
+			}
+		}
+
 		// Send Discord notification for manual completion
 		if (updatedTile.length > 0) {
 			try {
@@ -1559,8 +1574,8 @@ router.post('/tiles/:tileId/revert', async (req: Request, res: Response) => {
 			WHERE board_tile_id = $1
 		`, [tileId]);
 
-		// Get updated tile
-		const updatedTile = await query(`
+		// Get tile info for points subtraction
+		const tileInfo = await query(`
 			SELECT 
 				bbt.*,
 				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
@@ -1570,9 +1585,23 @@ router.post('/tiles/:tileId/revert', async (req: Request, res: Response) => {
 			WHERE bbt.id = $1
 		`, [tileId]);
 
+		// Subtract points from the team
+		if (tileInfo.length > 0) {
+			const tile = tileInfo[0];
+			const basePoints = tile.points || 0;
+			
+			if (basePoints > 0) {
+				await query(
+					'UPDATE event_teams SET score = GREATEST(0, score - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+					[basePoints, teamId]
+				);
+				console.log(`[Admin] Subtracted ${basePoints} points from team ${teamId} for reverting tile ${tileId}`);
+			}
+		}
+
 		res.json({
 			success: true,
-			data: updatedTile[0],
+			data: tileInfo[0],
 			message: 'Tile reverted successfully'
 		});
 	} catch (error: any) {
