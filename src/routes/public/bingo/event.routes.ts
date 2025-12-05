@@ -254,7 +254,11 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 					progressValue: parseFloat(row.progressValue) || 0,
 					targetValue: metadata.targetValue ?? null,
 					completedTiers: (metadata.completedTiers || []).map((t: any) => t.tier),
-					currentTier: metadata.currentTier ?? null
+					currentTier: metadata.currentTier ?? null,
+					// Multi-requirement tracking (for matchType: "all")
+					completedRequirementIndices: metadata.completedRequirementIndices ?? [],
+					totalRequirements: metadata.totalRequirements ?? null,
+					requirementProgress: metadata.requirementProgress ?? null
 				};
 			}
 

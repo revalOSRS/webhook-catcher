@@ -88,13 +88,23 @@ export interface PublicBoardTile {
 }
 
 /**
- * Public progress data (simplified)
+ * Public progress data
  */
 export interface PublicTileProgress {
 	progressValue: number;
 	targetValue: number | null;
 	completedTiers: number[];
 	currentTier: number | null;
+	/** For multi-requirement tiles (matchType: "all") - indices of completed requirements */
+	completedRequirementIndices: number[];
+	/** For multi-requirement tiles - total number of requirements */
+	totalRequirements: number | null;
+	/** For multi-requirement tiles - individual progress per requirement (keyed by index) */
+	requirementProgress: Record<string, {
+		isCompleted: boolean;
+		progressValue: number;
+		progressMetadata: any;
+	}> | null;
 }
 
 /**

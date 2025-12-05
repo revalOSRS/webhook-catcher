@@ -187,6 +187,23 @@ interface PublicBoardTile {
   effects: PublicEffect[];
   requirements: any;             // Full requirements object (sanitized)
 }
+
+interface PublicTileProgress {
+  progressValue: number;
+  targetValue: number | null;
+  completedTiers: number[];
+  currentTier: number | null;
+  // For multi-requirement tiles (matchType: "all"):
+  completedRequirementIndices: number[];  // Which requirements are done
+  totalRequirements: number | null;       // How many total
+  requirementProgress: {                  // Individual progress per requirement
+    [index: string]: {
+      isCompleted: boolean;
+      progressValue: number;
+      progressMetadata: any;
+    }
+  } | null;
+}
 ```
 
 ### PublicLineEffect
