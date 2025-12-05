@@ -525,14 +525,10 @@ export class TileProgressService {
       return false;
     });
 
-    // If event matches a tier, process tiered progress
-    if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
-      return this.calculateTieredProgress(
-        event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName, eventId
-      );
-    }
-
-    // If event matches a base requirement, process it
+    // PRIORITY: If there are base requirements, check them FIRST.
+    // Base requirements completing the tile should take precedence over tier tracking.
+    // This ensures tiles with both base and tiers work correctly:
+    // e.g., Base: get 1 item (tile done), Tiers: get 2/4 items (bonus points)
     if (matchingBaseReq && matchingReqIndex >= 0) {
       // For multi-requirement tiles, get the specific progress for THIS requirement
       // Otherwise the calculator would use the wrong requirement's existing progress
@@ -588,7 +584,30 @@ export class TileProgressService {
         result.isCompleted = completedRequirementIndices.length >= requirements.requirements.length;
       }
 
+      // If the tile ALSO has tiers and this event matches a tier, process tiered progress too
+      // This allows both base completion AND tier bonuses to be tracked
+      if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
+        const tieredResult = await this.calculateTieredProgress(
+          event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName, eventId
+        );
+        
+        // Merge tier info into the result
+        result.completedTiers = tieredResult.completedTiers;
+        result.progressMetadata = {
+          ...result.progressMetadata,
+          completedTiers: tieredResult.completedTiers || tieredResult.progressMetadata.completedTiers,
+          currentTier: tieredResult.progressMetadata.currentTier
+        };
+      }
+
       return result;
+    }
+
+    // If no base requirement matches but tiers do, process tiered progress
+    if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
+      return this.calculateTieredProgress(
+        event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName, eventId
+      );
     }
 
     // No matching requirement found - return existing or empty progress
