@@ -955,27 +955,61 @@ export class TileProgressService {
     // Sort by tier number ascending to check from lowest to highest
     const tiersAscending = [...requirements.tiers!].sort((a, b) => a.tier - b.tier);
     
-    for (const tier of tiersAscending) {
-      // Skip already completed tiers
-      if (updatedCompletedNumbers.includes(tier.tier)) continue;
+    // First, check if the MATCHED tier is complete (the one that triggered this calculation)
+    const matchedTierComplete = this.isTierComplete(
+      matchedTier.requirement,
+      tierResult.progressValue,
+      tierResult.progressMetadata
+    );
+    
+    if (matchedTierComplete && !updatedCompletedNumbers.includes(matchedTier.tier)) {
+      // Mark the matched tier as complete
+      newCompletedTiers.push({
+        tier: matchedTier.tier,
+        completedAt: new Date().toISOString(),
+        completedByOsrsAccountId: osrsAccountId || 0
+      });
+      updatedCompletedNumbers.push(matchedTier.tier);
       
-      // Check if this tier is complete with current progress
-      const isTierComplete = this.isTierComplete(
-        tier.requirement,
-        tierResult.progressValue,
-        tierResult.progressMetadata
-      );
+      console.log(`[TileProgress] Tier ${matchedTier.tier} completed with progress ${tierResult.progressValue}`);
       
-      if (isTierComplete) {
-        // Mark this tier as complete
-        newCompletedTiers.push({
-          tier: tier.tier,
-          completedAt: new Date().toISOString(),
-          completedByOsrsAccountId: osrsAccountId || 0
-        });
-        updatedCompletedNumbers.push(tier.tier);
+      // AUTO-COMPLETE ALL LOWER TIERS
+      // When a higher tier is completed, all lower tiers should also be marked complete
+      // This is a cascading completion system (e.g., tier 2 complete = tier 1 also complete)
+      for (const lowerTier of requirements.tiers!.filter(t => t.tier < matchedTier.tier)) {
+        if (!updatedCompletedNumbers.includes(lowerTier.tier)) {
+          newCompletedTiers.push({
+            tier: lowerTier.tier,
+            completedAt: new Date().toISOString(),
+            completedByOsrsAccountId: osrsAccountId || 0
+          });
+          updatedCompletedNumbers.push(lowerTier.tier);
+          
+          console.log(`[TileProgress] Tier ${lowerTier.tier} auto-completed (cascading from tier ${matchedTier.tier})`);
+        }
+      }
+    } else {
+      // Also check other tiers that might be complete with current progress
+      // (for cases where progress accumulates across multiple requirements)
+      for (const tier of tiersAscending) {
+        if (updatedCompletedNumbers.includes(tier.tier)) continue;
         
-        console.log(`[TileProgress] Tier ${tier.tier} completed with progress ${tierResult.progressValue}`);
+        const isTierComplete = this.isTierComplete(
+          tier.requirement,
+          tierResult.progressValue,
+          tierResult.progressMetadata
+        );
+        
+        if (isTierComplete) {
+          newCompletedTiers.push({
+            tier: tier.tier,
+            completedAt: new Date().toISOString(),
+            completedByOsrsAccountId: osrsAccountId || 0
+          });
+          updatedCompletedNumbers.push(tier.tier);
+          
+          console.log(`[TileProgress] Tier ${tier.tier} completed with progress ${tierResult.progressValue}`);
+        }
       }
     }
 
