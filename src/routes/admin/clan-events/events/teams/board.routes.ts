@@ -1378,10 +1378,9 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 		`, [tileId]);
 
 		// Create or update progress entry
-		// Check for ANY existing progress for this board_tile_id (regardless of osrs_account_id)
-		// to prevent duplicates - we should only have one progress entry per board_tile_id
+		// We should only have one progress entry per board_tile_id
 		const existingProgress = await query(
-			'SELECT id, osrs_account_id FROM bingo_tile_progress WHERE board_tile_id = $1 LIMIT 1',
+			'SELECT id FROM bingo_tile_progress WHERE board_tile_id = $1 LIMIT 1',
 			[tileId]
 		);
 
@@ -1406,13 +1405,12 @@ router.post('/tiles/:tileId/complete', async (req: Request, res: Response) => {
 			// Insert new progress entry only if none exists
 			await query(`
 				INSERT INTO bingo_tile_progress (
-					board_tile_id, osrs_account_id, progress_value, progress_metadata,
+					board_tile_id, progress_value, progress_metadata,
 					completion_type, completed_at, completed_by_osrs_account_id
 				)
-				VALUES ($1, $2, 1, $3, $4, CURRENT_TIMESTAMP, $5)
+				VALUES ($1, 1, $2, $3, CURRENT_TIMESTAMP, $4)
 			`, [
 				tileId,
-				completedByOsrsAccountId || null,
 				JSON.stringify({ manual_completion: true, notes: notes || null }),
 				completionType,
 				completedByOsrsAccountId || null
