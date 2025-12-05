@@ -189,6 +189,21 @@ const validateItemDropRequirement = (req: ItemDropRequirement): string[] => {
     }
   }
 
+  // Validate optional sources filter
+  if (req.sources !== undefined) {
+    if (!Array.isArray(req.sources)) {
+      errors.push('sources must be an array if provided');
+    } else if (req.sources.length === 0) {
+      errors.push('sources array cannot be empty if provided');
+    } else {
+      req.sources.forEach((source, index) => {
+        if (typeof source !== 'string' || source.trim().length === 0) {
+          errors.push(`sources[${index}] must be a non-empty string`);
+        }
+      });
+    }
+  }
+
   return errors;
 };
 

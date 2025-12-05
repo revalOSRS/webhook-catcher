@@ -116,7 +116,7 @@ For PUZZLE types, the `hiddenRequirement` is removed. Only public display fields
 
 | Type | Key Fields |
 |------|------------|
-| `ITEM_DROP` | `items[]`, `totalAmount` |
+| `ITEM_DROP` | `items[]`, `totalAmount`, `sources[]` (optional - limits to specific NPCs/bosses) |
 | `SPEEDRUN` | `location`, `time` (seconds) |
 | `EXPERIENCE` | `skill`, `experience` |
 | `VALUE_DROP` | `value` (min GP value) |

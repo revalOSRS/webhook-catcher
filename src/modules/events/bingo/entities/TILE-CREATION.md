@@ -86,6 +86,7 @@ interface ItemDropRequirementDef {
     itemAmount?: number; // Optional: specific amount needed per item
   }>;
   totalAmount?: number;  // Optional: total amount needed of ANY items in the list
+  sources?: string[];    // Optional: only count drops from these sources (NPC/boss names, case-insensitive)
 }
 ```
 
@@ -96,6 +97,28 @@ interface ItemDropRequirementDef {
   "items": [
     { "itemName": "Abyssal whip", "itemId": 4151 }
   ]
+}
+```
+
+#### Example: Get item ONLY from a specific boss
+```json
+{
+  "type": "ITEM_DROP",
+  "items": [
+    { "itemName": "Dragon pickaxe", "itemId": 11920 }
+  ],
+  "sources": ["King Black Dragon"]
+}
+```
+
+#### Example: Get item from multiple allowed sources
+```json
+{
+  "type": "ITEM_DROP",
+  "items": [
+    { "itemName": "Dragon pickaxe", "itemId": 11920 }
+  ],
+  "sources": ["King Black Dragon", "Callisto", "Venenatis", "Vet'ion"]
 }
 ```
 
