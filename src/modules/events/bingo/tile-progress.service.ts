@@ -565,7 +565,7 @@ export class TileProgressService {
 
       // Track which requirements are completed for matchType "all" logic
       // Read from the TILE's existing progress, not the individual requirement
-      const completedRequirementIndices = [...new Set([...existingTile.completedRequirementIndices])];
+      const completedRequirementIndices = [...new Set([...(existingTile.completedRequirementIndices || [])])];
       
       // If this requirement is now complete, add its index to the list
       if (result.isCompleted && !completedRequirementIndices.includes(matchingReqIndex)) {
