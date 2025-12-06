@@ -1926,9 +1926,20 @@ router.put('/bulk', async (req: Request, res: Response) => {
 						[currentBoardTileId]
 					);
 
+					// Track tier completions for point awarding
+					const existingMeta = existingProgress.length > 0 ? existingProgress[0].progressMetadata || {} : {};
+					const existingTiers = existingMeta?.requirementProgress?.["0"]?.progressMetadata?.completedTiers || [];
+					const existingTierNumbers = existingTiers.map((t: any) => t.tier);
+					
+					const newMeta = progress.progressMetadata || {};
+					const newTiers = newMeta?.requirementProgress?.["0"]?.progressMetadata?.completedTiers || [];
+					const newTierNumbers = newTiers.map((t: any) => t.tier);
+					
+					// Find newly completed tiers
+					const newlyCompletedTiers = newTierNumbers.filter((t: number) => !existingTierNumbers.includes(t));
+
 					if (existingProgress.length > 0) {
 						// Update existing progress
-						const existingMeta = existingProgress[0].progressMetadata || {};
 						const hasCompletionType = progress.completionType != null;
 						await query(`
 							UPDATE bingo_tile_progress
@@ -1970,6 +1981,34 @@ router.put('/bulk', async (req: Request, res: Response) => {
 						]);
 					}
 					results.progressUpdated++;
+
+					// Award points for newly completed tiers
+					if (newlyCompletedTiers.length > 0) {
+						// Get tile requirements to find tier points
+						const tileReqs = await query(`
+							SELECT bt.requirements FROM bingo_tiles bt
+							JOIN bingo_board_tiles bbt ON bbt.tile_id = bt.id
+							WHERE bbt.id = $1
+						`, [currentBoardTileId]);
+
+						if (tileReqs.length > 0 && tileReqs[0].requirements?.tiers) {
+							let tierPointsToAdd = 0;
+							for (const tierNum of newlyCompletedTiers) {
+								const tierDef = tileReqs[0].requirements.tiers.find((t: any) => t.tier === tierNum);
+								if (tierDef?.points) {
+									tierPointsToAdd += tierDef.points;
+								}
+							}
+
+							if (tierPointsToAdd > 0) {
+								await query(
+									'UPDATE event_teams SET score = score + $1, updated_at = NOW() WHERE id = $2',
+									[tierPointsToAdd, teamId]
+								);
+								console.log(`[Admin Bulk] Awarded ${tierPointsToAdd} tier points to team ${teamId} for tiers ${newlyCompletedTiers.join(', ')}`);
+							}
+						}
+					}
 				}
 			}
 		}
