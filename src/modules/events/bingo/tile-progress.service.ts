@@ -602,11 +602,20 @@ export class TileProgressService {
         
         // Merge tier info into the result
         result.completedTiers = tieredResult.completedTiers;
-        result.progressMetadata = {
+        const mergedReqMetadata = {
           ...result.progressMetadata,
           completedTiers: tieredResult.completedTiers || tieredResult.progressMetadata.completedTiers,
           currentTier: tieredResult.progressMetadata.currentTier
         };
+        result.progressMetadata = mergedReqMetadata;
+
+        // Also update the tileProgressMetadata with the merged tier info
+        if (result.tileProgressMetadata) {
+          result.tileProgressMetadata.requirementProgress[matchingReqIndex] = {
+            ...result.tileProgressMetadata.requirementProgress[matchingReqIndex],
+            progressMetadata: mergedReqMetadata
+          };
+        }
       }
 
       return result;
@@ -887,11 +896,25 @@ export class TileProgressService {
       playerContributions
     };
 
+    // Build tile-level wrapper
+    const tileProgressMetadata: TileProgressMetadata = {
+      totalRequirements: 1,
+      completedRequirementIndices: newCompletedTiers.length > 0 ? [0] : [],
+      requirementProgress: {
+        "0": {
+          isCompleted: newCompletedTiers.length > 0,
+          progressValue: bestTime,
+          progressMetadata
+        }
+      }
+    };
+
     return {
       progressValue: bestTime,
       progressMetadata,
       isCompleted: newCompletedTiers.length > 0,
-      completedTiers: newCompletedTiers
+      completedTiers: newCompletedTiers,
+      tileProgressMetadata
     };
   };
 
@@ -1071,18 +1094,31 @@ export class TileProgressService {
     newCompletedTiers.sort((a, b) => a.tier - b.tier);
 
     // Update metadata with tier info
-    // Tile-level wrapper fields will be added by the caller (calculateProgress)
     const updatedMetadata: RequirementProgressData = {
       ...tierResult.progressMetadata,
       completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
       currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
     };
 
+    // Build tile-level wrapper
+    const tileProgressMetadata: TileProgressMetadata = {
+      totalRequirements: 1,
+      completedRequirementIndices: newCompletedTiers.length > 0 ? [0] : [],
+      requirementProgress: {
+        "0": {
+          isCompleted: newCompletedTiers.length > 0,
+          progressValue: tierResult.progressValue,
+          progressMetadata: updatedMetadata
+        }
+      }
+    };
+
     return {
       progressValue: tierResult.progressValue,
       progressMetadata: updatedMetadata,
       isCompleted: newCompletedTiers.length > 0,
-      completedTiers: newCompletedTiers
+      completedTiers: newCompletedTiers,
+      tileProgressMetadata
     };
   };
 
@@ -1285,13 +1321,26 @@ export class TileProgressService {
     progress: ProgressResult,
     completedByOsrsAccountId: number | null
   ): Promise<void> => {
+    // Save tile-level metadata (the wrapper), not requirement-level metadata
+    const metadataToSave = progress.tileProgressMetadata || {
+      totalRequirements: 1,
+      completedRequirementIndices: progress.isCompleted ? [0] : [],
+      requirementProgress: {
+        "0": {
+          isCompleted: progress.isCompleted,
+          progressValue: progress.progressValue,
+          progressMetadata: progress.progressMetadata
+        }
+      }
+    };
+
     await query(`
       INSERT INTO bingo_tile_progress (board_tile_id, progress_value, progress_metadata, completed_by_osrs_account_id)
       VALUES ($1, $2, $3, $4)
     `, [
       boardTileId,
       progress.progressValue,
-      JSON.stringify(progress.progressMetadata),
+      JSON.stringify(metadataToSave),
       completedByOsrsAccountId
     ]);
   };
@@ -1304,13 +1353,26 @@ export class TileProgressService {
     progress: ProgressResult,
     completedByOsrsAccountId: number | null
   ): Promise<void> => {
+    // Save tile-level metadata (the wrapper), not requirement-level metadata
+    const metadataToSave = progress.tileProgressMetadata || {
+      totalRequirements: 1,
+      completedRequirementIndices: progress.isCompleted ? [0] : [],
+      requirementProgress: {
+        "0": {
+          isCompleted: progress.isCompleted,
+          progressValue: progress.progressValue,
+          progressMetadata: progress.progressMetadata
+        }
+      }
+    };
+
     await query(`
       UPDATE bingo_tile_progress
       SET progress_value = $1, progress_metadata = $2, completed_by_osrs_account_id = $3, updated_at = CURRENT_TIMESTAMP
       WHERE board_tile_id = $4
     `, [
       progress.progressValue,
-      JSON.stringify(progress.progressMetadata),
+      JSON.stringify(metadataToSave),
       completedByOsrsAccountId,
       boardTileId
     ]);
