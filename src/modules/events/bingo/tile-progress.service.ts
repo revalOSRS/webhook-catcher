@@ -446,8 +446,8 @@ export class TileProgressService {
         // ALL mode: check if all requirement indices are in the completed list
         baseComplete = completedRequirementIndices.length >= requirements.requirements.length;
       } else {
-        // ANY mode: just check if isCompleted flag is set (single requirement completed)
-        baseComplete = progress.isCompleted;
+        // ANY mode: tile is complete if at least one requirement is complete
+        baseComplete = completedRequirementIndices.length >= 1;
       }
     } else {
       // No base requirements - use isCompleted flag
@@ -587,9 +587,15 @@ export class TileProgressService {
         requirementProgress
       };
 
-      // For matchType "all", only mark as complete when ALL requirements are done
-      if (requirements.matchType === BingoTileMatchType.ALL && requirements.requirements) {
-        result.isCompleted = completedRequirementIndices.length >= requirements.requirements.length;
+      // Determine tile completion based on matchType
+      if (requirements.requirements && requirements.requirements.length > 0) {
+        if (requirements.matchType === BingoTileMatchType.ALL) {
+          // For matchType "all", mark as complete when ALL requirements are done
+          result.isCompleted = completedRequirementIndices.length >= requirements.requirements.length;
+        } else if (requirements.matchType === BingoTileMatchType.ANY) {
+          // For matchType "any", mark as complete when ANY ONE requirement is done
+          result.isCompleted = completedRequirementIndices.length >= 1;
+        }
       }
 
       // If the tile ALSO has tiers and this event matches a tier, process tiered progress too
