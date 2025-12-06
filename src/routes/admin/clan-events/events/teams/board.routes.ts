@@ -1842,7 +1842,7 @@ router.put('/bulk', async (req: Request, res: Response) => {
 				if (boardTileId) {
 					// Update existing board tile
 					const existingTile = await query(
-						'SELECT id, metadata FROM bingo_board_tiles WHERE id = $1 AND board_id = $2',
+						'SELECT bbt.id, bbt.metadata, bbt.is_completed, bt.points FROM bingo_board_tiles bbt JOIN bingo_tiles bt ON bbt.tile_id = bt.id WHERE bbt.id = $1 AND bbt.board_id = $2',
 						[boardTileId, boardId]
 					);
 
@@ -1850,6 +1850,8 @@ router.put('/bulk', async (req: Request, res: Response) => {
 						continue; // Skip if tile doesn't exist
 					}
 
+					const wasCompleted = existingTile[0].isCompleted;
+					const basePoints = existingTile[0].points || 0;
 					const existingMeta = existingTile[0].metadata || {};
 					await query(`
 						UPDATE bingo_board_tiles
@@ -1871,16 +1873,28 @@ router.put('/bulk', async (req: Request, res: Response) => {
 						boardTileId
 					]);
 
+					// Award base points if tile is newly completed
+					if (isCompleted === true && !wasCompleted && basePoints > 0) {
+						await query(
+							'UPDATE event_teams SET score = score + $1, updated_at = NOW() WHERE id = $2',
+							[basePoints, teamId]
+						);
+						console.log(`[Admin Bulk] Awarded ${basePoints} base points to team ${teamId} for completing tile ${tileId}`);
+					}
+
 					currentBoardTileId = boardTileId;
 					results.tilesUpdated++;
 				} else {
 					// Check if position is already occupied
 					const positionCheck = await query(
-						'SELECT id FROM bingo_board_tiles WHERE board_id = $1 AND position = $2',
+						'SELECT bbt.id, bbt.is_completed, bt.points FROM bingo_board_tiles bbt JOIN bingo_tiles bt ON bbt.tile_id = bt.id WHERE bbt.board_id = $1 AND bbt.position = $2',
 						[boardId, position]
 					);
 
 					if (positionCheck.length > 0) {
+						const wasCompleted = positionCheck[0].isCompleted;
+						const basePoints = positionCheck[0].points || 0;
+						
 						// Update existing tile at this position
 						await query(`
 							UPDATE bingo_board_tiles
@@ -1899,6 +1913,16 @@ router.put('/bulk', async (req: Request, res: Response) => {
 							isCompleted,
 							positionCheck[0].id
 						]);
+
+						// Award base points if tile is newly completed
+						if (isCompleted === true && !wasCompleted && basePoints > 0) {
+							await query(
+								'UPDATE event_teams SET score = score + $1, updated_at = NOW() WHERE id = $2',
+								[basePoints, teamId]
+							);
+							console.log(`[Admin Bulk] Awarded ${basePoints} base points to team ${teamId} for completing tile at position ${position}`);
+						}
+
 						currentBoardTileId = positionCheck[0].id;
 						results.tilesUpdated++;
 					} else {
@@ -1914,6 +1938,19 @@ router.put('/bulk', async (req: Request, res: Response) => {
 							JSON.stringify(metadata || {}),
 							isCompleted
 						]);
+
+						// Award base points if new tile is created as completed
+						if (isCompleted === true) {
+							const tilePoints = await query('SELECT points FROM bingo_tiles WHERE id = $1', [tileId]);
+							if (tilePoints.length > 0 && tilePoints[0].points > 0) {
+								await query(
+									'UPDATE event_teams SET score = score + $1, updated_at = NOW() WHERE id = $2',
+									[tilePoints[0].points, teamId]
+								);
+								console.log(`[Admin Bulk] Awarded ${tilePoints[0].points} base points to team ${teamId} for creating completed tile ${tileId}`);
+							}
+						}
+
 						currentBoardTileId = newTile[0].id;
 						results.tilesCreated++;
 					}
