@@ -1,6 +1,25 @@
 /**
  * Bingo Tile Requirement Types
- * Types for tile requirement definitions, matching, and progress tracking
+ * 
+ * This file contains all type definitions for:
+ * 1. Requirement definitions (what a tile requires)
+ * 2. Progress metadata (tracking progress toward completion)
+ * 3. Player contributions (who contributed what)
+ * 
+ * STRUCTURE:
+ * - RequirementProgressData: Progress for a SINGLE requirement (what calculators produce)
+ * - TileProgressMetadata: Tile-level wrapper stored in DB (contains requirementProgress map)
+ * 
+ * The database stores TileProgressMetadata:
+ * {
+ *   totalRequirements: 3,
+ *   completedRequirementIndices: [0, 1],
+ *   requirementProgress: {
+ *     "0": { isCompleted: true, progressValue: 1, progressMetadata: {...} },
+ *     "1": { isCompleted: true, progressValue: 1, progressMetadata: {...} },
+ *     "2": { isCompleted: false, progressValue: 0, progressMetadata: {...} }
+ *   }
+ * }
  */
 
 import { 
@@ -22,7 +41,10 @@ import {
   type AllowedChatSource
 } from '../entities/bingo-tiles.entity.js';
 
-// Re-export everything for convenience
+// =============================================================================
+// RE-EXPORTS (for convenience)
+// =============================================================================
+
 export { 
   BingoTileRequirementType, 
   BingoTileMatchType,
@@ -32,7 +54,6 @@ export {
   ALLOWED_CHAT_SOURCES
 };
 
-// Type aliases for backwards compatibility
 export type SimplifiedBingoTileRequirement = BingoTileRequirementDef;
 export type TieredBingoTileRequirement = TieredRequirementDef;
 export type ItemDropRequirement = ItemDropRequirementDef;
@@ -46,319 +67,183 @@ export type PuzzleRequirement = PuzzleRequirementDef;
 export type HiddenRequirement = HiddenRequirementDef;
 export type { AllowedChatSource };
 
-// ============================================================================
-// PROGRESS METADATA TYPES (tracking individual player contributions)
-// ============================================================================
+// =============================================================================
+// COMMON TYPES
+// =============================================================================
 
-/**
- * Base player contribution - common fields for all requirement types
- */
-interface BasePlayerContribution {
-  osrsAccountId: number;
-  osrsNickname: string;
-  memberId?: number;
+/** Tracked item for drops */
+export interface TrackedItem {
+  itemId: number;
+  itemName: string;
+  quantity: number;
 }
 
-/**
- * Tier completion tracking
- */
+/** Tier completion record */
 export interface TierCompletion {
   tier: number;
   completedAt: string;
   completedByOsrsAccountId: number;
 }
 
-/**
- * Progress tracking for a single requirement (for multi-requirement tiles)
- */
-export interface RequirementProgressEntry {
-  isCompleted: boolean;
-  progressValue: number;
-  progressMetadata: unknown;
+/** Base fields for all player contributions */
+export interface BasePlayerContribution {
+  osrsAccountId: number;
+  osrsNickname: string;
+  memberId?: number;
 }
 
+// =============================================================================
+// REQUIREMENT-LEVEL PROGRESS (what calculators produce)
+// =============================================================================
+
 /**
- * Base metadata fields shared across all requirement types
+ * Base fields for requirement-level progress.
+ * This is what calculators produce for a SINGLE requirement.
  */
-interface BaseProgressMetadata {
+interface BaseRequirementProgress {
   requirementType: BingoTileRequirementType;
   targetValue: number;
   lastUpdateAt: string;
-  /** Completed tiers with their completion dates */
+  /** For tiered requirements only */
   completedTiers?: TierCompletion[];
-  /** Highest completed tier number */
   currentTier?: number;
-  /** For matchType "all" - indices of requirements that are complete */
-  completedRequirementIndices?: number[];
-  /** Progress state for each requirement (keyed by index) */
-  requirementProgress?: Record<number, RequirementProgressEntry>;
-  /** Total number of requirements in the tile */
-  totalRequirements?: number;
 }
 
-// ============================================================================
-// SPEEDRUN METADATA
-// ============================================================================
-
-/**
- * Individual speedrun attempt
- */
-interface SpeedrunAttempt {
+// --- Speedrun ---
+export interface SpeedrunAttempt {
   timeSeconds: number;
   timestamp: string;
-  isPersonalBest: boolean;
+  osrsAccountId: number;
+  osrsNickname: string;
 }
 
-/**
- * Player contribution for speedrun requirements
- */
 export interface SpeedrunPlayerContribution extends BasePlayerContribution {
   bestTimeSeconds: number;
   attempts: SpeedrunAttempt[];
 }
 
-/**
- * Progress metadata for SPEEDRUN requirements
- * Tracks best times (lower is better)
- */
-export interface SpeedrunProgressMetadata extends BaseProgressMetadata {
+export interface SpeedrunProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.SPEEDRUN;
-  /** Current team best time in seconds */
   currentBestTimeSeconds: number;
-  /** Goal time in seconds */
   goalSeconds: number;
-  /** Each player's best attempts */
   playerContributions: SpeedrunPlayerContribution[];
 }
 
-// ============================================================================
-// ITEM DROP METADATA
-// ============================================================================
-
-/**
- * Item tracked for a player
- */
-interface TrackedItem {
-  itemId: number;
-  itemName: string;
-  quantity: number;
-}
-
-/**
- * Player contribution for item drop requirements
- */
+// --- Item Drop ---
 export interface ItemDropPlayerContribution extends BasePlayerContribution {
   items: TrackedItem[];
   totalCount: number;
 }
 
-/**
- * Progress metadata for ITEM_DROP requirements
- * Tracks item counts per player
- */
-export interface ItemDropProgressMetadata extends BaseProgressMetadata {
+export interface ItemDropProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.ITEM_DROP;
-  /** Current team total count */
   currentTotalCount: number;
-  /** Each player's item drops */
   playerContributions: ItemDropPlayerContribution[];
-  /** Last items obtained (for display) */
   lastItemsObtained?: TrackedItem[];
 }
 
-// ============================================================================
-// VALUE DROP METADATA
-// ============================================================================
-
-/**
- * Qualifying drop for value requirements
- */
-interface QualifyingDrop {
+// --- Value Drop ---
+export interface QualifyingDrop {
   itemId: number;
   itemName: string;
   value: number;
   timestamp: string;
 }
 
-/**
- * Player contribution for value drop requirements
- */
 export interface ValueDropPlayerContribution extends BasePlayerContribution {
   bestValue: number;
   qualifyingDrops: QualifyingDrop[];
 }
 
-/**
- * Progress metadata for VALUE_DROP requirements
- * Tracks highest single-item values (must be single item, not cumulative)
- */
-export interface ValueDropProgressMetadata extends BaseProgressMetadata {
+export interface ValueDropProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.VALUE_DROP;
-  /** Current team best single-item value */
   currentBestValue: number;
-  /** Each player's best drops */
   playerContributions: ValueDropPlayerContribution[];
 }
 
-// ============================================================================
-// PET METADATA
-// ============================================================================
-
-/**
- * Pet drop record
- */
-interface PetDrop {
+// --- Pet ---
+export interface PetDrop {
   petName: string;
   timestamp: string;
 }
 
-/**
- * Player contribution for pet requirements
- */
 export interface PetPlayerContribution extends BasePlayerContribution {
   pets: PetDrop[];
   count: number;
 }
 
-/**
- * Progress metadata for PET requirements
- * Tracks pet drops per player
- */
-export interface PetProgressMetadata extends BaseProgressMetadata {
+export interface PetProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.PET;
-  /** Current team total pet count */
   currentTotalCount: number;
-  /** Each player's pet drops */
   playerContributions: PetPlayerContribution[];
 }
 
-// ============================================================================
-// EXPERIENCE METADATA
-// ============================================================================
-
-/**
- * Player contribution for experience requirements
- */
+// --- Experience ---
 export interface ExperiencePlayerContribution extends BasePlayerContribution {
   baselineXp: number;
   currentXp: number;
   xpContribution: number;
 }
 
-/**
- * Progress metadata for EXPERIENCE requirements
- * Tracks XP gained since event start
- */
-export interface ExperienceProgressMetadata extends BaseProgressMetadata {
+export interface ExperienceProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.EXPERIENCE;
-  /** Skill being tracked */
   skill: string;
-  /** Current team total XP gained */
-  currentTotalXp: number;
-  /** Target XP to complete */
   targetXp: number;
-  /** Each player's XP contribution */
+  currentTotalXp: number;
   playerContributions: ExperiencePlayerContribution[];
 }
 
-// ============================================================================
-// BA GAMBLES METADATA
-// ============================================================================
-
-/**
- * Gamble session record
- */
-interface GambleSession {
+// --- BA Gambles ---
+export interface GambleSession {
   count: number;
   timestamp: string;
 }
 
-/**
- * Player contribution for BA gambles requirements
- */
 export interface BaGamblesPlayerContribution extends BasePlayerContribution {
   gambleContribution: number;
   gambleSessions: GambleSession[];
 }
 
-/**
- * Progress metadata for BA_GAMBLES requirements
- * Tracks gamble counts per player
- */
-export interface BaGamblesProgressMetadata extends BaseProgressMetadata {
+export interface BaGamblesProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.BA_GAMBLES;
-  /** Current team total gambles */
   currentTotalGambles: number;
-  /** Each player's gamble contributions */
   playerContributions: BaGamblesPlayerContribution[];
 }
 
-// ============================================================================
-// CHAT METADATA
-// ============================================================================
-
-/**
- * Chat message record
- */
-interface ChatMessageRecord {
+// --- Chat ---
+export interface ChatMessageRecord {
   message: string;
   messageType: string;
   timestamp: string;
 }
 
-/**
- * Player contribution for chat requirements
- */
 export interface ChatPlayerContribution extends BasePlayerContribution {
   messages: ChatMessageRecord[];
   count: number;
 }
 
-/**
- * Progress metadata for CHAT requirements
- * Tracks matching chat messages per player
- */
-export interface ChatProgressMetadata extends BaseProgressMetadata {
+export interface ChatProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.CHAT;
-  /** Target number of messages required */
   targetCount: number;
-  /** Current team total matching messages */
   currentTotalCount: number;
-  /** Each player's matching messages */
   playerContributions: ChatPlayerContribution[];
 }
 
-// ============================================================================
-// PUZZLE METADATA
-// ============================================================================
-
-/**
- * Progress metadata for PUZZLE requirements
- * Wraps the hidden requirement's metadata and adds puzzle-specific tracking
- */
-export interface PuzzleProgressMetadata extends BaseProgressMetadata {
+// --- Puzzle ---
+export interface PuzzleProgressMetadata extends BaseRequirementProgress {
   requirementType: BingoTileRequirementType.PUZZLE;
-  /** The type of the hidden requirement being tracked */
   hiddenRequirementType: BingoTileRequirementType;
-  /** The actual progress metadata from the hidden requirement */
-  hiddenProgressMetadata: Exclude<ProgressMetadata, PuzzleProgressMetadata>;
-  /** Whether the puzzle has been solved (hidden requirement completed) */
+  hiddenProgressMetadata: RequirementProgressData;
   isSolved: boolean;
-  /** Timestamp when the puzzle was solved */
   solvedAt?: string;
-  /** The puzzle category (for display/filtering) */
   puzzleCategory?: string;
 }
 
-// ============================================================================
-// UNION TYPE FOR ALL PROGRESS METADATA
-// ============================================================================
-
 /**
- * Union type for all progress metadata types.
- * Use the `requirementType` discriminator to narrow the type.
+ * Union of all requirement-level progress types.
+ * This is what calculators return for a single requirement.
  */
-export type ProgressMetadata =
+export type RequirementProgressData =
   | SpeedrunProgressMetadata
   | ItemDropProgressMetadata
   | ValueDropProgressMetadata
@@ -368,30 +253,131 @@ export type ProgressMetadata =
   | ChatProgressMetadata
   | PuzzleProgressMetadata;
 
-// ============================================================================
-// CALCULATOR TYPES (for progress calculation functions)
-// ============================================================================
+// =============================================================================
+// TILE-LEVEL PROGRESS (what's stored in database)
+// =============================================================================
 
 /**
- * Result of a progress calculation.
- * Returned by all calculator functions.
+ * Entry for a single requirement's progress within a tile.
  */
-export interface ProgressResult {
-  /** Current progress value (count, XP, time in seconds, etc.) */
-  progressValue: number;
-  /** Typed metadata to store with the progress record */
-  progressMetadata: ProgressMetadata;
-  /** Whether the requirement is now complete */
+export interface RequirementProgressEntry {
   isCompleted: boolean;
-  /** Tier completions (for tiered requirements) */
-  completedTiers?: TierCompletion[];
+  progressValue: number;
+  progressMetadata: RequirementProgressData;
 }
 
 /**
- * Existing progress state passed to calculators.
- * Retrieved from the database before calculation.
+ * Tile-level progress metadata stored in the database.
+ * 
+ * All progress goes through requirementProgress - no duplicate outer fields.
+ * Even single-requirement tiles use requirementProgress["0"].
+ */
+export interface TileProgressMetadata {
+  /** Total number of requirements in the tile (always >= 1) */
+  totalRequirements: number;
+  /** Indices of completed requirements (empty array if none) */
+  completedRequirementIndices: number[];
+  /** Progress for each requirement, keyed by index ("0", "1", etc.) */
+  requirementProgress: Record<string, RequirementProgressEntry>;
+}
+
+/**
+ * Union of all player contribution types.
+ */
+export type PlayerContribution =
+  | SpeedrunPlayerContribution
+  | ItemDropPlayerContribution
+  | ValueDropPlayerContribution
+  | PetPlayerContribution
+  | ExperiencePlayerContribution
+  | BaGamblesPlayerContribution
+  | ChatPlayerContribution;
+
+// =============================================================================
+// CALCULATOR TYPES
+// =============================================================================
+
+/**
+ * Result returned by progress calculators.
+ * Contains requirement-level data (NOT tile-level wrapper fields).
+ */
+export interface ProgressResult {
+  progressValue: number;
+  /** Requirement-level progress data */
+  progressMetadata: RequirementProgressData;
+  isCompleted: boolean;
+  completedTiers?: TierCompletion[];
+  /** Tile-level metadata (set by tile-progress.service before saving) */
+  tileProgressMetadata?: TileProgressMetadata;
+}
+
+/**
+ * Existing progress passed to calculators.
+ * Contains requirement-level metadata (extracted from TileProgressMetadata by tile-progress.service).
  */
 export interface ExistingProgress {
   progressValue: number;
-  progressMetadata: ProgressMetadata;
+  progressMetadata: RequirementProgressData;
+}
+
+/**
+ * Helper to get progress for a specific requirement index.
+ */
+export function getRequirementProgress(
+  metadata: TileProgressMetadata | undefined,
+  index: number
+): RequirementProgressEntry | undefined {
+  return metadata?.requirementProgress?.[String(index)];
+}
+
+/**
+ * Helper to create empty tile progress metadata.
+ */
+export function createEmptyTileProgress(totalRequirements: number = 1): TileProgressMetadata {
+  return {
+    totalRequirements,
+    completedRequirementIndices: [],
+    requirementProgress: {}
+  };
+}
+
+/**
+ * Helper to get completedTiers from tile metadata.
+ * Tiers are stored on the first requirement (index 0) for tiered tiles.
+ */
+export function getCompletedTiers(metadata: TileProgressMetadata | undefined): TierCompletion[] {
+  const reqProgress = getRequirementProgress(metadata, 0);
+  return reqProgress?.progressMetadata?.completedTiers ?? [];
+}
+
+/**
+ * Helper to get currentTier from tile metadata.
+ */
+export function getCurrentTier(metadata: TileProgressMetadata | undefined): number | undefined {
+  const reqProgress = getRequirementProgress(metadata, 0);
+  return reqProgress?.progressMetadata?.currentTier;
+}
+
+
+/**
+ * Type guard to check if metadata is tile progress.
+ */
+export function isTileProgressMetadata(metadata: unknown): metadata is TileProgressMetadata {
+  return (
+    typeof metadata === 'object' &&
+    metadata !== null &&
+    'requirementProgress' in metadata &&
+    'totalRequirements' in metadata
+  );
+}
+
+/**
+ * Type guard to check if metadata is requirement progress.
+ */
+export function isRequirementProgressData(metadata: unknown): metadata is RequirementProgressData {
+  return (
+    typeof metadata === 'object' &&
+    metadata !== null &&
+    'requirementType' in metadata
+  );
 }

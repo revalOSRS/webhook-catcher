@@ -17,7 +17,7 @@ import type {
   PuzzleProgressMetadata,
   ProgressResult,
   ExistingProgress,
-  ProgressMetadata,
+  RequirementProgressData,
   ItemDropRequirement,
   PetRequirement,
   ValueDropRequirement,
@@ -182,7 +182,7 @@ export const calculatePuzzleProgress = async (
   const puzzleMetadata: PuzzleProgressMetadata = {
     requirementType: BingoTileRequirementType.PUZZLE,
     hiddenRequirementType: hiddenReq.type,
-    hiddenProgressMetadata: hiddenResult.progressMetadata as Exclude<ProgressMetadata, PuzzleProgressMetadata>,
+    hiddenProgressMetadata: hiddenResult.progressMetadata as Exclude<RequirementProgressData, PuzzleProgressMetadata>,
     targetValue: hiddenResult.progressMetadata.targetValue,
     lastUpdateAt: new Date().toISOString(),
     isSolved: hiddenResult.isCompleted,
@@ -213,7 +213,7 @@ const createEmptyPuzzleMetadata = (requirement: PuzzleRequirement): PuzzleProgre
     playerContributions: []
   };
   
-  let hiddenMetadata: Exclude<ProgressMetadata, PuzzleProgressMetadata>;
+  let hiddenMetadata: Exclude<RequirementProgressData, PuzzleProgressMetadata>;
   
   switch (hiddenReq.type) {
     case BingoTileRequirementType.ITEM_DROP:

@@ -5,51 +5,48 @@
  */
 
 import type { TileVisibility } from './types.js';
+import type { BingoTileRequirements } from '../../../modules/events/bingo/types/bingo-requirements.type.js';
 
 /**
  * Sanitize requirements for public view.
- * Passes through all requirement data as-is, only removing hiddenRequirement from PUZZLE types.
- * This matches the behavior of the authenticated app endpoint.
+ * Removes hiddenRequirement from PUZZLE types only.
+ * 
+ * Returns a modified copy - the return type is intentionally loose
+ * because we're removing fields that are required in the original type.
  */
-export const sanitizeRequirements = (requirements: any): any => {
+export function sanitizeRequirements(requirements: BingoTileRequirements): BingoTileRequirements {
 	if (!requirements) return requirements;
 	
-	const sanitized = { ...requirements };
+	// Deep clone to avoid mutating original
+	const sanitized = JSON.parse(JSON.stringify(requirements)) as BingoTileRequirements;
 	
 	// Sanitize base requirements array
 	if (sanitized.requirements && Array.isArray(sanitized.requirements)) {
-		sanitized.requirements = sanitized.requirements.map((req: any) => {
-			if (req.type === 'PUZZLE') {
-				// Remove hiddenRequirement, keep only public display fields
-				const { hiddenRequirement, ...publicFields } = req;
-				return publicFields;
+		for (const req of sanitized.requirements) {
+			if (req.type === 'PUZZLE' && 'hiddenRequirement' in req) {
+				delete (req as unknown as Record<string, unknown>).hiddenRequirement;
 			}
-			return req;
-		});
+		}
 	}
 	
 	// Sanitize tier requirements
 	if (sanitized.tiers && Array.isArray(sanitized.tiers)) {
-		sanitized.tiers = sanitized.tiers.map((tier: any) => {
-			if (tier.requirement?.type === 'PUZZLE') {
-				const { hiddenRequirement, ...publicFields } = tier.requirement;
-				return { ...tier, requirement: publicFields };
+		for (const tier of sanitized.tiers) {
+			if (tier.requirement?.type === 'PUZZLE' && 'hiddenRequirement' in tier.requirement) {
+				delete (tier.requirement as unknown as Record<string, unknown>).hiddenRequirement;
 			}
-			return tier;
-		});
+		}
 	}
 	
 	return sanitized;
-};
+}
 
 /**
- * Check if tiles should be visible based on event start time
- * Tiles are hidden until 3 hours before the event starts
- * Tiles are also hidden if no start date is set (event not scheduled)
- * 
+ * Check if tiles should be visible based on event start time.
+ * Tiles are hidden until 3 hours before the event starts.
  * All times are in UTC.
  */
-export const shouldShowTiles = (startDate: Date | null): TileVisibility => {
+export function shouldShowTiles(startDate: Date | null): TileVisibility {
 	if (!startDate) {
 		return { 
 			show: false,
@@ -69,5 +66,4 @@ export const shouldShowTiles = (startDate: Date | null): TileVisibility => {
 		revealAt: threeHoursBefore,
 		message: 'Tiles will be revealed 3 hours before the event starts'
 	};
-};
-
+}

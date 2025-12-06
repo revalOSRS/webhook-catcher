@@ -28,7 +28,6 @@ import { BingoTileRequirementType } from '../types/bingo-requirements.type.js';
  */
 interface SpeedrunEventData {
   timeSeconds: number;
-  isPersonalBest?: boolean;
 }
 
 /**
@@ -111,11 +110,12 @@ const calculateSimpleSpeedrunProgress = (
   
   // Update player's attempts and best time
   const playerContribution = playerContributions.find(p => p.osrsAccountId === osrsAccountId);
-  if (playerContribution) {
+  if (playerContribution && osrsAccountId && playerName) {
     playerContribution.attempts.push({
       timeSeconds: currentTime,
       timestamp: event.timestamp.toISOString(),
-      isPersonalBest: speedrunData.isPersonalBest ?? false
+      osrsAccountId,
+      osrsNickname: playerName
     });
     
     // Update best time if this is faster (lower)
@@ -180,11 +180,12 @@ const calculateTieredSpeedrunProgress = (
   
   // Update player's attempts and best time
   const playerContribution = playerContributions.find(p => p.osrsAccountId === osrsAccountId);
-  if (playerContribution) {
+  if (playerContribution && osrsAccountId && playerName) {
     playerContribution.attempts.push({
       timeSeconds: currentTime,
       timestamp: event.timestamp.toISOString(),
-      isPersonalBest: speedrunData.isPersonalBest ?? false
+      osrsAccountId,
+      osrsNickname: playerName
     });
     
     if (currentTime < playerContribution.bestTimeSeconds) {

@@ -1082,40 +1082,78 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
 				completed_at = CURRENT_TIMESTAMP
 			WHERE id = $1
 		`, [tileId]);
+        // Get tile requirements to determine the type
+        const tileData = await query(`
+			SELECT bt.requirements 
+			FROM bingo_board_tiles bbt
+			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
+			WHERE bbt.id = $1
+		`, [tileId]);
+        const requirements = tileData[0]?.requirements || {};
+        const totalReqs = requirements.requirements?.length || 1;
+        const firstReqType = requirements.requirements?.[0]?.type ||
+            requirements.tiers?.[0]?.requirement?.type || 'ITEM_DROP';
+        // Create proper TileProgressMetadata structure
+        const createEmptyProgressMetadata = () => {
+            const reqProgress = {};
+            for (let i = 0; i < totalReqs; i++) {
+                reqProgress[String(i)] = {
+                    isCompleted: true,
+                    progressValue: 1,
+                    progressMetadata: {
+                        requirementType: firstReqType,
+                        targetValue: 1,
+                        lastUpdateAt: new Date().toISOString(),
+                        currentTotalCount: 1,
+                        playerContributions: []
+                    }
+                };
+            }
+            return {
+                totalRequirements: totalReqs,
+                completedRequirementIndices: Array.from({ length: totalReqs }, (_, i) => i),
+                requirementProgress: reqProgress
+            };
+        };
         // Create or update progress entry
-        // Check for ANY existing progress for this board_tile_id (regardless of osrs_account_id)
-        // to prevent duplicates - we should only have one progress entry per board_tile_id
-        const existingProgress = await query('SELECT id, osrs_account_id FROM bingo_tile_progress WHERE board_tile_id = $1 LIMIT 1', [tileId]);
+        // We should only have one progress entry per board_tile_id
+        const existingProgress = await query('SELECT id, progress_metadata FROM bingo_tile_progress WHERE board_tile_id = $1 LIMIT 1', [tileId]);
         if (existingProgress.length > 0) {
-            // Update existing progress entry
+            // Update existing progress - merge with existing metadata
+            const existingMeta = existingProgress[0].progressMetadata || {};
+            const updatedMeta = existingMeta.requirementProgress
+                ? {
+                    ...existingMeta,
+                    completedRequirementIndices: Array.from({ length: totalReqs }, (_, i) => i)
+                }
+                : createEmptyProgressMetadata();
             await query(`
 				UPDATE bingo_tile_progress
 				SET 
 					completion_type = $1,
 					completed_at = CURRENT_TIMESTAMP,
 					completed_by_osrs_account_id = $2,
-					progress_metadata = COALESCE(progress_metadata, '{}'::jsonb) || $3::jsonb,
+					progress_metadata = $3::jsonb,
 					updated_at = CURRENT_TIMESTAMP
 				WHERE id = $4
 			`, [
                 completionType,
                 completedByOsrsAccountId || null,
-                JSON.stringify({ manual_completion: true, notes: notes || null }),
+                JSON.stringify(updatedMeta),
                 existingProgress[0].id
             ]);
         }
         else {
-            // Insert new progress entry only if none exists
+            // Insert new progress entry with proper structure
             await query(`
 				INSERT INTO bingo_tile_progress (
-					board_tile_id, osrs_account_id, progress_value, progress_metadata,
+					board_tile_id, progress_value, progress_metadata,
 					completion_type, completed_at, completed_by_osrs_account_id
 				)
-				VALUES ($1, $2, 1, $3, $4, CURRENT_TIMESTAMP, $5)
+				VALUES ($1, 1, $2, $3, CURRENT_TIMESTAMP, $4)
 			`, [
                 tileId,
-                completedByOsrsAccountId || null,
-                JSON.stringify({ manual_completion: true, notes: notes || null }),
+                JSON.stringify(createEmptyProgressMetadata()),
                 completionType,
                 completedByOsrsAccountId || null
             ]);
@@ -1135,6 +1173,16 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
 			JOIN events e ON bb.event_id = e.id
 			WHERE bbt.id = $1
 		`, [tileId]);
+        // Award points to the team
+        if (updatedTile.length > 0) {
+            const tile = updatedTile[0];
+            const basePoints = tile.points || 0;
+            // Award base points for tile completion
+            if (basePoints > 0) {
+                await query('UPDATE event_teams SET score = score + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [basePoints, teamId]);
+                console.log(`[Admin] Awarded ${basePoints} points to team ${teamId} for completing tile ${tileId}`);
+            }
+        }
         // Send Discord notification for manual completion
         if (updatedTile.length > 0) {
             try {
@@ -1159,7 +1207,7 @@ router.post('/tiles/:tileId/complete', async (req, res) => {
                     tilePosition: tile.position,
                     playerName,
                     progressValue: progressData?.[0]?.progressValue || 1,
-                    progressMetadata: progressData?.[0]?.progressMetadata || { manual_completion: true, notes: notes || null },
+                    progressMetadata: progressData?.[0]?.progressMetadata || {},
                     isCompleted: true,
                     completionType: 'manual_admin',
                     completedTiers: progressData?.[0]?.progressMetadata?.completedTiers,
@@ -1242,8 +1290,8 @@ router.post('/tiles/:tileId/revert', async (req, res) => {
 				completed_by_osrs_account_id = NULL
 			WHERE board_tile_id = $1
 		`, [tileId]);
-        // Get updated tile
-        const updatedTile = await query(`
+        // Get tile info for points subtraction
+        const tileInfo = await query(`
 			SELECT 
 				bbt.*,
 				bt.task, bt.category, bt.difficulty, bt.icon, bt.description,
@@ -1252,9 +1300,18 @@ router.post('/tiles/:tileId/revert', async (req, res) => {
 			JOIN bingo_tiles bt ON bbt.tile_id = bt.id
 			WHERE bbt.id = $1
 		`, [tileId]);
+        // Subtract points from the team
+        if (tileInfo.length > 0) {
+            const tile = tileInfo[0];
+            const basePoints = tile.points || 0;
+            if (basePoints > 0) {
+                await query('UPDATE event_teams SET score = GREATEST(0, score - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2', [basePoints, teamId]);
+                console.log(`[Admin] Subtracted ${basePoints} points from team ${teamId} for reverting tile ${tileId}`);
+            }
+        }
         res.json({
             success: true,
-            data: updatedTile[0],
+            data: tileInfo[0],
             message: 'Tile reverted successfully'
         });
     }
@@ -1499,41 +1556,45 @@ router.put('/bulk', async (req, res) => {
                     if (existingProgress.length > 0) {
                         // Update existing progress
                         const existingMeta = existingProgress[0].progressMetadata || {};
+                        const hasCompletionType = progress.completionType != null;
                         await query(`
 							UPDATE bingo_tile_progress
 							SET 
 								progress_value = COALESCE($1, progress_value),
 								progress_metadata = $2,
 								completed_by_osrs_account_id = COALESCE($3, completed_by_osrs_account_id),
-								completion_type = COALESCE($4, completion_type),
+								completion_type = COALESCE($4::text, completion_type),
 								completed_at = CASE 
-									WHEN $4 IS NOT NULL AND completed_at IS NULL THEN NOW()
+									WHEN $5 = true AND completed_at IS NULL THEN NOW()
 									ELSE completed_at 
 								END,
 								updated_at = NOW()
-							WHERE board_tile_id = $5
+							WHERE board_tile_id = $6
 						`, [
                             progress.progressValue,
                             JSON.stringify({ ...existingMeta, ...(progress.progressMetadata || {}) }),
-                            progress.completedByOsrsAccountId,
-                            progress.completionType,
+                            progress.completedByOsrsAccountId || null,
+                            progress.completionType || null,
+                            hasCompletionType,
                             currentBoardTileId
                         ]);
                     }
                     else {
                         // Create new progress record
+                        const hasCompletionType = progress.completionType != null;
                         await query(`
 							INSERT INTO bingo_tile_progress (
 								board_tile_id, progress_value, progress_metadata, 
 								completed_by_osrs_account_id, completion_type, completed_at
 							)
-							VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 IS NOT NULL THEN NOW() ELSE NULL END)
+							VALUES ($1, $2, $3, $4, $5, $6)
 						`, [
                             currentBoardTileId,
                             progress.progressValue || 0,
                             JSON.stringify(progress.progressMetadata || {}),
-                            progress.completedByOsrsAccountId,
-                            progress.completionType
+                            progress.completedByOsrsAccountId || null,
+                            progress.completionType || null,
+                            hasCompletionType ? new Date().toISOString() : null
                         ]);
                     }
                     results.progressUpdated++;

@@ -52,11 +52,12 @@ const calculateSimpleSpeedrunProgress = (event, requirement, existing, memberId,
     const playerContributions = getOrInitPlayerContributions(existingMetadata, osrsAccountId, playerName, memberId, currentTime);
     // Update player's attempts and best time
     const playerContribution = playerContributions.find(p => p.osrsAccountId === osrsAccountId);
-    if (playerContribution) {
+    if (playerContribution && osrsAccountId && playerName) {
         playerContribution.attempts.push({
             timeSeconds: currentTime,
             timestamp: event.timestamp.toISOString(),
-            isPersonalBest: speedrunData.isPersonalBest ?? false
+            osrsAccountId,
+            osrsNickname: playerName
         });
         // Update best time if this is faster (lower)
         if (currentTime < playerContribution.bestTimeSeconds) {
@@ -100,11 +101,12 @@ const calculateTieredSpeedrunProgress = (event, tieredReq, existing, memberId, o
     const playerContributions = getOrInitPlayerContributions(existingMetadata, osrsAccountId, playerName, memberId, currentTime);
     // Update player's attempts and best time
     const playerContribution = playerContributions.find(p => p.osrsAccountId === osrsAccountId);
-    if (playerContribution) {
+    if (playerContribution && osrsAccountId && playerName) {
         playerContribution.attempts.push({
             timeSeconds: currentTime,
             timestamp: event.timestamp.toISOString(),
-            isPersonalBest: speedrunData.isPersonalBest ?? false
+            osrsAccountId,
+            osrsNickname: playerName
         });
         if (currentTime < playerContribution.bestTimeSeconds) {
             playerContribution.bestTimeSeconds = currentTime;

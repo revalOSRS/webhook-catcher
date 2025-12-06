@@ -5,67 +5,94 @@ import { getMemberFromHeaders, getEventParticipation } from './types.js';
 const router = Router({ mergeParams: true });
 
 /**
- * Extract player contribution from progressMetadata
+ * Extract player contribution from TileProgressMetadata
  * Returns the contribution for the specified osrsAccountId or null if not found
  * 
+ * TileProgressMetadata structure:
+ * {
+ *   totalRequirements: number,
+ *   completedRequirementIndices: number[],
+ *   requirementProgress: {
+ *     "0": { isCompleted, progressValue, progressMetadata: RequirementProgressData }
+ *   }
+ * }
+ * 
  * Handles different requirement types:
- * - Regular requirements: progressMetadata.playerContributions
- * - PUZZLE requirements: progressMetadata.hiddenProgressMetadata.playerContributions
- *   or aggregated from requirementProgress entries
+ * - Regular requirements: requirementProgress[i].progressMetadata.playerContributions
+ * - PUZZLE requirements: requirementProgress[i].progressMetadata.hiddenProgressMetadata.playerContributions
  */
 const extractPlayerContribution = (
-	progressMetadata: any,
+	tileMetadata: any,
 	osrsAccountIds: number[]
 ): any | null => {
-	if (!progressMetadata) return null;
+	if (!tileMetadata?.requirementProgress) return null;
 
-	// For regular requirements with playerContributions
-	if (progressMetadata.playerContributions) {
-		const contributions = progressMetadata.playerContributions as any[];
-		const found = contributions.find((c: any) => osrsAccountIds.includes(c.osrsAccountId));
-		if (found) return found;
-	}
+	const allItems: any[] = [];
+	let totalCount = 0;
+	let osrsNickname = '';
+	let foundOsrsAccountId = 0;
 
-	// For PUZZLE requirements - check hiddenProgressMetadata
-	if (progressMetadata.requirementType === 'PUZZLE' && progressMetadata.hiddenProgressMetadata?.playerContributions) {
-		const contributions = progressMetadata.hiddenProgressMetadata.playerContributions as any[];
-		const found = contributions.find((c: any) => osrsAccountIds.includes(c.osrsAccountId));
-		if (found) return found;
-	}
+	// Iterate through all requirements in the tile
+	for (const reqIndex of Object.keys(tileMetadata.requirementProgress)) {
+		const reqEntry = tileMetadata.requirementProgress[reqIndex];
+		const reqMeta = reqEntry?.progressMetadata;
+		if (!reqMeta) continue;
 
-	// For multi-requirement tiles (matchType "all") - aggregate from requirementProgress
-	if (progressMetadata.requirementProgress) {
-		const allItems: any[] = [];
-		let totalCount = 0;
-		let osrsNickname = '';
-		let osrsAccountId = 0;
-
-		for (const reqIndex of Object.keys(progressMetadata.requirementProgress)) {
-			const reqProgress = progressMetadata.requirementProgress[reqIndex];
-			const hiddenMeta = reqProgress?.progressMetadata?.hiddenProgressMetadata;
-			
-			if (hiddenMeta?.playerContributions) {
-				for (const contrib of hiddenMeta.playerContributions) {
-					if (osrsAccountIds.includes(contrib.osrsAccountId)) {
-						osrsNickname = contrib.osrsNickname;
-						osrsAccountId = contrib.osrsAccountId;
-						if (contrib.items) {
-							allItems.push(...contrib.items);
-							totalCount += contrib.totalCount || 0;
-						}
+		// Check direct playerContributions (for regular requirements)
+		if (reqMeta.playerContributions) {
+			for (const contrib of reqMeta.playerContributions) {
+				if (osrsAccountIds.includes(contrib.osrsAccountId)) {
+					osrsNickname = contrib.osrsNickname;
+					foundOsrsAccountId = contrib.osrsAccountId;
+					if (contrib.items) {
+						allItems.push(...contrib.items);
+						totalCount += contrib.totalCount || 0;
+					} else if (contrib.pets) {
+						// For PET requirements
+						return contrib;
+					} else if (contrib.attempts) {
+						// For SPEEDRUN requirements
+						return contrib;
+					} else if (contrib.xpContribution !== undefined) {
+						// For EXPERIENCE requirements
+						return contrib;
+					} else if (contrib.gambleContribution !== undefined) {
+						// For BA_GAMBLES requirements
+						return contrib;
+					} else if (contrib.messages) {
+						// For CHAT requirements
+						return contrib;
+					} else if (contrib.qualifyingDrops) {
+						// For VALUE_DROP requirements
+						return contrib;
 					}
 				}
 			}
 		}
 
-		if (allItems.length > 0) {
-			return {
-				items: allItems,
-				totalCount,
-				osrsNickname,
-				osrsAccountId
-			};
+		// Check hiddenProgressMetadata (for PUZZLE requirements)
+		const hiddenMeta = reqMeta.hiddenProgressMetadata;
+		if (hiddenMeta?.playerContributions) {
+			for (const contrib of hiddenMeta.playerContributions) {
+				if (osrsAccountIds.includes(contrib.osrsAccountId)) {
+					osrsNickname = contrib.osrsNickname;
+					foundOsrsAccountId = contrib.osrsAccountId;
+					if (contrib.items) {
+						allItems.push(...contrib.items);
+						totalCount += contrib.totalCount || 0;
+					}
+				}
+			}
 		}
+	}
+
+	if (allItems.length > 0) {
+		return {
+			items: allItems,
+			totalCount,
+			osrsNickname,
+			osrsAccountId: foundOsrsAccountId
+		};
 	}
 
 	return null;
@@ -159,7 +186,7 @@ router.get('/', async (req, res: Response) => {
 					},
 					// Team totals for context
 					teamProgressValue: tile.progressValue,
-					requirementType: tile.progressMetadata?.requirementType,
+					requirementType: tile.progressMetadata?.requirementProgress?.["0"]?.progressMetadata?.requirementType,
 					completedAt: iCompletedIt ? tile.completedAt : null,
 					lastUpdatedAt: tile.updatedAt
 				};
@@ -181,62 +208,61 @@ router.get('/', async (req, res: Response) => {
 });
 
 /**
- * Extract ALL player contributions from progressMetadata
+ * Extract ALL player contributions from TileProgressMetadata
  * Returns array of all contributions, handling different requirement types
  */
-const extractAllContributions = (progressMetadata: any): any[] => {
-	if (!progressMetadata) return [];
+const extractAllContributions = (tileMetadata: any): any[] => {
+	if (!tileMetadata?.requirementProgress) return [];
 
-	const contributions: any[] = [];
+	const playerMap = new Map<number, any>();
 
-	// For regular requirements with playerContributions
-	if (progressMetadata.playerContributions) {
-		contributions.push(...progressMetadata.playerContributions);
-	}
+	// Iterate through all requirements
+	for (const reqIndex of Object.keys(tileMetadata.requirementProgress)) {
+		const reqEntry = tileMetadata.requirementProgress[reqIndex];
+		const reqMeta = reqEntry?.progressMetadata;
+		if (!reqMeta) continue;
 
-	// For PUZZLE requirements - check hiddenProgressMetadata
-	if (progressMetadata.requirementType === 'PUZZLE' && progressMetadata.hiddenProgressMetadata?.playerContributions) {
-		// Only add if not already added from playerContributions
-		if (!progressMetadata.playerContributions) {
-			contributions.push(...progressMetadata.hiddenProgressMetadata.playerContributions);
-		}
-	}
-
-	// For multi-requirement tiles (matchType "all") - aggregate from requirementProgress
-	if (progressMetadata.requirementProgress) {
-		const playerMap = new Map<number, any>();
-
-		for (const reqIndex of Object.keys(progressMetadata.requirementProgress)) {
-			const reqProgress = progressMetadata.requirementProgress[reqIndex];
-			const hiddenMeta = reqProgress?.progressMetadata?.hiddenProgressMetadata;
-			
-			if (hiddenMeta?.playerContributions) {
-				for (const contrib of hiddenMeta.playerContributions) {
-					const existing = playerMap.get(contrib.osrsAccountId);
-					if (existing) {
-						// Merge items and counts
-						if (contrib.items) {
-							existing.items.push(...contrib.items);
-							existing.totalCount += contrib.totalCount || 0;
-						}
-					} else {
-						playerMap.set(contrib.osrsAccountId, {
-							...contrib,
-							items: contrib.items ? [...contrib.items] : [],
-							totalCount: contrib.totalCount || 0
-						});
+		// Check direct playerContributions (for regular requirements)
+		if (reqMeta.playerContributions) {
+			for (const contrib of reqMeta.playerContributions) {
+				const existing = playerMap.get(contrib.osrsAccountId);
+				if (existing) {
+					// Merge items and counts for ITEM_DROP
+					if (contrib.items) {
+						existing.items = existing.items || [];
+						existing.items.push(...contrib.items);
+						existing.totalCount = (existing.totalCount || 0) + (contrib.totalCount || 0);
 					}
+				} else {
+					playerMap.set(contrib.osrsAccountId, { ...contrib });
 				}
 			}
 		}
 
-		// If we have aggregated contributions, use those instead
-		if (playerMap.size > 0) {
-			return Array.from(playerMap.values());
+		// Check hiddenProgressMetadata (for PUZZLE requirements)
+		const hiddenMeta = reqMeta.hiddenProgressMetadata;
+		if (hiddenMeta?.playerContributions) {
+			for (const contrib of hiddenMeta.playerContributions) {
+				const existing = playerMap.get(contrib.osrsAccountId);
+				if (existing) {
+					// Merge items and counts
+					if (contrib.items) {
+						existing.items = existing.items || [];
+						existing.items.push(...contrib.items);
+						existing.totalCount = (existing.totalCount || 0) + (contrib.totalCount || 0);
+					}
+				} else {
+					playerMap.set(contrib.osrsAccountId, {
+						...contrib,
+						items: contrib.items ? [...contrib.items] : [],
+						totalCount: contrib.totalCount || 0
+					});
+				}
+			}
 		}
 	}
 
-	return contributions;
+	return Array.from(playerMap.values());
 };
 
 /**

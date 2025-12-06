@@ -11,7 +11,7 @@
 import { query, queryOne } from '../../../../db/connection.js';
 import { BaseEntity } from '../../../base-entity.js';
 import { BingoTileRequirementType } from './bingo-tiles.entity.js';
-import type { ProgressMetadata } from '../types/bingo-requirements.type.js';
+import type { TileProgressMetadata } from '../types/bingo-requirements.type.js';
 import { BingoTileCompletionType } from '../types/bingo-tile-completion-type.type.js';
 
 /**
@@ -35,7 +35,7 @@ export interface BingoTileProgress {
    * Structure varies by requirement type - use the requirementType 
    * discriminator to narrow the type.
    */
-  progressMetadata: ProgressMetadata;
+  progressMetadata: TileProgressMetadata;
   /** How the tile was completed (null if not completed) */
   completionType?: BingoTileCompletionType;
   /** 
@@ -233,7 +233,7 @@ export class BingoTileProgressEntity extends BaseEntity<BingoTileProgress, strin
    * Upsert progress by board tile ID
    * Creates if doesn't exist, updates if exists
    */
-  upsertByBoardTileId = async (boardTileId: string, input: UpdateBingoTileProgressInput & { progressValue: number; progressMetadata: ProgressMetadata }): Promise<BingoTileProgress> => {
+  upsertByBoardTileId = async (boardTileId: string, input: UpdateBingoTileProgressInput & { progressValue: number; progressMetadata: TileProgressMetadata }): Promise<BingoTileProgress> => {
     const result = await queryOne(`
       INSERT INTO bingo_tile_progress (board_tile_id, progress_value, progress_metadata, completion_type, completed_by_osrs_account_id, completed_at)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -303,10 +303,11 @@ export class BingoTileProgressEntity extends BaseEntity<BingoTileProgress, strin
   };
 
   /**
-   * Get requirement type from progress metadata
+   * Get requirement type from progress metadata (from first requirement)
    */
-  getRequirementType = (progress: BingoTileProgress): BingoTileRequirementType => {
-    return progress.progressMetadata.requirementType;
+  getRequirementType = (progress: BingoTileProgress): BingoTileRequirementType | undefined => {
+    const firstReq = progress.progressMetadata?.requirementProgress?.["0"];
+    return firstReq?.progressMetadata?.requirementType;
   };
 
   /**
@@ -317,10 +318,11 @@ export class BingoTileProgressEntity extends BaseEntity<BingoTileProgress, strin
   };
 
   /**
-   * Get completed tier numbers from progress
+   * Get completed tier numbers from progress (from first requirement)
    */
   getCompletedTiers = (progress: BingoTileProgress): number[] => {
-    const tiers = progress.progressMetadata.completedTiers;
+    const firstReq = progress.progressMetadata?.requirementProgress?.["0"];
+    const tiers = firstReq?.progressMetadata?.completedTiers;
     return tiers ? tiers.map(t => t.tier) : [];
   };
 
@@ -333,7 +335,7 @@ export class BingoTileProgressEntity extends BaseEntity<BingoTileProgress, strin
       id: row.id as string,
       boardTileId: row.boardTileId as string,
       progressValue: parseFloat(row.progressValue as string) || 0,
-      progressMetadata: row.progressMetadata as ProgressMetadata,
+      progressMetadata: row.progressMetadata as TileProgressMetadata,
       completionType: row.completionType as BingoTileCompletionType | undefined,
       completedByOsrsAccountId: row.completedByOsrsAccountId as number | undefined,
       completedAt: row.completedAt ? new Date(row.completedAt as string) : undefined,

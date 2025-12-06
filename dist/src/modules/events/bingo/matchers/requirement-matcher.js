@@ -94,12 +94,24 @@ const matchesSimplifiedRequirement = (event, requirement) => {
  * This allows cumulative progress tracking - players can get items one at a time
  * across multiple events, and the calculator sums them up.
  *
+ * If `sources` is specified, the event's source (NPC/boss name) must match
+ * one of the allowed sources (case-insensitive).
+ *
  * Returns false if event is not a LOOT event or no required items are present.
  */
 const matchesItemDrop = (event, requirement) => {
     if (event.eventType !== UnifiedEventType.LOOT)
         return false;
     const lootData = event.data;
+    // Check source filtering if sources are specified
+    if (requirement.sources && requirement.sources.length > 0) {
+        const eventSource = lootData.source?.toLowerCase();
+        if (!eventSource)
+            return false; // No source in event, can't match
+        const matchesSource = requirement.sources.some(allowedSource => eventSource === allowedSource.toLowerCase());
+        if (!matchesSource)
+            return false; // Source doesn't match any allowed source
+    }
     // Check if at least one required item is present in this event
     // Progress accumulation and completion check happens in the calculator
     for (const reqItem of requirement.items) {

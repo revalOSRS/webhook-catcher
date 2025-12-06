@@ -38,11 +38,19 @@ import type {
   ChatRequirement,
   PuzzleRequirement,
   BingoTileRequirementDef,
-  ProgressMetadata,
+  TileProgressMetadata,
+  RequirementProgressData,
+  RequirementProgressEntry,
   TierCompletion,
   ProgressResult,
   ExistingProgress,
   SpeedrunPlayerContribution
+} from './types/bingo-requirements.type.js';
+import { 
+  getRequirementProgress, 
+  createEmptyTileProgress, 
+  getCompletedTiers,
+  getCurrentTier 
 } from './types/bingo-requirements.type.js';
 import { BingoTileMatchType, BingoTileRequirementType } from './types/bingo-requirements.type.js';
 import type { BingoTileProgress } from './entities/bingo-tile-progress.entity.js';
@@ -141,7 +149,7 @@ export class TileProgressService {
     if (existingProgress.completedAt) {
       const hasTiers = tile.requirements.tiers && tile.requirements.tiers.length > 0;
       if (hasTiers) {
-        const completedTierCount = existingProgress.progressMetadata.completedTiers?.length || 0;
+        const completedTierCount = getCompletedTiers(existingProgress.progressMetadata).length;
         return completedTierCount >= tile.requirements.tiers.length;
       }
       return true;
@@ -312,8 +320,8 @@ export class TileProgressService {
     wasCompleted: boolean,
     isTileCompleted: boolean
   ): Promise<number> => {
-    const previousTiers = existingProgress?.progressMetadata?.completedTiers || [];
-    const currentTiers = updatedProgress.progressMetadata.completedTiers || [];
+    const previousTiers = getCompletedTiers(existingProgress?.progressMetadata);
+    const currentTiers = updatedProgress.progressMetadata.completedTiers || updatedProgress.completedTiers || [];
     
     const previousTierNumbers = previousTiers.map(t => t.tier);
     const currentTierNumbers = currentTiers.map(t => t.tier);
@@ -431,12 +439,12 @@ export class TileProgressService {
 
     // Check base requirements completion
     let baseComplete = false;
+    const completedRequirementIndices = progress.tileProgressMetadata?.completedRequirementIndices || [];
     
     if (requirements.requirements && requirements.requirements.length > 0) {
       if (requirements.matchType === BingoTileMatchType.ALL) {
         // ALL mode: check if all requirement indices are in the completed list
-        const completedIndices = progress.progressMetadata.completedRequirementIndices || [];
-        baseComplete = completedIndices.length >= requirements.requirements.length;
+        baseComplete = completedRequirementIndices.length >= requirements.requirements.length;
       } else {
         // ANY mode: just check if isCompleted flag is set (single requirement completed)
         baseComplete = progress.isCompleted;
@@ -496,8 +504,8 @@ export class TileProgressService {
     playerName?: string,
     eventId?: string
   ): Promise<ProgressResult> => {
-    // Convert BingoTileProgress to ExistingProgress format for calculators
-    const existingForCalc = this.toExistingProgress(existing);
+    // Get existing tile-level metadata (for multi-requirement tracking)
+    const existingTileMetadata = existing?.progressMetadata || createEmptyTileProgress();
 
     // Check if event matches any tier
     const matchesTier = requirements.tiers && requirements.tiers.length > 0 &&
@@ -530,13 +538,16 @@ export class TileProgressService {
     // This ensures tiles with both base and tiers work correctly:
     // e.g., Base: get 1 item (tile done), Tiers: get 2/4 items (bonus points)
     if (matchingBaseReq && matchingReqIndex >= 0) {
+      // Get existing tile progress or create empty
+      const existingTile = existingTileMetadata;
+      
       // For multi-requirement tiles, get the specific progress for THIS requirement
       // Otherwise the calculator would use the wrong requirement's existing progress
-      const existingReqProgress = existingForCalc?.progressMetadata?.requirementProgress?.[matchingReqIndex];
-      const existingForThisReq: ExistingProgress | null = existingReqProgress 
+      const existingReqProgress = getRequirementProgress(existingTile, matchingReqIndex);
+      const existingForThisReq: ExistingProgress | null = existingReqProgress?.progressMetadata
         ? {
             progressValue: existingReqProgress.progressValue,
-            progressMetadata: existingReqProgress.progressMetadata as ProgressMetadata
+            progressMetadata: existingReqProgress.progressMetadata
           }
         : null;
 
@@ -554,8 +565,7 @@ export class TileProgressService {
 
       // Track which requirements are completed for matchType "all" logic
       // Read from the TILE's existing progress, not the individual requirement
-      const existingCompleted = existingForCalc?.progressMetadata?.completedRequirementIndices || [];
-      const completedRequirementIndices = [...new Set([...existingCompleted])]; // Clone existing
+      const completedRequirementIndices = [...new Set([...existingTile.completedRequirementIndices])];
       
       // If this requirement is now complete, add its index to the list
       if (result.isCompleted && !completedRequirementIndices.includes(matchingReqIndex)) {
@@ -563,20 +573,18 @@ export class TileProgressService {
       }
 
       // Preserve existing requirement progress and add/update the current one
-      const existingReqProgressMap = existingForCalc?.progressMetadata?.requirementProgress || {};
-      const requirementProgress = { ...existingReqProgressMap }; // Clone to preserve others
+      const requirementProgress = { ...existingTile.requirementProgress }; // Clone to preserve others
       requirementProgress[matchingReqIndex] = {
         isCompleted: result.isCompleted,
         progressValue: result.progressValue,
         progressMetadata: result.progressMetadata
       };
 
-      // Update the result metadata with tracking info
-      result.progressMetadata = {
-        ...result.progressMetadata,
+      // Build tile-level metadata
+      result.tileProgressMetadata = {
+        totalRequirements: requirements.requirements?.length || 1,
         completedRequirementIndices,
-        requirementProgress,
-        totalRequirements: requirements.requirements?.length || 1
+        requirementProgress
       };
 
       // For matchType "all", only mark as complete when ALL requirements are done
@@ -587,8 +595,9 @@ export class TileProgressService {
       // If the tile ALSO has tiers and this event matches a tier, process tiered progress too
       // This allows both base completion AND tier bonuses to be tracked
       if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
+        const existingReqForTiers = this.toExistingProgress(existing, 0);
         const tieredResult = await this.calculateTieredProgress(
-          event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName, eventId
+          event, requirements, existingReqForTiers, existingTileMetadata, eventStartDate, memberId, osrsAccountId, playerName, eventId
         );
         
         // Merge tier info into the result
@@ -605,8 +614,9 @@ export class TileProgressService {
 
     // If no base requirement matches but tiers do, process tiered progress
     if (matchesTier && requirements.tiers && requirements.tiers.length > 0) {
+      const existingReqForTiers = this.toExistingProgress(existing, 0);
       return this.calculateTieredProgress(
-        event, requirements, existingForCalc, eventStartDate, memberId, osrsAccountId, playerName, eventId
+        event, requirements, existingReqForTiers, existingTileMetadata, eventStartDate, memberId, osrsAccountId, playerName, eventId
       );
     }
 
@@ -616,13 +626,17 @@ export class TileProgressService {
 
   /**
    * Convert BingoTileProgress to ExistingProgress format for calculators.
+   * Extracts the first requirement's progress metadata for calculators.
    */
-  private toExistingProgress = (progress: BingoTileProgress | null): ExistingProgress | null => {
+  private toExistingProgress = (progress: BingoTileProgress | null, reqIndex: number = 0): ExistingProgress | null => {
     if (!progress) return null;
 
+    const reqEntry = getRequirementProgress(progress.progressMetadata, reqIndex);
+    if (!reqEntry?.progressMetadata) return null;
+
     return {
-      progressValue: progress.progressValue,
-      progressMetadata: progress.progressMetadata
+      progressValue: reqEntry.progressValue,
+      progressMetadata: reqEntry.progressMetadata
     };
   };
 
@@ -634,28 +648,49 @@ export class TileProgressService {
     requirements: BingoTileRequirements
   ): ProgressResult => {
     if (existing) {
+      const firstReqProgress = getRequirementProgress(existing.progressMetadata, 0);
       return {
         progressValue: existing.progressValue,
-        progressMetadata: existing.progressMetadata,
-        isCompleted: existing.completedAt !== undefined
+        progressMetadata: firstReqProgress?.progressMetadata || this.createEmptyRequirementMetadata(BingoTileRequirementType.ITEM_DROP),
+        isCompleted: existing.completedAt !== undefined,
+        tileProgressMetadata: existing.progressMetadata
       };
     }
 
     // Determine requirement type from the first available requirement
     const firstReq = requirements.requirements?.[0] || requirements.tiers?.[0]?.requirement;
     const reqType = firstReq?.type || BingoTileRequirementType.ITEM_DROP;
+    const totalReqs = requirements.requirements?.length || 1;
+
+    // Create requirement-level metadata
+    const requirementData = this.createEmptyRequirementMetadata(reqType);
+    
+    // Build tile-level metadata with requirement wrapped
+    const tileProgressMetadata: TileProgressMetadata = {
+      totalRequirements: totalReqs,
+      completedRequirementIndices: [],
+      requirementProgress: {
+        "0": {
+          isCompleted: false,
+          progressValue: 0,
+          progressMetadata: requirementData
+        }
+      }
+    };
 
     return {
       progressValue: 0,
-      progressMetadata: this.createEmptyMetadata(reqType),
-      isCompleted: false
+      progressMetadata: requirementData,
+      isCompleted: false,
+      tileProgressMetadata
     };
   };
 
   /**
-   * Create empty metadata for a given requirement type.
+   * Create empty requirement-level metadata for a given requirement type.
+   * This is what calculators would produce for a fresh requirement.
    */
-  private createEmptyMetadata = (type: BingoTileRequirementType): ProgressMetadata => {
+  private createEmptyRequirementMetadata = (type: BingoTileRequirementType): RequirementProgressData => {
     const base = {
       targetValue: 0,
       lastUpdateAt: new Date().toISOString(),
@@ -664,30 +699,50 @@ export class TileProgressService {
 
     switch (type) {
       case BingoTileRequirementType.SPEEDRUN:
-        return { ...base, requirementType: type, currentBestTimeSeconds: Infinity, goalSeconds: 0 } as ProgressMetadata;
+        return { ...base, requirementType: type, currentBestTimeSeconds: Infinity, goalSeconds: 0 } as RequirementProgressData;
       case BingoTileRequirementType.ITEM_DROP:
-        return { ...base, requirementType: type, currentTotalCount: 0 } as ProgressMetadata;
+        return { ...base, requirementType: type, currentTotalCount: 0 } as RequirementProgressData;
       case BingoTileRequirementType.VALUE_DROP:
-        return { ...base, requirementType: type, currentBestValue: 0 } as ProgressMetadata;
+        return { ...base, requirementType: type, currentBestValue: 0 } as RequirementProgressData;
       case BingoTileRequirementType.PET:
-        return { ...base, requirementType: type, currentTotalCount: 0 } as ProgressMetadata;
+        return { ...base, requirementType: type, currentTotalCount: 0 } as RequirementProgressData;
       case BingoTileRequirementType.EXPERIENCE:
-        return { ...base, requirementType: type, skill: '', currentTotalXp: 0, targetXp: 0 } as ProgressMetadata;
+        return { ...base, requirementType: type, skill: '', currentTotalXp: 0, targetXp: 0 } as RequirementProgressData;
       case BingoTileRequirementType.BA_GAMBLES:
-        return { ...base, requirementType: type, currentTotalGambles: 0 } as ProgressMetadata;
+        return { ...base, requirementType: type, currentTotalGambles: 0 } as RequirementProgressData;
       case BingoTileRequirementType.CHAT:
-        return { ...base, requirementType: type, targetCount: 0, currentTotalCount: 0 } as ProgressMetadata;
-      case BingoTileRequirementType.PUZZLE:
+        return { ...base, requirementType: type, targetCount: 0, currentTotalCount: 0 } as RequirementProgressData;
+      case BingoTileRequirementType.PUZZLE: {
+        const hiddenMetadata = this.createEmptyRequirementMetadata(BingoTileRequirementType.ITEM_DROP);
         return { 
           ...base, 
           requirementType: type, 
           hiddenRequirementType: BingoTileRequirementType.ITEM_DROP,
-          hiddenProgressMetadata: { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 },
+          hiddenProgressMetadata: hiddenMetadata,
           isSolved: false
-        } as ProgressMetadata;
+        } as RequirementProgressData;
+      }
       default:
-        return { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 } as ProgressMetadata;
+        return { ...base, requirementType: BingoTileRequirementType.ITEM_DROP, currentTotalCount: 0 } as RequirementProgressData;
     }
+  };
+
+  /**
+   * Wrap requirement-level metadata with tile-level wrapper fields.
+   * This creates the full TileProgressMetadata stored in the database.
+   */
+  private wrapWithTileFields = (
+    requirementData: RequirementProgressData,
+    totalRequirements: number,
+    completedRequirementIndices: number[] = [],
+    requirementProgress: Record<string, RequirementProgressEntry> = {}
+  ): TileProgressMetadata => {
+    return {
+      ...requirementData,
+      totalRequirements,
+      completedRequirementIndices,
+      requirementProgress
+    };
   };
 
   /**
@@ -706,13 +761,15 @@ export class TileProgressService {
     event: UnifiedGameEvent,
     requirements: BingoTileRequirements,
     existing: ExistingProgress | null,
+    tileMetadata: TileProgressMetadata,
     eventStartDate: Date,
     memberId?: number,
     osrsAccountId?: number,
     playerName?: string,
     eventId?: string
   ): Promise<ProgressResult> => {
-    const existingCompletedTiers = existing?.progressMetadata?.completedTiers || [];
+    // Get completed tiers from the tile-level metadata
+    const existingCompletedTiers = getCompletedTiers(tileMetadata);
     const completedTierNumbers = existingCompletedTiers.map(t => t.tier);
 
     const isSpeedrun = requirements.tiers![0]?.requirement?.type === BingoTileRequirementType.SPEEDRUN;
@@ -750,7 +807,7 @@ export class TileProgressService {
     osrsAccountId?: number,
     playerName?: string
   ): Promise<ProgressResult> => {
-    const speedrunData = event.data as { timeSeconds: number; location?: string; isPersonalBest?: boolean };
+    const speedrunData = event.data as { timeSeconds: number; location?: string };
     const currentTime = speedrunData.timeSeconds;
     const eventLocation = speedrunData.location?.toLowerCase();
 
@@ -758,10 +815,11 @@ export class TileProgressService {
     const firstTierLocation = (requirements.tiers![0]?.requirement as SpeedrunRequirement).location?.toLowerCase();
     if (eventLocation !== firstTierLocation) {
       if (existing) {
+        const reqMeta = existing.progressMetadata;
         return {
           progressValue: existing.progressValue,
-          progressMetadata: existing.progressMetadata,
-          isCompleted: (existing.progressMetadata.completedTiers?.length || 0) > 0
+          progressMetadata: reqMeta || this.createEmptyRequirementMetadata(BingoTileRequirementType.SPEEDRUN),
+          isCompleted: (reqMeta?.completedTiers?.length || 0) > 0
         };
       }
       return this.buildEmptyProgress(null, requirements);
@@ -813,13 +871,12 @@ export class TileProgressService {
       existingContributions,
       currentTime,
       osrsAccountId,
-      playerName,
-      speedrunData.isPersonalBest || false
+      playerName
     );
 
     const targetGoal = (sortedTiers[sortedTiers.length - 1]?.requirement as SpeedrunRequirement)?.goalSeconds || 0;
 
-    const progressMetadata: ProgressMetadata = {
+    const progressMetadata: RequirementProgressData = {
       requirementType: BingoTileRequirementType.SPEEDRUN,
       currentBestTimeSeconds: bestTime,
       goalSeconds: targetGoal,
@@ -827,11 +884,7 @@ export class TileProgressService {
       lastUpdateAt: new Date().toISOString(),
       completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
       currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined,
-      playerContributions,
-      // Preserve multi-requirement tracking fields from existing progress
-      completedRequirementIndices: existing?.progressMetadata?.completedRequirementIndices,
-      requirementProgress: existing?.progressMetadata?.requirementProgress,
-      totalRequirements: existing?.progressMetadata?.totalRequirements
+      playerContributions
     };
 
     return {
@@ -849,10 +902,9 @@ export class TileProgressService {
     existing: SpeedrunPlayerContribution[],
     timeSeconds: number,
     osrsAccountId?: number,
-    playerName?: string,
-    isPersonalBest?: boolean
+    playerName?: string
   ): SpeedrunPlayerContribution[] => {
-    if (!osrsAccountId) return existing;
+    if (!osrsAccountId || !playerName) return existing;
 
     const contributions = [...existing];
     const existingContrib = contributions.find(c => c.osrsAccountId === osrsAccountId);
@@ -860,7 +912,8 @@ export class TileProgressService {
     const newAttempt = {
       timeSeconds,
       timestamp: new Date().toISOString(),
-      isPersonalBest: isPersonalBest || false
+      osrsAccountId,
+      osrsNickname: playerName
     };
 
     if (existingContrib) {
@@ -870,7 +923,7 @@ export class TileProgressService {
     } else {
       contributions.push({
         osrsAccountId,
-        osrsNickname: playerName || 'Unknown',
+        osrsNickname: playerName,
         bestTimeSeconds: timeSeconds,
         attempts: [newAttempt]
       });
@@ -942,10 +995,11 @@ export class TileProgressService {
     // If no matching tier found, return existing progress
     if (!tierResult || !matchedTier) {
       if (existing) {
+        const reqMeta = existing.progressMetadata;
         return {
           progressValue: existing.progressValue,
-          progressMetadata: existing.progressMetadata,
-          isCompleted: (existing.progressMetadata.completedTiers?.length || 0) > 0
+          progressMetadata: reqMeta || this.createEmptyRequirementMetadata(BingoTileRequirementType.ITEM_DROP),
+          isCompleted: (reqMeta?.completedTiers?.length || 0) > 0
         };
       }
       return this.buildEmptyProgress(null, requirements);
@@ -1016,15 +1070,12 @@ export class TileProgressService {
     // Sort completed tiers by tier number
     newCompletedTiers.sort((a, b) => a.tier - b.tier);
 
-    // Update metadata with tier info, preserving base requirement tracking
-    const updatedMetadata: ProgressMetadata = {
+    // Update metadata with tier info
+    // Tile-level wrapper fields will be added by the caller (calculateProgress)
+    const updatedMetadata: RequirementProgressData = {
       ...tierResult.progressMetadata,
       completedTiers: newCompletedTiers.length > 0 ? newCompletedTiers : undefined,
-      currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined,
-      // Preserve multi-requirement tracking fields from existing progress
-      completedRequirementIndices: existing?.progressMetadata?.completedRequirementIndices,
-      requirementProgress: existing?.progressMetadata?.requirementProgress,
-      totalRequirements: existing?.progressMetadata?.totalRequirements
+      currentTier: updatedCompletedNumbers.length > 0 ? Math.max(...updatedCompletedNumbers) : undefined
     };
 
     return {
@@ -1054,7 +1105,7 @@ export class TileProgressService {
   private isTierComplete = (
     requirement: BingoTileRequirementDef,
     progressValue: number,
-    metadata: ProgressMetadata
+    metadata: RequirementProgressData
   ): boolean => {
     switch (requirement.type) {
       case BingoTileRequirementType.ITEM_DROP: {
@@ -1198,7 +1249,7 @@ export class TileProgressService {
       id: string;
       boardTileId: string;
       progressValue: string;
-      progressMetadata: ProgressMetadata;
+      progressMetadata: TileProgressMetadata;
       completionType: BingoTileCompletionType | null;
       completedAt: string | null;
       completedByOsrsAccountId: number | null;
@@ -1322,8 +1373,8 @@ export class TileProgressService {
     wasCompleted: boolean,
     pointsAwarded: number = 0
   ): Promise<void> => {
-    const previousTiers = existingProgress?.progressMetadata?.completedTiers || [];
-    const currentTiers = updatedProgress.progressMetadata.completedTiers || [];
+    const previousTiers = getCompletedTiers(existingProgress?.progressMetadata);
+    const currentTiers = updatedProgress.progressMetadata.completedTiers || updatedProgress.completedTiers || [];
 
     const previousTierNumbers = previousTiers.map(t => t.tier);
     const currentTierNumbers = currentTiers.map(t => t.tier);
