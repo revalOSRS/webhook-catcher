@@ -250,11 +250,15 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 			let progress: PublicTileProgress | null = null;
 			if (row.progressValue !== null || row.progressMetadata) {
 				const metadata = row.progressMetadata || {};
+				// Get first requirement's progress metadata for tier/target info
+				const firstReqMeta = metadata.requirementProgress?.["0"]?.progressMetadata;
+				
 				progress = {
 					progressValue: parseFloat(row.progressValue) || 0,
-					targetValue: metadata.targetValue ?? null,
-					completedTiers: (metadata.completedTiers || []).map((t: any) => t.tier),
-					currentTier: metadata.currentTier ?? null,
+					// Extract from nested requirement metadata
+					targetValue: firstReqMeta?.targetValue ?? null,
+					completedTiers: (firstReqMeta?.completedTiers || []).map((t: any) => t.tier),
+					currentTier: firstReqMeta?.currentTier ?? null,
 					// Multi-requirement tracking (for matchType: "all")
 					completedRequirementIndices: metadata.completedRequirementIndices ?? [],
 					totalRequirements: metadata.totalRequirements ?? null,
